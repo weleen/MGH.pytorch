@@ -4,7 +4,7 @@
 @contact: sherlockliao01@gmail.com
 """
 
-from ...utils.registry import Registry
+from fvcore.common.registry import Registry
 
 BACKBONE_REGISTRY = Registry("BACKBONE")
 BACKBONE_REGISTRY.__doc__ = """

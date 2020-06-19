@@ -17,7 +17,7 @@ from fastreid.layers import (
     Non_local,
     get_norm,
 )
-from fastreid.utils.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
+from fvcore.common.checkpoint import get_unexpected_parameters_message, get_missing_parameters_message
 from .build import BACKBONE_REGISTRY
 
 logger = logging.getLogger(__name__)

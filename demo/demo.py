@@ -16,8 +16,9 @@ from torch.backends import cudnn
 
 sys.path.append('..')
 
-from fastreid.config import get_cfg
-from fastreid.utils.file_io import PathManager
+from fvcore.common.file_io import PathManager
+
+from fastreid.config import cfg
 from predictor import FeatureExtractionDemo
 
 cudnn.benchmark = True
@@ -25,7 +26,6 @@ cudnn.benchmark = True
 
 def setup_cfg(args):
     # load config from file and command-line arguments
-    cfg = get_cfg()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

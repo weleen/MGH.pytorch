@@ -11,11 +11,10 @@ import sys
 sys.path.append('.')
 
 from torch import nn
+from fvcore.common.checkpoint import Checkpointer
 
-from fastreid.config import get_cfg
-from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup
-from fastreid.utils.checkpoint import Checkpointer
-from fastreid.engine import hooks
+from fastreid.config import cfg
+from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, hooks, launch
 from fastreid.evaluation import ReidEvaluator
 
 
@@ -31,7 +30,6 @@ def setup(args):
     """
     Create configs and perform basic setups.
     """
-    cfg = get_cfg()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()
@@ -47,8 +45,7 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = Trainer.build_model(cfg)
-        model = nn.DataParallel(model)
-        model = model.cuda()
+        model = nn.DataParallel(model).to(cfg.MODEL.DEVICE)
 
         Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
         if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(model):
@@ -74,4 +71,11 @@ def main(args):
 if __name__ == "__main__":
     args = default_argument_parser().parse_args()
     print("Command Line Args:", args)
-    main(args)
+    launch(
+        main,
+        args.num_gpus,
+        num_machines=args.num_machines,
+        machine_rank=args.machine_rank,
+        dist_url=args.dist_url,
+        args=(args,),
+    )

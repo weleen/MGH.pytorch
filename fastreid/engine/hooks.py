@@ -4,7 +4,6 @@
 import datetime
 import itertools
 import logging
-import warnings
 import os
 import tempfile
 import time
@@ -12,16 +11,16 @@ from collections import Counter
 
 import torch
 from torch import nn
+from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
+from fvcore.common.timer import Timer
+from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
+from fvcore.common.file_io import PathManager
 
 from .train_loop import HookBase
 from fastreid.solver import optim
 from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.utils import comm
-from fastreid.utils.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fastreid.utils.events import EventStorage, EventWriter
-from fastreid.utils.file_io import PathManager
-from fastreid.utils.precision_bn import update_bn_stats, get_bn_modules
-from fastreid.utils.timer import Timer
 
 __all__ = [
     "CallbackHook",
@@ -33,6 +32,7 @@ __all__ = [
     "EvalHook",
     "PreciseBN",
     "FreezeLayer",
+    "SWA",
 ]
 
 """

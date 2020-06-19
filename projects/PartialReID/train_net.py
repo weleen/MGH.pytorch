@@ -11,10 +11,10 @@ import sys
 sys.path.append('.')
 
 from torch import nn
+from fvcore.common.checkpoint import Checkpointer
 
-from fastreid.config import get_cfg
+from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup
-from fastreid.utils.checkpoint import Checkpointer
 from fastreid.engine import hooks
 
 from partialreid import *

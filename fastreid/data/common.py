@@ -3,11 +3,11 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-
+import copy
 import torch
 from torch.utils.data import Dataset
 
-from .data_utils import read_image
+from fastreid.utils.misc import read_image
 
 
 class CommDataset(Dataset):
@@ -26,7 +26,7 @@ class CommDataset(Dataset):
                 self.img_items.append((item[0], pid, item[2]))  # replace pid
                 pids.add(pid)
             self.pids = pids
-            self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
+            self.pid_dict = dict([(p, i) for i, p in enumerate(sorted(self.pids))])
         else:
             self.img_items = img_items
 
@@ -55,6 +55,3 @@ class CommDataset(Dataset):
         else:                     prefix = file_path.split('/')[1]
 
         return prefix + '_' + str(pid)
-
-    def update_pid_dict(self, pid_dict):
-        self.pid_dict = pid_dict

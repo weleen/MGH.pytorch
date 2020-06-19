@@ -1,4 +1,4 @@
-from .config import CfgNode as CN
+from fvcore.common.config import CfgNode as CN
 
 # -----------------------------------------------------------------------------
 # Convention about Training / Test specific parameters
@@ -20,6 +20,7 @@ _C = CN()
 # MODEL
 # -----------------------------------------------------------------------------
 _C.MODEL = CN()
+_C.MODEL.DEVICE = "cuda"
 _C.MODEL.META_ARCHITECTURE = 'Baseline'
 _C.MODEL.OPEN_LAYERS = ['']
 
@@ -86,7 +87,7 @@ _C.MODEL.LOSSES.CE = CN()
 # if epsilon == 0, it means no label smooth regularization,
 # if epsilon == -1, it means adaptive label smooth regularization
 _C.MODEL.LOSSES.CE.EPSILON = 0.0
-_C.MODEL.LOSSES.CE.ALPHA = 0.3
+_C.MODEL.LOSSES.CE.ALPHA = 0.2
 _C.MODEL.LOSSES.CE.SCALE = 1.0
 
 # Triplet Loss options
@@ -94,8 +95,13 @@ _C.MODEL.LOSSES.TRI = CN()
 _C.MODEL.LOSSES.TRI.MARGIN = 0.3
 _C.MODEL.LOSSES.TRI.NORM_FEAT = False
 _C.MODEL.LOSSES.TRI.HARD_MINING = True
-_C.MODEL.LOSSES.TRI.USE_COSINE_DIST = False
 _C.MODEL.LOSSES.TRI.SCALE = 1.0
+
+# Circle Loss options
+_C.MODEL.LOSSES.CIRCLE = CN()
+_C.MODEL.LOSSES.CIRCLE.MARGIN = 0.25
+_C.MODEL.LOSSES.CIRCLE.ALPHA = 128
+_C.MODEL.LOSSES.CIRCLE.SCALE = 1.0
 
 # Focal Loss options
 _C.MODEL.LOSSES.FL = CN()
@@ -110,7 +116,6 @@ _C.MODEL.WEIGHTS = ""
 _C.MODEL.PIXEL_MEAN = [0.485*255, 0.456*255, 0.406*255]
 # Values to be used for image normalization
 _C.MODEL.PIXEL_STD = [0.229*255, 0.224*255, 0.225*255]
-#
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -162,13 +167,15 @@ _C.DATASETS.COMBINEALL = False
 _C.DATALOADER = CN()
 # P/K Sampler for data loading
 _C.DATALOADER.PK_SAMPLER = True
+# Naive sampler which don't consider balanced identity sampling
+_C.DATALOADER.NAIVE_WAY = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 8
 
-# ---------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------
 # Solver
-# ---------------------------------------------------------------------------- #
+# ----------------------------------------------------------------------------
 _C.SOLVER = CN()
 
 _C.SOLVER.OPT = "Adam"
@@ -209,7 +216,7 @@ _C.SOLVER.SWA.LR_FACTOR = 10.
 _C.SOLVER.SWA.ETA_MIN_LR = 3.5e-6
 _C.SOLVER.SWA.LR_SCHED = False
 
-_C.SOLVER.CHECKPOINT_PERIOD = 5000
+_C.SOLVER.CHECKPOINT_PERIOD = 2000
 
 _C.SOLVER.LOG_PERIOD = 30
 # Number of images per batch
@@ -217,6 +224,9 @@ _C.SOLVER.LOG_PERIOD = 30
 # see 2 images per batch
 _C.SOLVER.IMS_PER_BATCH = 64
 
+# ----------------------------------------------------------------------------
+# Test
+# ----------------------------------------------------------------------------
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch
 _C.TEST = CN()
@@ -255,4 +265,6 @@ _C.OUTPUT_DIR = "logs/"
 # for about 10k iterations. It usually hurts total time, but can benefit for certain models.
 # If input images have the same or similar sizes, benchmark is often helpful.
 _C.CUDNN_BENCHMARK = False
+_C.SAVE_PROJECT = True
+_C.SEED = -1
 

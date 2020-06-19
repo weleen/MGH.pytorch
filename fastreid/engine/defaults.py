@@ -8,6 +8,7 @@ The behavior of functions/classes in this file is subject to change,
 since they are meant to represent the "common default behavior" people need in their projects.
 """
 
+import sys
 import argparse
 import logging
 import os
@@ -16,7 +17,11 @@ from collections import OrderedDict
 import torch
 import torch.nn.functional as F
 from torch.nn import DataParallel
+from torch.nn.parallel import DistributedDataParallel
+from fvcore.common.checkpoint import Checkpointer
+from fvcore.common.file_io import PathManager
 
+from . import hooks, SimpleTrainer
 from fastreid.data import build_reid_test_loader, build_reid_train_loader
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
                                  inference_on_dataset, print_csv_format)
@@ -24,12 +29,10 @@ from fastreid.modeling.meta_arch import build_model
 from fastreid.layers.sync_bn import patch_replication_callback
 from fastreid.solver import build_lr_scheduler, build_optimizer
 from fastreid.utils import comm
-from fastreid.utils.checkpoint import Checkpointer
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
-from fastreid.utils.file_io import PathManager
 from fastreid.utils.logger import setup_logger
-from . import hooks
-from .train_loop import SimpleTrainer
+from fastreid.utils.misc import collect_env_info, cp_projects
+from fastreid.utils.env import seed_all_rng
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -40,7 +43,19 @@ def default_argument_parser():
     Returns:
         argparse.ArgumentParser:
     """
-    parser = argparse.ArgumentParser(description="fastreid Training")
+    parser = argparse.ArgumentParser(
+        epilog=f"""
+        Examples:
+
+        Run on single machine:
+            $ {sys.argv[0]} --num-gpus 8 --config-file cfg.yaml MODEL.WEIGHTS /path/to/weight.pth
+
+        Run on multiple machines:
+            (machine0)$ {sys.argv[0]} --machine-rank 0 --num-machines 2 --dist-url <URL> [--other-flags]
+            (machine1)$ {sys.argv[0]} --machine-rank 1 --num-machines 2 --dist-url <URL> [--other-flags]
+        """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--resume",
@@ -48,17 +63,22 @@ def default_argument_parser():
         help="whether to attempt to resume from the checkpoint directory",
     )
     parser.add_argument("--eval-only", action="store_true", help="perform evaluation only")
-    # parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
-    # parser.add_argument("--num-machines", type=int, default=1)
-    # parser.add_argument(
-    #     "--machine-rank", type=int, default=0, help="the rank of this machine (unique per machine)"
-    # )
+    parser.add_argument("--num-gpus", type=int, default=1, help="number of gpus *per machine*")
+    parser.add_argument("--num-machines", type=int, default=1, help="total number of machines")
+    parser.add_argument(
+        "--machine-rank", type=int, default=0, help="the rank of this machine (unique per machine)"
+    )
 
     # PyTorch still may leave orphan processes in multi-gpu training.
     # Therefore we use a deterministic way to obtain port,
     # so that users are aware of orphan processes by seeing the port occupied.
-    # port = 2 ** 15 + 2 ** 14 + hash(os.getuid()) % 2 ** 14
-    # parser.add_argument("--dist-url", default="tcp://127.0.0.1:{}".format(port))
+    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14
+    parser.add_argument(
+        "--dist-url",
+        default="tcp://127.0.0.1:{}".format(port),
+        help="initialization URL for pytorch distributed backend. See "
+             "https://pytorch.org/docs/stable/distributed.html for details.",
+    )
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -71,7 +91,7 @@ def default_argument_parser():
 def default_setup(cfg, args):
     """
     Perform some basic common setups at the beginning of a job, including:
-    1. Set up the detectron2 logger
+    1. Set up the logger
     2. Log basic information about environment, cmdline arguments, and config
     3. Backup the config to the output directory
     Args:
@@ -83,11 +103,10 @@ def default_setup(cfg, args):
         PathManager.mkdirs(output_dir)
 
     rank = comm.get_rank()
-    setup_logger(output_dir, distributed_rank=rank, name="fvcore")
-    logger = setup_logger(output_dir, distributed_rank=rank)
+    logger = setup_logger(output_dir, distributed_rank=rank, name='fastreid')
 
     logger.info("Rank of current process: {}. World size: {}".format(rank, comm.get_world_size()))
-    # logger.info("Environment info:\n" + collect_env_info())
+    logger.info("Environment info:\n" + collect_env_info())
 
     logger.info("Command line arguments: " + str(args))
     if hasattr(args, "config_file") and args.config_file != "":
@@ -98,14 +117,13 @@ def default_setup(cfg, args):
         )
 
     logger.info("Running with full config:\n{}".format(cfg))
-    if comm.is_main_process() and output_dir:
-        # Note: some of our scripts may expect the existence of
-        # config.yaml in output directory
-        path = os.path.join(output_dir, "config.yaml")
-        with PathManager.open(path, "w") as f:
-            f.write(cfg.dump())
-        logger.info("Full config saved to {}".format(os.path.abspath(path)))
+    if comm.is_main_process() and output_dir and cfg.SAVE_PROJECT:
+        # copy project without the file in .gitignore to output_dir
+        logger.info("Full project saved to {}".format(os.path.abspath(output_dir)))
+        cp_projects(output_dir)
 
+    # make sure each worker has a different, yet deterministic seed if specified
+    seed_all_rng(None if cfg.SEED < 0 else cfg.SEED + rank)
     # cudnn benchmark has large overhead. It shouldn't be used considering the small size of
     # typical validation set.
     if not (hasattr(args, "eval_only") and args.eval_only):
@@ -196,7 +214,7 @@ class DefaultTrainer(SimpleTrainer):
             cfg (CfgNode):
         """
         self.cfg = cfg
-        logger = logging.getLogger(__name__)
+        logger = logging.getLogger('fastreid.' + __name__)
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for fastreid
             setup_logger()
         # Assume these objects must be constructed in this order.
@@ -205,11 +223,13 @@ class DefaultTrainer(SimpleTrainer):
         logger.info('Prepare training set')
         data_loader = self.build_train_loader(cfg)
         # For training, wrap with DP. But don't need this for inference.
-        model = DataParallel(model)
+        if comm.get_world_size() > 1:
+            model = DistributedDataParallel(
+                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
+            )
         if cfg.MODEL.BACKBONE.NORM == "syncBN":
             # Monkey-patching with syncBN
             patch_replication_callback(model)
-        model = model.cuda()
         super().__init__(model, data_loader, optimizer)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
@@ -218,7 +238,6 @@ class DefaultTrainer(SimpleTrainer):
         self.checkpointer = Checkpointer(
             # Assume you want to save checkpoints together with logs/statistics
             model,
-            self.data_loader.dataset,
             cfg.OUTPUT_DIR,
             optimizer=optimizer,
             scheduler=self.scheduler,
@@ -228,7 +247,6 @@ class DefaultTrainer(SimpleTrainer):
             self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
-        self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
 
@@ -351,16 +369,13 @@ class DefaultTrainer(SimpleTrainer):
             OrderedDict of results, if evaluation is enabled. Otherwise None.
         """
         super().train(self.start_iter, self.max_iter)
-        # if hasattr(self, "_last_eval_results") and comm.is_main_process():
-        #     verify_results(self.cfg, self._last_eval_results)
-        #     return self._last_eval_results
 
     @classmethod
     def build_model(cls, cfg):
         """
         Returns:
             torch.nn.Module:
-        It now calls :func:`detectron2.modeling.build_model`.
+        It now calls :func:`modeling.build_model`.
         Overwrite it if you'd like a different model.
         """
         model = build_model(cfg)
@@ -373,7 +388,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             torch.optim.Optimizer:
-        It now calls :func:`detectron2.solver.build_optimizer`.
+        It now calls :func:`solver.build_optimizer`.
         Overwrite it if you'd like a different optimizer.
         """
         return build_optimizer(cfg, model)
@@ -381,7 +396,7 @@ class DefaultTrainer(SimpleTrainer):
     @classmethod
     def build_lr_scheduler(cls, cfg, optimizer):
         """
-        It now calls :func:`detectron2.solver.build_lr_scheduler`.
+        It now calls :func:`solver.build_lr_scheduler`.
         Overwrite it if you'd like a different scheduler.
         """
         return build_lr_scheduler(cfg, optimizer)
@@ -401,13 +416,15 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`detectron2.data.build_detection_test_loader`.
+        It now calls :func:`data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
         return build_reid_test_loader(cfg, dataset_name)
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
+        if output_dir is None:
+            output_dir = os.path.join(cfg.OUTPUT_DIR, "inference")
         return ReidEvaluator(cfg, num_query, output_dir)
 
     @classmethod
@@ -443,7 +460,7 @@ class DefaultTrainer(SimpleTrainer):
                 try:
                     evaluator = cls.build_evaluator(cfg, num_query)
                 except NotImplementedError:
-                    logger.warn(
+                    logger.warning(
                         "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
                         "or implement its `build_evaluator` method."
                     )

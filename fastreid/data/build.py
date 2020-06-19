@@ -30,7 +30,10 @@ def build_reid_train_loader(cfg):
     num_instance = cfg.DATALOADER.NUM_INSTANCE
 
     if cfg.DATALOADER.PK_SAMPLER:
-        data_sampler = samplers.RandomIdentitySampler(train_set.img_items, batch_size, num_instance)
+        if cfg.DATALOADER.NAIVE_WAY:
+            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items, batch_size, num_instance)
+        else:
+            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items, batch_size, num_instance)
     else:
         data_sampler = samplers.TrainingSampler(len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, batch_size, True)
@@ -63,13 +66,6 @@ def build_reid_test_loader(cfg, dataset_name):
         num_workers=num_workers,
         collate_fn=fast_batch_collator)
     return test_loader, len(dataset.query)
-
-
-def trivial_batch_collator(batch):
-    """
-    A batch collator that does nothing.
-    """
-    return batch
 
 
 def fast_batch_collator(batched_inputs):

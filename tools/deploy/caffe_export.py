@@ -13,8 +13,9 @@ sys.path.append('../../')
 import pytorch_to_caffe
 from fastreid.config import get_cfg
 from fastreid.modeling.meta_arch import build_model
-from fastreid.utils.file_io import PathManager
-from fastreid.utils.checkpoint import Checkpointer
+
+from fvcore.common.file_io import PathManager
+from fvcore.common.checkpoint import Checkpointer
 
 
 def setup_cfg(args):

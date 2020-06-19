@@ -5,8 +5,9 @@ import os
 import sys
 import time
 from collections import Counter
-from .file_io import PathManager
 from termcolor import colored
+
+from fvcore.common.file_io import PathManager
 
 
 class _ColorfulFormatter(logging.Formatter):
@@ -49,7 +50,7 @@ def setup_logger(
     logger.propagate = False
 
     if abbrev_name is None:
-        abbrev_name = "d2" if name == "detectron2" else name
+        abbrev_name = "reid" if name == "fastreid" else name
 
     plain_formatter = logging.Formatter(
         "[%(asctime)s] %(name)s %(levelname)s: %(message)s", datefmt="%m/%d %H:%M:%S"
@@ -60,7 +61,7 @@ def setup_logger(
         ch.setLevel(logging.DEBUG)
         if color:
             formatter = _ColorfulFormatter(
-                colored("[%(asctime)s %(name)s]: ", "green") + "%(message)s",
+                colored("[%(asctime)s %(name)s %(levelname)s]: ", "green") + "%(message)s",
                 datefmt="%m/%d %H:%M:%S",
                 root_name=name,
                 abbrev_name=str(abbrev_name),

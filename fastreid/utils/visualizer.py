@@ -14,7 +14,7 @@ import tqdm
 from scipy.stats import norm
 from sklearn import metrics
 
-from .file_io import PathManager
+from fvcore.common.file_io import PathManager
 
 
 class Visualizer:

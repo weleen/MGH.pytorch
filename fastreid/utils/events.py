@@ -6,8 +6,8 @@ import os
 from collections import defaultdict
 from contextlib import contextmanager
 import torch
-from .file_io import PathManager
-from .history_buffer import HistoryBuffer
+from fvcore.common.file_io import PathManager
+from fvcore.common.history_buffer import HistoryBuffer
 
 _CURRENT_STORAGE_STACK = []
 

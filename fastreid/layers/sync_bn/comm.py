@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# File   : comm.py
+# File   : common.py
 # Author : Jiayuan Mao
 # Email  : maojiayuan@gmail.com
 # Date   : 27/01/2018

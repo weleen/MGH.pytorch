@@ -129,16 +129,12 @@ class TripletLoss(object):
         self._normalize_feature = cfg.MODEL.LOSSES.TRI.NORM_FEAT
         self._scale = cfg.MODEL.LOSSES.TRI.SCALE
         self._hard_mining = cfg.MODEL.LOSSES.TRI.HARD_MINING
-        self._use_cosine_dist = cfg.MODEL.LOSSES.TRI.USE_COSINE_DIST
 
     def __call__(self, _, global_features, targets):
         if self._normalize_feature:
             global_features = normalize(global_features, axis=-1)
 
-        if self._use_cosine_dist:
-            dist_mat = cosine_dist(global_features, global_features)
-        else:
-            dist_mat = euclidean_dist(global_features, global_features)
+        dist_mat = euclidean_dist(global_features, global_features)
 
         N = dist_mat.size(0)
         is_pos = targets.expand(N, N).eq(targets.expand(N, N).t())
@@ -164,13 +160,13 @@ class TripletLoss(object):
 
 class CircleLoss(object):
     def __init__(self, cfg):
-        self._scale = cfg.MODEL.LOSSES.SCALE_TRI
+        self._scale = cfg.MODEL.LOSSES.CIRCLE.SCALE
 
-        self.m = 0.25
-        self.s = 128
+        self.m = cfg.MODEL.LOSSES.CIRCLE.MARGIN
+        self.s = cfg.MODEL.LOSSES.CIRCLE.ALPHA
 
     def __call__(self, _, global_features, targets):
-        global_features = normalize(global_features, axis=-1)
+        global_features = F.normalize(global_features, dim=1)
 
         sim_mat = torch.matmul(global_features, global_features.t())
 
@@ -195,3 +191,22 @@ class CircleLoss(object):
         return {
             "loss_circle": loss * self._scale,
         }
+
+
+class ContrastiveLoss(object):
+    def __init__(self, cfg):
+        self._margin = cfg.MODEL.LOSSES.CONTRAST.MARGIN
+        self._normalize_feature = cfg.MODEL.LOSSES.CONTRAST.NORM_FEAT
+        self._scale = cfg.MODEL.LOSSES.CONTRAST.SCALE
+        self._use_cosine_dist = cfg.MODEL.LOSSES.CONTRAST.USE_CONSINE_DIST
+
+    def __call__(self, _, global_features, targets):
+        if self._normalize_feature:
+            global_features = normalize(global_features, axis=-1)
+
+        if self._use_cosine_dist:
+            dist_mat = cosine_dist(global_features, global_features)
+        else:
+            dist_mat = euclidean_dist(global_features, global_features)
+
+        N = dist_mat.size(0)

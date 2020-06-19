@@ -8,7 +8,7 @@ import json
 import os.path as osp
 
 # from utils.iotools import mkdir_if_missing, write_json, read_json
-from fastreid.utils.file_io import PathManager
+from fvcore.common.file_io import PathManager
 from .bases import ImageDataset
 from fastreid.data.datasets import DATASET_REGISTRY
 
