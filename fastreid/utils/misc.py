@@ -137,8 +137,8 @@ def read_image(file_name, format=None):
         return image
 
 
-def get_free_gpu():
+def get_free_gpu(num_device=1):
     os.system('nvidia-smi -q -d Memory |grep -A4 GPU|grep Free >gpu_tmp')
     memory_available = [int(x.split()[2]) for x in open('gpu_tmp', 'r').readlines()]
     os.system('rm gpu_tmp')
-    return np.argmax(memory_available)
+    return ','.join(np.argsort(memory_available)[:num_device].tolist())
