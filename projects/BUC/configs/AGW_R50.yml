@@ -1,0 +1,74 @@
+MODEL:
+  META_ARCHITECTURE: 'Baseline'
+
+  BACKBONE:
+    NAME: "build_resnet_backbone"
+    DEPTH: 50
+    LAST_STRIDE: 1
+    WITH_NL: True
+    PRETRAIN: True
+
+  HEADS:
+    NAME: "BUCHead"
+    POOL_LAYER: "avgpool"
+    NECK_FEAT: "after"
+    CLS_LAYER: "linear"
+    NUM_CLASSES: 751
+
+  LOSSES:
+    NAME: ("CrossEntropyLoss", "TripletLoss")
+    CE:
+      EPSILON: 0.1
+      SCALE: 1.0
+
+    TRI:
+      MARGIN: 0.0
+      HARD_MINING: False
+      USE_COSINE_DIST: False
+      SCALE: 1.0
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+INPUT:
+  SIZE_TRAIN: [256, 128]
+  SIZE_TEST: [256, 128]
+  REA:
+    ENABLED: True
+    PROB: 0.5
+    MEAN: [123.675, 116.28, 103.53]
+  DO_PAD: True
+
+DATALOADER:
+  PK_SAMPLER: False # True
+  NUM_INSTANCE: 4
+  NUM_WORKERS: 0 # 16
+
+SOLVER:
+  OPT: "SGD" #"Adam"
+  MAX_ITER: 45248 # 24000
+  BASE_LR: 0.01 # 0.00035
+  # BIAS_LR_FACTOR: 2.
+  HEADS_LR_FACTOR: 10.
+  WEIGHT_DECAY: 0.0005
+  WEIGHT_DECAY_BIAS: 0.0005
+  IMS_PER_BATCH: 16
+
+  STEPS: [16160] # [8000, 18000]
+  GAMMA: 0.1
+
+  WARMUP_FACTOR: 0.01
+  WARMUP_ITERS: 0 # 2000
+
+  LOG_PERIOD: 404
+  CHECKPOINT_PERIOD: 1616
+
+TEST:
+  EVAL_PERIOD: 1616
+  IMS_PER_BATCH: 256
+  METRIC: "euclidean"
+
+CUDNN_BENCHMARK: True
+
+OUTPUT_DIR: "logs/market1501/agw_R50_0624"
