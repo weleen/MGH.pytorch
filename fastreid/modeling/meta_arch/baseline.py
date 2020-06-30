@@ -50,7 +50,7 @@ class Baseline(nn.Module):
             except Exception: return pred_feat
 
         images = self.preprocess_image(batched_inputs)
-        targets = batched_inputs["targets"].long()
+        targets = batched_inputs["targets"].long().to(self.device)
 
         # training
         features = self.backbone(images)  # (bs, 2048, 16, 8)
