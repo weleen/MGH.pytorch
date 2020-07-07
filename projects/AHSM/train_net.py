@@ -11,13 +11,12 @@ import sys
 sys.path.append('.')
 
 from torch import nn
+from fvcore.common.checkpoint import Checkpointer
+from fvcore.nn.precise_bn import get_bn_modules
 
-from fastreid.config import get_cfg
-from fastreid.engine import default_argument_parser, default_setup
-from fastreid.utils.checkpoint import Checkpointer
-from fastreid.engine import hooks
-from fastreid.evaluation import ReidEvaluator
 from fastreid.config import cfg
+from fastreid.engine import default_argument_parser, default_setup
+from fastreid.engine import hooks
 from ahsmreid import *
 
 

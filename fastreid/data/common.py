@@ -3,7 +3,7 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-import copy
+
 import torch
 from torch.utils.data import Dataset
 
