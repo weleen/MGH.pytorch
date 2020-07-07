@@ -5,4 +5,4 @@
 """
 from .config import add_ahsmreid_config
 from .ahsm_trainer import AHSMTrainer
-from fastreid.engine import hooks
+from .hooks import *

@@ -100,7 +100,6 @@ class TrainerBase:
             # involved objects contain __del__:
             # See http://engineering.hearsaysocial.com/2013/06/16/circular-references-in-python/
             h.trainer = weakref.proxy(self)
-        self._hooks = [] #reset all hooks for active learning cycles
         self._hooks.extend(hooks)
 
     def train(self, start_iter: int, max_iter: int):
