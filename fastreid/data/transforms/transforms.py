@@ -13,7 +13,7 @@ from collections import deque
 import numpy as np
 from PIL import Image
 
-from .functional import to_tensor, augmentations_reid
+from .functional import augmentations_reid
 
 
 class RandomErasing(object):
