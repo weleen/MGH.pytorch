@@ -1,13 +1,13 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import logging
 import os
-import random
 
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from fastreid.utils import comm
+from fastreid.utils.misc import get_free_gpu
 
 __all__ = ["launch"]
 
@@ -26,13 +26,17 @@ def _find_free_port():
 
 def launch(main_func, num_gpus_per_machine, num_machines=1, machine_rank=0, dist_url=None, args=()):
     """
+    Launch multi-gpu or distributed training.
+    This function must be called on all machines involved in the training.
+    It will spawn child processes (defined by ``num_gpus_per_machine`) on each machine.
     Args:
         main_func: a function that will be called by `main_func(*args)`
+        num_gpus_per_machine (int): number of GPUs per machine
         num_machines (int): the total number of machines
-        machine_rank (int): the rank of this machine (one per machine)
-        dist_url (str): url to connect to for distributed training, including protocol
+        machine_rank (int): the rank of this machine
+        dist_url (str): url to connect to for distributed jobs, including protocol
                        e.g. "tcp://127.0.0.1:8686".
-                       Can be set to auto to automatically select a free port on localhost
+                       Can be set to "auto" to automatically select a free port on localhost
         args (tuple): arguments passed to main_func
     """
     world_size = num_machines * num_gpus_per_machine
@@ -53,12 +57,12 @@ def launch(main_func, num_gpus_per_machine, num_machines=1, machine_rank=0, dist
         )
     else:
         # select gpus
-        # os.environ['CUDA_VISIBLE_DEVICES'] = random.choice([str(i) for i in range(torch.cuda.device_count())])
+        os.environ['CUDA_VISIBLE_DEVICES'] = get_free_gpu()
         main_func(*args)
 
 
 def _distributed_worker(
-    local_rank, main_func, world_size, num_gpus_per_machine, machine_rank, dist_url, args
+        local_rank, main_func, world_size, num_gpus_per_machine, machine_rank, dist_url, args
 ):
     assert torch.cuda.is_available(), "cuda is not available. Please check your installation."
     global_rank = machine_rank * num_gpus_per_machine + local_rank

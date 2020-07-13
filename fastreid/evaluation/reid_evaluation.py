@@ -14,8 +14,8 @@ import torch.nn.functional as F
 from .evaluator import DatasetEvaluator
 from .query_expansion import aqe
 from .rank import evaluate_rank
-from .roc import evaluate_roc
 from .rerank import re_ranking
+from .roc import evaluate_roc
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ class ReidEvaluator(DatasetEvaluator):
         self.pids = []
         self.camids = []
 
-    def process(self, outputs):
+    def process(self, inputs, outputs):
         self.features.append(outputs[0].cpu())
         self.pids.extend(outputs[1].cpu().numpy())
         self.camids.extend(outputs[2].cpu().numpy())

@@ -8,6 +8,7 @@ import os
 import torch
 from torch._six import container_abcs, string_classes, int_classes
 from torch.utils.data import DataLoader
+from fastreid.utils import comm
 
 from . import samplers
 from .common import CommDataset
@@ -22,24 +23,29 @@ def build_reid_train_loader(cfg):
 
     train_items = list()
     for d in cfg.DATASETS.NAMES:
-        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
-        dataset.show_train()
+        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL,
+                                          cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
+                                          cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT)
+        if comm.is_main_process():
+            dataset.show_train()
         train_items.extend(dataset.train)
 
     train_set = CommDataset(train_items, train_transforms, relabel=True)
 
     num_workers = cfg.DATALOADER.NUM_WORKERS
-    batch_size = cfg.SOLVER.IMS_PER_BATCH
+    mini_batch_size = cfg.SOLVER.IMS_PER_BATCH
     num_instance = cfg.DATALOADER.NUM_INSTANCE
 
     if cfg.DATALOADER.PK_SAMPLER:
         if cfg.DATALOADER.NAIVE_WAY:
-            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items, batch_size, num_instance)
+            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items,
+                                                         mini_batch_size, num_instance)
         else:
-            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items, batch_size, num_instance)
+            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items,
+                                                            mini_batch_size, num_instance)
     else:
         data_sampler = samplers.TrainingSampler(len(train_set))
-    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, batch_size, True)
+    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, True)
 
     train_loader = torch.utils.data.DataLoader(
         train_set,
@@ -53,8 +59,12 @@ def build_reid_train_loader(cfg):
 def build_reid_test_loader(cfg, dataset_name):
     test_transforms = build_transforms(cfg, is_train=False)
 
-    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
-    dataset.show_test()
+    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root,
+                                                 cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
+                                                 cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT,
+                                                 market1501_500k=cfg.DATASETS.MARKET1501.ENABLE_500K)
+    if comm.is_main_process():
+        dataset.show_test()
     test_items = dataset.query + dataset.gallery
 
     test_set = CommDataset(test_items, test_transforms, relabel=False)

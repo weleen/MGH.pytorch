@@ -84,7 +84,6 @@ class USL_Baseline(nn.Module):
         Normalize and batch the input images.
         """
         images = batched_inputs["images"].to(self.device)
-        images.sub_(self.pixel_mean).div_(self.pixel_std)
         return images
 
     def losses(self, outputs, memory):

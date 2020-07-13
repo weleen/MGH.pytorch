@@ -3,3 +3,5 @@ torchvision
 fvcore
 yacs
 pathspec
+Cython
+scikit-learn

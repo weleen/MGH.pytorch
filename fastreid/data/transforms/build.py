@@ -7,12 +7,14 @@
 import torchvision.transforms as T
 
 from .transforms import *
-from .autoaugment import *
+from .autoaugment import AutoAugment
 
 
 def build_transforms(cfg, is_train=True):
     res = []
 
+    normalizer = T.Normalize(mean=cfg.MODEL.PIXEL_MEAN,
+                             std=cfg.MODEL.PIXEL_STD)
     if is_train:
         size_train = cfg.INPUT.SIZE_TRAIN
 
@@ -39,12 +41,13 @@ def build_transforms(cfg, is_train=True):
         do_rea = cfg.INPUT.REA.ENABLED
         rea_prob = cfg.INPUT.REA.PROB
         rea_mean = cfg.INPUT.REA.MEAN
+
         # random patch
         do_rpt = cfg.INPUT.RPT.ENABLED
         rpt_prob = cfg.INPUT.RPT.PROB
 
         if do_autoaug:
-            res.append(ImageNetPolicy(total_iter))
+            res.append(AutoAugment(total_iter))
         res.append(T.Resize(size_train, interpolation=3))
         if do_flip:
             res.append(T.RandomHorizontalFlip(p=flip_prob))
@@ -55,6 +58,8 @@ def build_transforms(cfg, is_train=True):
             res.append(T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0))
         if do_augmix:
             res.append(AugMix())
+        res.append(T.ToTensor())
+        res.append(normalizer)
         if do_rea:
             res.append(RandomErasing(probability=rea_prob, mean=rea_mean))
         if do_rpt:
@@ -62,5 +67,6 @@ def build_transforms(cfg, is_train=True):
     else:
         size_test = cfg.INPUT.SIZE_TEST
         res.append(T.Resize(size_test, interpolation=3))
-    res.append(ToTensor())
+        res.append(T.ToTensor())
+        res.append(normalizer)
     return T.Compose(res)

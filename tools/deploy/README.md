@@ -20,7 +20,6 @@ This is a tiny example for converting fastreid-baseline in `meta_arch` to Caffe 
         # images = [x["images"] for x in batched_inputs]
         # images = batched_inputs["images"]
         images = batched_inputs
-        images.sub_(self.pixel_mean).div_(self.pixel_std)
         return images
     ```
 

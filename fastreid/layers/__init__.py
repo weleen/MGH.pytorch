@@ -3,7 +3,6 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-from torch import nn
 
 from .activation import *
 from .arcface import Arcface

@@ -220,7 +220,6 @@ class MGN(nn.Module):
         """
         # images = [x["images"] for x in batched_inputs]
         images = batched_inputs["images"]
-        images.sub_(self.pixel_mean).div_(self.pixel_std)
         return images
 
     def losses(self, outputs):

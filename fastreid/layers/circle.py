@@ -4,8 +4,6 @@
 @contact: sherlockliao01@gmail.com
 """
 
-import math
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

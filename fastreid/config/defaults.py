@@ -58,7 +58,7 @@ _C.MODEL.HEADS.NORM = "BN"
 # Mini-batch split of Ghost BN
 _C.MODEL.HEADS.NORM_SPLIT = 1
 # Number of identity
-_C.MODEL.HEADS.NUM_CLASSES = 751
+_C.MODEL.HEADS.NUM_CLASSES = 0
 # Input feature dimension
 _C.MODEL.HEADS.IN_FEAT = 2048
 # Reduction dimension in head
@@ -74,7 +74,6 @@ _C.MODEL.HEADS.CLS_LAYER = "linear"  # "arcface" or "circle"
 # Margin and Scale for margin-based classification layer
 _C.MODEL.HEADS.MARGIN = 0.15
 _C.MODEL.HEADS.SCALE = 128
-
 
 # ---------------------------------------------------------------------------- #
 # REID LOSSES options
@@ -113,9 +112,9 @@ _C.MODEL.LOSSES.FL.SCALE = 1.0
 _C.MODEL.WEIGHTS = ""
 
 # Values to be used for image normalization
-_C.MODEL.PIXEL_MEAN = [0.485*255, 0.456*255, 0.406*255]
+_C.MODEL.PIXEL_MEAN = [0.485, 0.456, 0.406]
 # Values to be used for image normalization
-_C.MODEL.PIXEL_STD = [0.229*255, 0.224*255, 0.225*255]
+_C.MODEL.PIXEL_STD = [0.229, 0.224, 0.225]
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -144,7 +143,7 @@ _C.INPUT.DO_AUGMIX = False
 _C.INPUT.REA = CN()
 _C.INPUT.REA.ENABLED = False
 _C.INPUT.REA.PROB = 0.5
-_C.INPUT.REA.MEAN = [0.596*255, 0.558*255, 0.497*255]  # [0.485*255, 0.456*255, 0.406*255]
+_C.INPUT.REA.MEAN = [0.485, 0.456, 0.406]
 # Random Patch
 _C.INPUT.RPT = CN()
 _C.INPUT.RPT.ENABLED = False
@@ -161,6 +160,21 @@ _C.DATASETS.TESTS = ("Market1501",)
 # Combine trainset and testset joint training
 _C.DATASETS.COMBINEALL = False
 
+# ----------------------------------------------------------------------------- #
+# CUHK03 specific parameters
+# ----------------------------------------------------------------------------- #
+_C.DATASETS.CUHK03 = CN()
+# CUHK03 label or detected
+_C.DATASETS.CUHK03.LABELED = False
+# new split protocol or not
+_C.DATASETS.CUHK03.CLASSIC_SPLIT = False
+
+# ----------------------------------------------------------------------------- #
+# Market1501 specific parameters
+# ----------------------------------------------------------------------------- #
+_C.DATASETS.MARKET1501 = CN()
+_C.DATASETS.MARKET1501.ENABLE_500K = False
+
 # -----------------------------------------------------------------------------
 # DataLoader
 # -----------------------------------------------------------------------------
@@ -173,14 +187,14 @@ _C.DATALOADER.NAIVE_WAY = False
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 8
 
-# ----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------- #
 # Solver
-# ----------------------------------------------------------------------------
+# ---------------------------------------------------------------------------- #
 _C.SOLVER = CN()
 
 _C.SOLVER.OPT = "Adam"
 
-_C.SOLVER.MAX_ITER = 40000
+_C.SOLVER.MAX_ITER = 120
 
 _C.SOLVER.BASE_LR = 3e-4
 _C.SOLVER.BIAS_LR_FACTOR = 1.
@@ -194,10 +208,10 @@ _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
 # Multi-step learning rate options
 _C.SOLVER.SCHED = "WarmupMultiStepLR"
 _C.SOLVER.GAMMA = 0.1
-_C.SOLVER.STEPS = (30, 55)
+_C.SOLVER.STEPS = [30, 55]
 
 # Cosine annealing learning rate options
-_C.SOLVER.DELAY_ITERS = 100
+_C.SOLVER.DELAY_ITERS = 0
 _C.SOLVER.ETA_MIN_LR = 3e-7
 
 # Warmup options
@@ -210,15 +224,15 @@ _C.SOLVER.FREEZE_ITERS = 0
 # SWA options
 _C.SOLVER.SWA = CN()
 _C.SOLVER.SWA.ENABLED = False
-_C.SOLVER.SWA.ITER = 0
-_C.SOLVER.SWA.PERIOD = 10
+_C.SOLVER.SWA.ITER = 10
+_C.SOLVER.SWA.PERIOD = 2
 _C.SOLVER.SWA.LR_FACTOR = 10.
 _C.SOLVER.SWA.ETA_MIN_LR = 3.5e-6
 _C.SOLVER.SWA.LR_SCHED = False
 
-_C.SOLVER.CHECKPOINT_PERIOD = 2000
+_C.SOLVER.CHECKPOINT_PERIOD = 60
 
-_C.SOLVER.LOG_PERIOD = 30
+_C.SOLVER.LOG_PERIOD = 200
 # Number of images per batch
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch
@@ -265,6 +279,10 @@ _C.OUTPUT_DIR = "logs/"
 # for about 10k iterations. It usually hurts total time, but can benefit for certain models.
 # If input images have the same or similar sizes, benchmark is often helpful.
 _C.CUDNN_BENCHMARK = False
+
+# Save the project in log path
 _C.SAVE_PROJECT = True
+
+# random seed
 _C.SEED = -1
 

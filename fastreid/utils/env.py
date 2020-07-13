@@ -15,7 +15,6 @@ __all__ = ["seed_all_rng"]
 def seed_all_rng(seed=None):
     """
     Set the random seed for the RNG in torch, numpy and python.
-
     Args:
         seed (int): if None, will use a strong random seed.
     """
@@ -63,6 +62,15 @@ def _configure_libraries():
         except ImportError:
             pass
 
+    def get_version(module, digit=2):
+        return tuple(map(int, module.__version__.split(".")[:digit]))
+
+    # fmt: off
+    assert get_version(torch) >= (1, 4), "Requires torch>=1.4"
+    import yaml
+    assert get_version(yaml) >= (5, 1), "Requires pyyaml>=5.1"
+    # fmt: on
+
 
 _ENV_SETUP_DONE = False
 
@@ -80,7 +88,7 @@ def setup_environment():
 
     _configure_libraries()
 
-    custom_module_path = os.environ.get("DETECTRON2_ENV_MODULE")
+    custom_module_path = os.environ.get("FASTREID_ENV_MODULE")
 
     if custom_module_path:
         setup_custom_environment(custom_module_path)
@@ -95,7 +103,7 @@ def setup_custom_environment(custom_module):
     module, and run the setup function.
     """
     if custom_module.endswith(".py"):
-        module = _import_file("detectron2.utils.env.custom_module", custom_module)
+        module = _import_file("fastreid.utils.env.custom_module", custom_module)
     else:
         module = importlib.import_module(custom_module)
     assert hasattr(module, "setup_environment") and callable(module.setup_environment), (

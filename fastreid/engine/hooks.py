@@ -11,6 +11,8 @@ from collections import Counter
 
 import torch
 from torch import nn
+from torch.nn.parallel import DistributedDataParallel
+
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 from fvcore.common.timer import Timer
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
@@ -174,7 +176,7 @@ class PeriodicWriter(HookBase):
 
 class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):
     """
-    Same as :class:`detectron2.checkpoint.PeriodicCheckpointer`, but as a hook.
+    Same as :class:`fvcore.common.checkpoint.PeriodicCheckpointer`, but as a hook.
     Note that when used as a hook,
     it is unable to save additional data other than what's defined
     by the given `checkpointer`.
@@ -308,7 +310,6 @@ class EvalHook(HookBase):
         """
         self._period = eval_period
         self._func = eval_function
-        self._done_eval_at_last = False
 
     def _do_eval(self):
         results = self._func()
@@ -329,9 +330,7 @@ class EvalHook(HookBase):
                     )
             self.trainer.storage.put_scalars(**flattened_results, smoothing_hint=False)
 
-        # Evaluation may take different time among workers.
-        # A barrier make them start the next iteration together.
-        comm.synchronize()
+        # Remove extra memory cache of main process due to evaluation
         torch.cuda.empty_cache()
 
     def after_step(self):
@@ -339,12 +338,11 @@ class EvalHook(HookBase):
         is_final = next_iter == self.trainer.max_iter
         if is_final or (self._period > 0 and next_iter % self._period == 0):
             self._do_eval()
-            if is_final:
-                self._done_eval_at_last = True
+        # Evaluation may take different time among workers.
+        # A barrier make them start the next iteration together.
+        comm.synchronize()
 
     def after_train(self):
-        if not self._done_eval_at_last:
-            self._do_eval()
         # func is likely a closure that holds reference to the trainer
         # therefore we clean it to avoid circular reference in the end
         del self._func
@@ -416,10 +414,6 @@ class PreciseBN(HookBase):
                 + "Note that this could produce different statistics every time."
             )
             update_bn_stats(self._model, data_loader(), self._num_iter)
-
-
-class LRFinder(HookBase):
-    pass
 
 
 class FreezeLayer(HookBase):
