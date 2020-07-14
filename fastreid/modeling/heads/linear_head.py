@@ -32,8 +32,12 @@ class LinearHead(nn.Module):
         """
         global_feat = self.pool_layer(features)
         global_feat = global_feat[..., 0, 0]
+
+        # Evaluation
         if not self.training: return global_feat
-        # training
+
+        # Training
         try:              pred_class_logits = self.classifier(global_feat)
         except TypeError: pred_class_logits = self.classifier(global_feat, targets)
+
         return pred_class_logits, global_feat, targets

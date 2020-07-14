@@ -18,11 +18,11 @@ from fvcore.common.timer import Timer
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fvcore.common.file_io import PathManager
 
-from .train_loop import HookBase
 from fastreid.solver import optim
 from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.utils import comm
 from fastreid.utils.events import EventStorage, EventWriter
+from .train_loop import HookBase
 
 __all__ = [
     "CallbackHook",
@@ -420,7 +420,7 @@ class FreezeLayer(HookBase):
     def __init__(self, model, open_layer_names, freeze_iters):
         self._logger = logging.getLogger(__name__)
 
-        if isinstance(model, nn.DataParallel):
+        if isinstance(model, (nn.DataParallel, DistributedDataParallel)):
             model = model.module
         self.model = model
 

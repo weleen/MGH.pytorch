@@ -233,9 +233,7 @@ class DefaultTrainer(SimpleTrainer):
             model = DistributedDataParallel(
                 model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
-        if cfg.MODEL.BACKBONE.NORM == "syncBN":
-            # Monkey-patching with syncBN
-            patch_replication_callback(model)
+
         super().__init__(model, data_loader, optimizer)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
@@ -254,8 +252,8 @@ class DefaultTrainer(SimpleTrainer):
             self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
-
         self.cfg = cfg
+
         self.register_hooks(self.build_hooks())
 
     def resume_or_load(self, resume=True):
@@ -440,8 +438,6 @@ class DefaultTrainer(SimpleTrainer):
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
-        if output_dir is None:
-            output_dir = os.path.join(cfg.OUTPUT_DIR, "inference")
         return ReidEvaluator(cfg, num_query, output_dir)
 
     @classmethod

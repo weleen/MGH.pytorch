@@ -101,4 +101,5 @@ class ReidEvaluator(DatasetEvaluator):
         fprs = [1e-4, 1e-3, 1e-2]
         for i in range(len(fprs)):
             self._results["TPR@FPR={}".format(fprs[i])] = tprs[i]
+
         return copy.deepcopy(self._results)

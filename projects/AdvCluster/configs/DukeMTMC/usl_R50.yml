@@ -1,0 +1,7 @@
+_BASE_: "../Base-adv.yml"
+
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
+
+OUTPUT_DIR: "logs/dukemtmc/usl_R50"

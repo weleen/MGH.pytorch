@@ -18,8 +18,6 @@ from .build import META_ARCH_REGISTRY
 class Baseline(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.register_buffer("pixel_mean", torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(1, -1, 1, 1))
-        self.register_buffer("pixel_std", torch.Tensor(cfg.MODEL.PIXEL_STD).view(1, -1, 1, 1))
         self._cfg = cfg
         # backbone
         self.backbone = build_backbone(cfg)
@@ -44,24 +42,21 @@ class Baseline(nn.Module):
         return self.pixel_mean.device
 
     def forward(self, batched_inputs):
-        if not self.training:
-            pred_feat = self.inference(batched_inputs)
-            try:              return pred_feat, batched_inputs["targets"], batched_inputs["camid"]
-            except Exception: return pred_feat
-
         images = self.preprocess_image(batched_inputs)
-        targets = batched_inputs["targets"].long().to(self.device)
+        features = self.backbone(images)
 
-        # training
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-        return self.heads(features, targets)
+        if self.training:
+            assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
+            targets = batched_inputs["targets"].long().to(self.device)
 
-    def inference(self, batched_inputs):
-        assert not self.training
-        images = self.preprocess_image(batched_inputs)
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-        pred_feat = self.heads(features)
-        return pred_feat
+            # PreciseBN flag, When do preciseBN on different dataset, the number of classes in new dataset
+            # may be larger than that in the original dataset, so the circle/arcface will
+            # throw an error. We just set all the targets to 0 to avoid this problem.
+            if targets.sum() < 0: targets.zero_()
+
+            return self.heads(features, targets)
+        else:
+            return self.heads(features)
 
     def preprocess_image(self, batched_inputs):
         """

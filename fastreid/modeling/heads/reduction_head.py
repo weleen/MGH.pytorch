@@ -48,8 +48,10 @@ class ReductionHead(nn.Module):
         global_feat = self.bottleneck(features)
         bn_feat = self.bnneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
+
         # Evaluation
         if not self.training: return bn_feat
+
         # Training
         try:              pred_class_logits = self.classifier(bn_feat)
         except TypeError: pred_class_logits = self.classifier(bn_feat, targets)
@@ -58,4 +60,5 @@ class ReductionHead(nn.Module):
         elif self.neck_feat == "after": feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
+
         return pred_class_logits, feat, targets

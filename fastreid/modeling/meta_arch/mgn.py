@@ -21,8 +21,6 @@ from .build import META_ARCH_REGISTRY
 class MGN(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.register_buffer("pixel_mean", torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(1, -1, 1, 1))
-        self.register_buffer("pixel_std", torch.Tensor(cfg.MODEL.PIXEL_STD).view(1, -1, 1, 1))
         self._cfg = cfg
 
         # backbone
@@ -116,110 +114,77 @@ class MGN(nn.Module):
         return self.pixel_mean.device
 
     def forward(self, batched_inputs):
-        if not self.training:
-            pred_feat = self.inference(batched_inputs)
-            try:              return pred_feat, batched_inputs["targets"], batched_inputs["camid"]
-            except Exception: return pred_feat
 
-        images = self.preprocess_image(batched_inputs)
-        targets = batched_inputs["targets"].long()
-
-        # Training
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-
-        # branch1
-        b1_feat = self.b1(features)
-        b1_pool_feat = self.b1_pool(b1_feat)
-        b1_logits, b1_pool_feat, _ = self.b1_head(b1_pool_feat, targets)
-
-        # branch2
-        b2_feat = self.b2(features)
-        # global
-        b2_pool_feat = self.b2_pool(b2_feat)
-        b2_logits, b2_pool_feat, _ = self.b2_head(b2_pool_feat, targets)
-
-        b21_feat, b22_feat = torch.chunk(b2_feat, 2, dim=2)
-        # part1
-        b21_pool_feat = self.b21_pool(b21_feat)
-        b21_logits, b21_pool_feat, _ = self.b21_head(b21_pool_feat, targets)
-        # part2
-        b22_pool_feat = self.b22_pool(b22_feat)
-        b22_logits, b22_pool_feat, _ = self.b22_head(b22_pool_feat, targets)
-
-        # branch3
-        b3_feat = self.b3(features)
-        # global
-        b3_pool_feat = self.b3_pool(b3_feat)
-        b3_logits, b3_pool_feat, _ = self.b3_head(b3_pool_feat, targets)
-
-        b31_feat, b32_feat, b33_feat = torch.chunk(b3_feat, 3, dim=2)
-        # part1
-        b31_pool_feat = self.b31_pool(b31_feat)
-        b31_logits, b31_pool_feat, _ = self.b31_head(b31_pool_feat, targets)
-        # part2
-        b32_pool_feat = self.b32_pool(b32_feat)
-        b32_logits, b32_pool_feat, _ = self.b32_head(b32_pool_feat, targets)
-        # part3
-        b33_pool_feat = self.b33_pool(b33_feat)
-        b33_logits, b33_pool_feat, _ = self.b33_head(b33_pool_feat, targets)
-
-        return (b1_logits, b2_logits, b3_logits, b21_logits, b22_logits, b31_logits, b32_logits, b33_logits), \
-               (b1_pool_feat, b2_pool_feat, b3_pool_feat,
-                torch.cat((b21_pool_feat, b22_pool_feat), dim=1),
-                torch.cat((b31_pool_feat, b32_pool_feat, b33_pool_feat), dim=1)), \
-               targets
-
-    def inference(self, batched_inputs):
-        assert not self.training
         images = self.preprocess_image(batched_inputs)
         features = self.backbone(images)  # (bs, 2048, 16, 8)
 
         # branch1
         b1_feat = self.b1(features)
         b1_pool_feat = self.b1_pool(b1_feat)
-        b1_pool_feat = self.b1_head(b1_pool_feat)
 
         # branch2
         b2_feat = self.b2(features)
         # global
         b2_pool_feat = self.b2_pool(b2_feat)
-        b2_pool_feat = self.b2_head(b2_pool_feat)
 
         b21_feat, b22_feat = torch.chunk(b2_feat, 2, dim=2)
         # part1
         b21_pool_feat = self.b21_pool(b21_feat)
-        b21_pool_feat = self.b21_head(b21_pool_feat)
         # part2
         b22_pool_feat = self.b22_pool(b22_feat)
-        b22_pool_feat = self.b22_head(b22_pool_feat)
 
         # branch3
         b3_feat = self.b3(features)
         # global
         b3_pool_feat = self.b3_pool(b3_feat)
-        b3_pool_feat = self.b3_head(b3_pool_feat)
 
         b31_feat, b32_feat, b33_feat = torch.chunk(b3_feat, 3, dim=2)
         # part1
         b31_pool_feat = self.b31_pool(b31_feat)
-        b31_pool_feat = self.b31_head(b31_pool_feat)
         # part2
         b32_pool_feat = self.b32_pool(b32_feat)
-        b32_pool_feat = self.b32_head(b32_pool_feat)
         # part3
         b33_pool_feat = self.b33_pool(b33_feat)
-        b33_pool_feat = self.b33_head(b33_pool_feat)
 
-        pred_feat = torch.cat([b1_pool_feat, b2_pool_feat, b3_pool_feat, b21_pool_feat,
-                               b22_pool_feat, b31_pool_feat, b32_pool_feat, b33_pool_feat], dim=1)
-        return pred_feat
+        if self.training:
+            assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
+            targets = batched_inputs["targets"].long().to(self.device)
+
+            if targets.sum() < 0: targets.zero_()
+
+            b1_logits, pred_class_logits, b1_pool_feat = self.b1_head(b1_pool_feat, targets)
+            b2_logits, _, b2_pool_feat = self.b2_head(b2_pool_feat, targets)
+            b21_logits, _, b21_pool_feat = self.b21_head(b21_pool_feat, targets)
+            b22_logits, _, b22_pool_feat = self.b22_head(b22_pool_feat, targets)
+            b3_logits, _, b3_pool_feat = self.b3_head(b3_pool_feat, targets)
+            b31_logits, _, b31_pool_feat = self.b31_head(b31_pool_feat, targets)
+            b32_logits, _, b32_pool_feat = self.b32_head(b32_pool_feat, targets)
+            b33_logits, _, b33_pool_feat = self.b33_head(b33_pool_feat, targets)
+
+            return (b1_logits, b2_logits, b21_logits, b22_logits, b3_logits, b31_logits, b32_logits, b33_logits,
+                    b1_pool_feat, b2_pool_feat, b3_pool_feat,
+                    torch.cat((b21_pool_feat, b22_pool_feat), dim=1),
+                    torch.cat((b31_pool_feat, b32_pool_feat, b33_pool_feat), dim=1), pred_class_logits), targets
+
+        else:
+            b1_pool_feat = self.b1_head(b1_pool_feat)
+            b2_pool_feat = self.b2_head(b2_pool_feat)
+            b21_pool_feat = self.b21_head(b21_pool_feat)
+            b22_pool_feat = self.b22_head(b22_pool_feat)
+            b3_pool_feat = self.b3_head(b3_pool_feat)
+            b31_pool_feat = self.b31_head(b31_pool_feat)
+            b32_pool_feat = self.b32_head(b32_pool_feat)
+            b33_pool_feat = self.b33_head(b33_pool_feat)
+
+            pred_feat = torch.cat([b1_pool_feat, b2_pool_feat, b3_pool_feat, b21_pool_feat,
+                                   b22_pool_feat, b31_pool_feat, b32_pool_feat, b33_pool_feat], dim=1)
+            return pred_feat
 
     def preprocess_image(self, batched_inputs):
         """
         Normalize and batch the input images.
         """
-        # images = [x["images"] for x in batched_inputs]
-        images = batched_inputs["images"]
+        images = batched_inputs["images"].to(self.device)
         return images
 
     def losses(self, outputs):
