@@ -8,10 +8,8 @@ from .build import ACTIVE_SAMPLERS_REGISTRY
 
 @ACTIVE_SAMPLERS_REGISTRY.register()
 class UncertaintySampler:
-    def __init__(self, labeled_set, unlabeled_set, labeled_num):
-        self.labeled_set = labeled_set
-        self.unlabeled_set = unlabeled_set
-        self.labeled_num = labeled_num
+    def __init__(self, cfg):
+        pass
 
     def sample(self, model):
         # model inference

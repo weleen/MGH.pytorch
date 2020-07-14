@@ -13,9 +13,9 @@ The call is expected to return an :class:`Samplers`.
 """
 
 
-def build_active_samplers(cfg, labeled_set, unlabeled_set, labeled_num, **kwargs):
+def build_active_samplers(cfg, **kwargs):
     """
     Build ActiveSamplers defined by `cfg.MODEL.ACTIVE.SAMPLER.NAME`.
     """
     sampler = cfg.ACTIVE.SAMPLER.NAME
-    return ACTIVE_SAMPLERS_REGISTRY.get(sampler)(labeled_set, unlabeled_set, labeled_num, **kwargs)
+    return ACTIVE_SAMPLERS_REGISTRY.get(sampler)(cfg, **kwargs)

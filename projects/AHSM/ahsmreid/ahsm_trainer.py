@@ -47,7 +47,7 @@ class AHSMTrainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare active hard sampling data set')
-        data_loader,self.labeled_set,self.unlabeled_set = self.build_active_sample_dataloader(is_train=False)       
+        data_loader, self.data_len = self.build_active_sample_dataloader(is_train=False)       
         # For training, wrap with DP. But don't need this for inference.
         model = DataParallel(model)
         if cfg.MODEL.BACKBONE.NORM == "syncBN":
@@ -75,11 +75,7 @@ class AHSMTrainer(DefaultTrainer):
         
         self.register_hooks(self.build_hooks())
 
-    def build_active_sample_dataloader(self,
-                                datalist: List = None,
-                                is_train: bool = False,
-                                is_sample_loader:bool=False
-                                ) -> torch.utils.data.DataLoader:
+    def build_active_sample_dataloader(self, datalist: set = None, is_train: bool = False, is_sample_loader:bool=False) -> torch.utils.data.DataLoader:
         """
         :param datalist: dataset list. if dataset is None, random initialize the labeled/unlabeled list.
         :param is_train: build training transformation and sampler.
@@ -92,25 +88,23 @@ class AHSMTrainer(DefaultTrainer):
             dataset.show_train()
             train_items.extend(dataset.train)
 
-        if datalist is None:
-            # init labeled and unlabeled set
-            labeled_set = []
-            unlabeled_set = list(range(len(train_items)))
-            load_items = unlabeled_set
-        else:
-            load_items = datalist  
-        
-        data_set = CommDataset([train_items[i] for i in load_items], transforms, relabel=True)
-        print('Length of the labeled dataset:',data_set.__len__())
+        data_set = CommDataset(train_items, transforms, relabel=True)
+        if datalist: 
+            print('Length of the triplet set:', len(datalist))
         num_workers = self.cfg.DATALOADER.NUM_WORKERS
         batch_size = self.cfg.SOLVER.IMS_PER_BATCH
         num_instance = self.cfg.DATALOADER.NUM_INSTANCE
 
-        
         if self.cfg.DATALOADER.PK_SAMPLER:
             data_sampler = samplers.RandomIdentitySampler(data_set.img_items, batch_size, num_instance)
         else:
             data_sampler = samplers.TrainingSampler(len(data_set))
+
+        if datalist is None:
+            data_len = len(train_items)
+        else:
+            data_sampler = samplers.ActiveTripletSampler(datalist)
+
         batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, batch_size, True)
 
         data_loader = torch.utils.data.DataLoader(
@@ -120,24 +114,9 @@ class AHSMTrainer(DefaultTrainer):
             collate_fn=fast_batch_collator,
         )
         if datalist is None:
-            return data_loader,labeled_set,unlabeled_set
+            return data_loader, data_len
         else:
             return data_loader
-
-   
-    
-
-    def active_train(self):
-        DefaultTrainer.train(self)
-        # for cycle in range(self.cfg.ACTIVE.SAMPLE_CYCLES):
-            #print('!!!!!!!:',cycle,len(self.labeled_set),len(self.unlabeled_set))
-            # self.register_hooks(self.build_hooks())
-            
-            # self.labeled_set,self.unlabeled_set=\
-            #         self.random_sample(self.labeled_set,self.unlabeled_set,self.label_num)
-            #unlabeled_loader=self.build_active_sample_dataloader(self.unlabeled_set,is_sample_loader=True)           
-            # self.data_loader=self.build_active_sample_dataloader(self.labeled_set)
-            
 
     def build_hooks(self):
         """
@@ -159,7 +138,7 @@ class AHSMTrainer(DefaultTrainer):
 
         # Dataloader Hook
         ret.append(
-            hooks.DataloaderHook(cfg, self.labeled_set, self.unlabeled_set)
+            hooks.DataloaderHook(cfg, self.data_len)
         )
 
         if cfg.SOLVER.SWA.ENABLED:

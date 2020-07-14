@@ -63,7 +63,7 @@ def main(args):
 
     trainer = AHSMTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    return trainer.active_train()
+    return trainer.train()
 
 
 if __name__ == "__main__":

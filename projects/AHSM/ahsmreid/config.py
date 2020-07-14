@@ -18,9 +18,7 @@ def add_ahsmreid_config(cfg):
     _C.ACTIVE.TRIALS = 1
     _C.ACTIVE.SAMPLE_CYCLES = 10
     _C.ACTIVE.TRAIN_CYCLES = 50
+    _C.ACTIVE.SAMPLE_K = 3
     # 'RandomSampler' or 'UncertaintySampler'
     _C.ACTIVE.SAMPLER = CN()
     _C.ACTIVE.SAMPLER.NAME = 'RandomSampler'
-    
-
-
