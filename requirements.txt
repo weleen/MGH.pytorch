@@ -5,3 +5,4 @@ yacs
 pathspec
 Cython
 scikit-learn
+faiss-gpu

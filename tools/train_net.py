@@ -5,7 +5,6 @@
 """
 
 import logging
-import os
 import sys
 
 sys.path.append('.')
