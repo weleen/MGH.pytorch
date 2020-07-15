@@ -15,7 +15,6 @@ class RandomSampler:
         self.count = 0
 
     def sample(self, indexes, sim_mat, targets):
-        res = []
         last_len = len(self.triplet_set)
         for i, index1 in enumerate(indexes):
             pos_set = []
@@ -28,13 +27,7 @@ class RandomSampler:
                     pos_set.append(index2)
                 else:
                     neg_set.append(index2)
-            res.append([len(pos_set), len(neg_set)])
             for pos in pos_set:
                 for neg in neg_set:
                     self.triplet_set.add((index1, pos, neg))
-        # total = 0
-        # for line in res:
-        #     total += (line[0] * line[1])
-        # assert total == (len(self.triplet_set)-last_len)
-        np.save('{}.npy'.format(self.count), res)
         self.count += 1

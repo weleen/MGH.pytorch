@@ -29,8 +29,7 @@ class DataloaderHook(HookBase):
             self.samplers.sample(indexes, sim_mat, targets)
             self.trainer.data_loader = self.trainer.build_active_sample_dataloader(self.samplers.triplet_set, is_train=True)
             self.trainer._data_loader_iter = iter(self.trainer.data_loader)
-            self.sample_iter += (self.base_iter * self.samplers.count)
-
+            
     def get_feature(self):
         num_workers = self.trainer.cfg.DATALOADER.NUM_WORKERS
         batch_size = self.trainer.cfg.TEST.IMS_PER_BATCH
