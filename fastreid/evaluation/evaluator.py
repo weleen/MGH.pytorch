@@ -98,7 +98,7 @@ def inference_on_dataset(model, data_loader, evaluator):
     logger = logging.getLogger(__name__)
     logger.info("Start inference on {} images".format(len(data_loader.dataset)))
 
-    total = len(data_loader.dataset)  # inference data loader must have a fixed length
+    total = len(data_loader)  # inference data loader must have a fixed length
     evaluator.reset()
 
     num_warmup = min(5, total - 1)

@@ -7,7 +7,6 @@
 from .activation import *
 from .arcface import Arcface
 from .batch_drop import BatchDrop
-from .attention import *
 from .batch_norm import *
 from .circle import Circle
 from .context_block import ContextBlock

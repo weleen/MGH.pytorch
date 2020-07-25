@@ -11,4 +11,4 @@ SOLVER:
   MAX_ITER: 240
   STEPS: [80, 180]
 
-OUTPUT_DIR: "logs/msmt17/usl_R50"
+OUTPUT_DIR: "logs/SpCL/msmt17/usl_R50"

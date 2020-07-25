@@ -140,24 +140,26 @@ class CommonMetricPrinter(EventWriter):
     To print something different, please implement a similar printer by yourself.
     """
 
-    def __init__(self, max_iter):
+    def __init__(self, iters_per_epoch, max_iter):
         """
         Args:
             max_iter (int): the maximum number of iterations to train.
                 Used to compute ETA.
         """
         self.logger = logging.getLogger(__name__)
+        self.iters_per_epoch = iters_per_epoch
         self._max_iter = max_iter
 
     def write(self):
         storage = get_event_storage()
         iteration = storage.iter
+        epoch = iteration // self.iters_per_epoch
 
         data_time, time = None, None
         eta_string = "N/A"
         try:
-            data_time = storage.history("data_time").avg(20)
-            time = storage.history("time").global_avg()
+            data_time = storage.history("data_time").latest()
+            time = storage.history("time").latest()
             eta_seconds = storage.history("time").median(1000) * (self._max_iter - iteration)
             storage.put_scalar("eta_seconds", eta_seconds, smoothing_hint=False)
             eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
@@ -177,15 +179,16 @@ class CommonMetricPrinter(EventWriter):
         # NOTE: max_mem is parsed by grep in "dev/parse_results.sh"
         self.logger.info(
             """\
-eta: {eta}  iter: {iter}  {losses}  \
+eta: {eta} epoch: {epoch} iter: {iter}  {losses}  \
 {time}  {data_time}  \
 lr: {lr}  {memory}\
 """.format(
                 eta=eta_string,
+                epoch=epoch,
                 iter=iteration,
                 losses="  ".join(
                     [
-                        "{}: {:.3f}".format(k, v.median(20))
+                        "{}: {:.3f}".format(k, v.latest())
                         for k, v in storage.histories().items()
                         if "loss" in k
                     ]

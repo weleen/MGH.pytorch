@@ -34,7 +34,7 @@ def setup(args):
 def main(args):
     cfg = setup(args)
 
-    logger = logging.getLogger("fastreid." + __name__)
+    logger = logging.getLogger('fastreid.' + __name__)
     if args.eval_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False

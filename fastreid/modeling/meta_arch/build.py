@@ -3,7 +3,6 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-
 import torch
 
 from fvcore.common.registry import Registry

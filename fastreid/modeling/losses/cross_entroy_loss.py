@@ -20,20 +20,19 @@ class CrossEntropyLoss(object):
         self._alpha = cfg.MODEL.LOSSES.CE.ALPHA
         self._scale = cfg.MODEL.LOSSES.CE.SCALE
 
-        self._topk = (1,)
-
-    def _log_accuracy(self, pred_class_logits, gt_classes):
+    @staticmethod
+    def log_accuracy(pred_class_logits, gt_classes, topk=(1,)):
         """
         Log the accuracy metrics to EventStorage.
         """
         bsz = pred_class_logits.size(0)
-        maxk = max(self._topk)
+        maxk = max(topk)
         _, pred_class = pred_class_logits.topk(maxk, 1, True, True)
         pred_class = pred_class.t()
         correct = pred_class.eq(gt_classes.view(1, -1).expand_as(pred_class))
 
         ret = []
-        for k in self._topk:
+        for k in topk:
             correct_k = correct[:k].view(-1).float().sum(dim=0, keepdim=True)
             ret.append(correct_k.mul_(1. / bsz))
 
@@ -46,7 +45,7 @@ class CrossEntropyLoss(object):
         Returns:
             scalar Tensor
         """
-        self._log_accuracy(pred_class_logits, gt_classes)
+        self.log_accuracy(pred_class_logits, gt_classes)
         if self._eps >= 0:
             smooth_param = self._eps
         else:

@@ -111,7 +111,7 @@ class MGN(nn.Module):
 
     @property
     def device(self):
-        return self.pixel_mean.device
+        return next(self.parameters()).device
 
     def forward(self, batched_inputs):
 

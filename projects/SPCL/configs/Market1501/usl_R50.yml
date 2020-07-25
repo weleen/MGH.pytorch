@@ -4,4 +4,4 @@ DATASETS:
   NAMES: ("Market1501",)
   TESTS: ("Market1501",)
 
-OUTPUT_DIR: "logs/market1501/usl_R50"
+OUTPUT_DIR: "logs/SpCL/market1501/usl_R50"

@@ -159,6 +159,10 @@ _C.DATASETS.NAMES = ("Market1501",)
 _C.DATASETS.TESTS = ("Market1501",)
 # Combine trainset and testset joint training
 _C.DATASETS.COMBINEALL = False
+# Dict of the dataset for training
+_C.DATASETS.TRAINS_MODE = ("trainval",)
+_C.DATASETS.TRAINS_UNSUPERVISED = ()
+_C.DATASETS.VAL = "Market1501"
 
 # ----------------------------------------------------------------------------- #
 # CUHK03 specific parameters
@@ -186,6 +190,8 @@ _C.DATALOADER.NAIVE_WAY = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 8
+# Iters per epoch
+_C.DATALOADER.ITERS_PER_EPOCH = 1
 
 # ---------------------------------------------------------------------------- #
 # Solver
@@ -246,7 +252,9 @@ _C.SOLVER.IMS_PER_BATCH = 64
 _C.TEST = CN()
 
 _C.TEST.EVAL_PERIOD = 50
-_C.TEST.IMS_PER_BATCH = 128
+
+# Number of images per batch in one process.
+_C.TEST.IMS_PER_BATCH = 64
 _C.TEST.METRIC = "cosine"
 
 # Average query expansion
@@ -279,6 +287,9 @@ _C.OUTPUT_DIR = "logs/"
 # for about 10k iterations. It usually hurts total time, but can benefit for certain models.
 # If input images have the same or similar sizes, benchmark is often helpful.
 _C.CUDNN_BENCHMARK = False
+
+# deterministic
+_C.DETERMINISTIC = False
 
 # Save the project in log path
 _C.SAVE_PROJECT = True

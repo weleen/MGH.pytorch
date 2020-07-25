@@ -12,27 +12,27 @@ import argparse
 import logging
 import os
 import sys
+import random
 from collections import OrderedDict
 
 import torch
 import torch.nn.functional as F
-from torch.nn import DataParallel
 from torch.nn.parallel import DistributedDataParallel
+
 from fvcore.common.checkpoint import Checkpointer
 from fvcore.common.file_io import PathManager
 
-from . import hooks, SimpleTrainer
 from fastreid.data import build_reid_test_loader, build_reid_train_loader
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
                                  inference_on_dataset, print_csv_format)
 from fastreid.modeling.meta_arch import build_model
-from fastreid.layers.sync_bn import patch_replication_callback
 from fastreid.solver import build_lr_scheduler, build_optimizer
 from fastreid.utils import comm
+from fastreid.utils.env import seed_all_rng
+from fastreid.utils.misc import collect_env_info, cp_projects
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
 from fastreid.utils.logger import setup_logger
-from fastreid.utils.misc import collect_env_info, cp_projects
-from fastreid.utils.env import seed_all_rng
+from . import hooks, SimpleTrainer
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -72,13 +72,8 @@ def default_argument_parser():
     # PyTorch still may leave orphan processes in multi-gpu training.
     # Therefore we use a deterministic way to obtain port,
     # so that users are aware of orphan processes by seeing the port occupied.
-    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14
-    parser.add_argument(
-        "--dist-url",
-        default="tcp://127.0.0.1:{}".format(port),
-        help="initialization URL for pytorch distributed backend. See "
-             "https://pytorch.org/docs/stable/distributed.html for details.",
-    )
+    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14 + random.randint(0, 10)
+    parser.add_argument("--dist-url", default="tcp://127.0.0.1:{}".format(port))
     parser.add_argument(
         "opts",
         help="Modify config options using the command-line",
@@ -103,7 +98,8 @@ def default_setup(cfg, args):
         PathManager.mkdirs(output_dir)
 
     rank = comm.get_rank()
-    logger = setup_logger(output_dir, distributed_rank=rank, name='fastreid')
+    setup_logger(output_dir, distributed_rank=rank, name='fvcore')
+    logger = setup_logger(output_dir, distributed_rank=rank)
 
     logger.info("Rank of current process: {}. World size: {}".format(rank, comm.get_world_size()))
     logger.info("Environment info:\n" + collect_env_info())
@@ -117,17 +113,10 @@ def default_setup(cfg, args):
         )
 
     logger.info("Running with full config:\n{}".format(cfg))
-    if comm.is_main_process() and output_dir:
-        # Note: some of our scripts may expect the existence of
-        # config.yaml in output directory
-        path = os.path.join(output_dir, "config.yaml")
-        with PathManager.open(path, "w") as f:
-            f.write(cfg.dump())
-        logger.info("Full config saved to {}".format(os.path.abspath(path)))
-        if cfg.SAVE_PROJECT:
-            # copy project without the file in .gitignore to output_dir
-            logger.info("Full project saved to {}".format(os.path.abspath(output_dir)))
-            cp_projects(output_dir)
+    if comm.is_main_process() and output_dir and cfg.SAVE_PROJECT:
+        # copy project without the file in .gitignore to output_dir
+        logger.info("Full project saved to {}".format(os.path.abspath(output_dir)))
+        cp_projects(output_dir)
 
     # make sure each worker has a different, yet deterministic seed if specified
     seed_all_rng(None if cfg.SEED < 0 else cfg.SEED + rank)
@@ -135,6 +124,7 @@ def default_setup(cfg, args):
     # typical validation set.
     if not (hasattr(args, "eval_only") and args.eval_only):
         torch.backends.cudnn.benchmark = cfg.CUDNN_BENCHMARK
+    torch.backends.cudnn.deterministic = cfg.DETERMINISTIC
 
 
 class DefaultPredictor:
@@ -341,6 +331,7 @@ class DefaultTrainer(SimpleTrainer):
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
 
         if comm.is_main_process():
+            # run writers in the end, so that evaluation metrics are written
             ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
         return ret
 
@@ -364,7 +355,7 @@ class DefaultTrainer(SimpleTrainer):
         # Assume the default print/log frequency.
         return [
             # It may not always print what you want to see, since it prints "common" metrics only.
-            CommonMetricPrinter(self.max_iter),
+            CommonMetricPrinter(self.cfg.DATALOADER.ITERS_PER_EPOCH, self.max_iter),
             JSONWriter(os.path.join(self.cfg.OUTPUT_DIR, "metrics.json")),
             TensorboardXWriter(self.cfg.OUTPUT_DIR),
         ]
@@ -388,12 +379,12 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             torch.nn.Module:
-        It now calls :func:`modeling.build_model`.
+        It now calls :func:`fastreid.modeling.build_model`.
         Overwrite it if you'd like a different model.
         """
         model = build_model(cfg)
-        logger = logging.getLogger(__name__)
-        logger.info("Model:\n{}".format(model))
+        # logger = logging.getLogger(__name__)
+        # logger.info("Model:\n{}".format(model))
         return model
 
     @classmethod
@@ -401,7 +392,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             torch.optim.Optimizer:
-        It now calls :func:`solver.build_optimizer`.
+        It now calls :func:`fastreid.solver.build_optimizer`.
         Overwrite it if you'd like a different optimizer.
         """
         return build_optimizer(cfg, model)
@@ -409,7 +400,7 @@ class DefaultTrainer(SimpleTrainer):
     @classmethod
     def build_lr_scheduler(cls, cfg, optimizer):
         """
-        It now calls :func:`solver.build_lr_scheduler`.
+        It now calls :func:`fastreid.solver.build_lr_scheduler`.
         Overwrite it if you'd like a different scheduler.
         """
         return build_lr_scheduler(cfg, optimizer)
@@ -431,7 +422,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`data.build_detection_test_loader`.
+        It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
         return build_reid_test_loader(cfg, dataset_name)
@@ -508,6 +499,7 @@ class DefaultTrainer(SimpleTrainer):
         cfg.defrost()
 
         iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+        cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
         cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
@@ -518,11 +510,12 @@ class DefaultTrainer(SimpleTrainer):
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
         cfg.SOLVER.CHECKPOINT_PERIOD *= iters_per_epoch
-        cfg.TEST.EVAL_PERIOD *= iters_per_epoch
 
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
+        cfg.SOLVER.CHECKPOINT_PERIOD = int(
+            round(cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD) * cfg.TEST.EVAL_PERIOD)
 
         logger = logging.getLogger(__name__)
         logger.info(
@@ -530,7 +523,8 @@ class DefaultTrainer(SimpleTrainer):
             f"max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
-            f"eval_Iter={cfg.TEST.EVAL_PERIOD}."
+            f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
+            f"iters_per_epoch={iters_per_epoch}."
         )
 
         if frozen: cfg.freeze()

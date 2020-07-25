@@ -10,4 +10,3 @@ from .build import REID_HEADS_REGISTRY, build_reid_heads
 from .linear_head import LinearHead
 from .bnneck_head import BNneckHead
 from .reduction_head import ReductionHead
-from .buc_head import BUCHead

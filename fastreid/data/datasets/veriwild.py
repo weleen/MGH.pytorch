@@ -103,7 +103,7 @@ class SmallVeRiWild(VeRiWild):
         self.query_list = osp.join(self.dataset_dir, 'train_test_split/test_3000_query.txt')
         self.gallery_list = osp.join(self.dataset_dir, 'train_test_split/test_3000.txt')
 
-        super(SmallVeRiWild, self).__init__(root, self.query_list, self.gallery_list, **kwargs)
+        super(SmallVeRiWild, self).__init__('', self.query_list, self.gallery_list, **kwargs)
 
 
 @DATASET_REGISTRY.register()
@@ -119,7 +119,7 @@ class MediumVeRiWild(VeRiWild):
         self.query_list = osp.join(self.dataset_dir, 'train_test_split/test_5000_query.txt')
         self.gallery_list = osp.join(self.dataset_dir, 'train_test_split/test_5000.txt')
 
-        super(MediumVeRiWild, self).__init__(root, self.query_list, self.gallery_list, **kwargs)
+        super(MediumVeRiWild, self).__init__('', self.query_list, self.gallery_list, **kwargs)
 
 
 @DATASET_REGISTRY.register()
@@ -135,4 +135,4 @@ class LargeVeRiWild(VeRiWild):
         self.query_list = osp.join(self.dataset_dir, 'train_test_split/test_10000_query.txt')
         self.gallery_list = osp.join(self.dataset_dir, 'train_test_split/test_10000.txt')
 
-        super(LargeVeRiWild, self).__init__(root, self.query_list, self.gallery_list, **kwargs)
+        super(LargeVeRiWild, self).__init__('', self.query_list, self.gallery_list, **kwargs)

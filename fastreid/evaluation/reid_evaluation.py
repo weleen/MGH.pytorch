@@ -36,9 +36,9 @@ class ReidEvaluator(DatasetEvaluator):
         self.camids = []
 
     def process(self, inputs, outputs):
-        self.features.append(outputs[0].cpu())
-        self.pids.extend(outputs[1].cpu().numpy())
-        self.camids.extend(outputs[2].cpu().numpy())
+        self.pids.extend(inputs["targets"].numpy())
+        self.camids.extend(inputs["camid"].numpy())
+        self.features.append(outputs.cpu())
 
     @staticmethod
     def cal_dist(metric: str, query_feat: torch.tensor, gallery_feat: torch.tensor):

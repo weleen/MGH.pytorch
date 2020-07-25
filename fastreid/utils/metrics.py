@@ -69,7 +69,7 @@ def compute_distance_matrix(input1, input2, metric='euclidean'):
         torch.Tensor: distance matrix.
 
     Examples::
-       >>> from torchreid import metrics
+       >>> from utils import metrics
        >>> input1 = torch.rand(10, 2048)
        >>> input2 = torch.rand(100, 2048)
        >>> distmat = metrics.compute_distance_matrix(input1, input2)

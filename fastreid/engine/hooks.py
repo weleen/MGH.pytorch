@@ -11,15 +11,14 @@ from collections import Counter
 
 import torch
 from torch import nn
-from torch.nn.parallel import DistributedDataParallel
 
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 from fvcore.common.timer import Timer
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fvcore.common.file_io import PathManager
 
-from fastreid.solver import optim
 from fastreid.evaluation.testing import flatten_results_dict
+from fastreid.solver import optim
 from fastreid.utils import comm
 from fastreid.utils.events import EventStorage, EventWriter
 from .train_loop import HookBase
@@ -420,7 +419,7 @@ class FreezeLayer(HookBase):
     def __init__(self, model, open_layer_names, freeze_iters):
         self._logger = logging.getLogger(__name__)
 
-        if isinstance(model, (nn.DataParallel, DistributedDataParallel)):
+        if hasattr(model, 'module'):
             model = model.module
         self.model = model
 
@@ -446,7 +445,7 @@ class FreezeLayer(HookBase):
     def freeze_specific_layer(self):
         for layer in self.open_layer_names:
             if not hasattr(self.model, layer):
-                self._logger.info(f'"{layer}" is not an attribute of the model, will skip this layer')
+                self._logger.info(f'{layer} is not an attribute of the model, will skip this layer')
 
         for name, module in self.model.named_children():
             if name in self.open_layer_names:
