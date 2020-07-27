@@ -88,6 +88,7 @@ def hard_example_mining(dist_mat, is_pos, is_neg):
     assert len(dist_mat.size()) == 2
     N = dist_mat.size(0)
 
+    # TODO: known bug, when --num-gpus >= 2, dist_mat[is_pos] is not [N], but [M]
     # `dist_ap` means distance(anchor, positive)
     # both `dist_ap` and `relative_p_inds` with shape [N, 1]
     # pos_dist = dist_mat[is_pos].contiguous().view(N, -1)

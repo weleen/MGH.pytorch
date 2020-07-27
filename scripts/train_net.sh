@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # enviornment for socket
-export NCCL_SOCKET_IFNAME=eno1
+#export NCCL_SOCKET_IFNAME=eno1
+# please use ifconfig to check local network name
 export GLOO_SOCKET_IFNAME=eno1
 
 CONFIG=$1

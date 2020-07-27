@@ -1,5 +1,10 @@
 _BASE_: "../Base-AGW.yml"
 
+MODEL:
+  BACKBONE:
+    WITH_IBN: True
+    PRETRAIN_PATH: "/home/wuyiming/.cache/torch/checkpoints/resnet50.pthi"
+
 DATASETS:
   NAMES: ("MSMT17",)
   TESTS: ("MSMT17",)

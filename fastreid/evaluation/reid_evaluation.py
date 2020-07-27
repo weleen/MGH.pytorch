@@ -97,9 +97,9 @@ class ReidEvaluator(DatasetEvaluator):
         self._results['mAP'] = mAP
         self._results['mINP'] = mINP
 
-        tprs = evaluate_roc(dist, query_pids, gallery_pids, query_camids, gallery_camids)
-        fprs = [1e-4, 1e-3, 1e-2]
-        for i in range(len(fprs)):
-            self._results["TPR@FPR={}".format(fprs[i])] = tprs[i]
+        # tprs = evaluate_roc(dist, query_pids, gallery_pids, query_camids, gallery_camids)
+        # fprs = [1e-4, 1e-3, 1e-2]
+        # for i in range(len(fprs)):
+        #     self._results["TPR@FPR={}".format(fprs[i])] = tprs[i]
 
         return copy.deepcopy(self._results)
