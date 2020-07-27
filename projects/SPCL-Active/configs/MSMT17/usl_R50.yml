@@ -1,0 +1,27 @@
+_BASE_: "../Base-usl.yml"
+
+MODEL:
+  LOSSES:
+    NAME: ("ActiveTripletLoss",)
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+UNSUPERVISED:
+  CLUSTER_ITER: 800
+
+ACTIVE:
+  INITIAL_RATE: 0.1
+  TRAIN_CYCLES: 20
+  SAMPLE_K: 10
+  IMS_PER_BATCH: 90
+  SAMPLER:
+    NAME: "RandomSampler"
+
+SOLVER:
+  MAX_ITER: 240
+  STEPS: [80, 180]
+  IMS_PER_BATCH: 64
+
+OUTPUT_DIR: "logs/SpCL/msmt17/usl_R50"
