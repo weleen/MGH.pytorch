@@ -192,7 +192,7 @@ class DefaultTrainer(SimpleTrainer):
     To obtain more stable behavior, write your own training logic with other public APIs.
     Attributes:
         scheduler:
-        checkpointer (DetectionCheckpointer):
+        checkpointer (Checkpointer):
         cfg (CfgNode):
     Examples:
     .. code-block:: python
@@ -206,7 +206,7 @@ class DefaultTrainer(SimpleTrainer):
         Args:
             cfg (CfgNode):
         """
-        logger = logging.getLogger('fastreid.' + __name__)
+        logger = logging.getLogger(__name__)
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for fastreid
             setup_logger()
 
@@ -510,6 +510,7 @@ class DefaultTrainer(SimpleTrainer):
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
         cfg.SOLVER.CHECKPOINT_PERIOD *= iters_per_epoch
+        cfg.MODEL.LOSSES.TRI.FREEZE_ITER *= iters_per_epoch
 
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
@@ -524,6 +525,7 @@ class DefaultTrainer(SimpleTrainer):
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
+            f"triplet_freeze_iter={cfg.MODEL.LOSSES.TRI.FREEZE_ITER}, "
             f"iters_per_epoch={iters_per_epoch}."
         )
 
