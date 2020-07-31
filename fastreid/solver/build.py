@@ -26,6 +26,8 @@ def build_optimizer(cfg, model):
     if hasattr(optim, solver_opt):
         if solver_opt == "SGD":
             opt_fns = getattr(optim, solver_opt)(params, momentum=cfg.SOLVER.MOMENTUM)
+        #elif solver_opt == "Adam":
+        #    opt_fns = getattr(optim, solver_opt)(params, amsgrad=cfg.SOLVER.AMSGRAD)
         else:
             opt_fns = getattr(optim, solver_opt)(params)
     else:

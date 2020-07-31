@@ -160,10 +160,13 @@ _C.DATASETS.NAMES = ("Market1501",)
 _C.DATASETS.TESTS = ("Market1501",)
 # Combine trainset and testset joint training
 _C.DATASETS.COMBINEALL = False
-# Dict of the dataset for training
+# Added configurations from openunreid
 _C.DATASETS.TRAINS_MODE = ("trainval",)
-_C.DATASETS.TRAINS_UNSUPERVISED = ()
-_C.DATASETS.VAL = "Market1501"
+# Unsupervised index for training dataset
+# this hyperparameter is used for un/semi-supervised training
+_C.DATASETS.TRAINS_UNSUPERVISED = () # (0,)
+# Validation dataset
+_C.DATASETS.VAL = ("Market1501",)
 
 # ----------------------------------------------------------------------------- #
 # CUHK03 specific parameters
@@ -190,6 +193,7 @@ _C.DATALOADER.PK_SAMPLER = True
 _C.DATALOADER.NAIVE_WAY = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
+# Number of worker for each gpu
 _C.DATALOADER.NUM_WORKERS = 8
 # Iters per epoch
 _C.DATALOADER.ITERS_PER_EPOCH = 1
@@ -211,6 +215,9 @@ _C.SOLVER.MOMENTUM = 0.9
 
 _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
+
+# Amsgrad
+_C.SOLVER.AMSGRAD = False
 
 # Multi-step learning rate options
 _C.SOLVER.SCHED = "WarmupMultiStepLR"

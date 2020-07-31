@@ -5,6 +5,7 @@
 """
 
 import os
+import logging
 import torch
 from torch._six import container_abcs, string_classes, int_classes
 from torch.utils.data import DataLoader
@@ -29,6 +30,7 @@ def build_reid_train_loader_new(cfg, train_items=None, pseudo_labels=None, epoch
     :param kwargs:
     :return:
     """
+    logger = logging.getLogger(__name__)
     dataset_names = cfg.DATASETS.NAMES
     dataset_modes = cfg.DATASETS.TRAINS_MODE
     unsup_dataset_indexes = cfg.DATASETS.TRAINS_UNSUPERVISED
@@ -44,53 +46,50 @@ def build_reid_train_loader_new(cfg, train_items=None, pseudo_labels=None, epoch
     if train_items is None:
         # generally for the first epoch
         if len(unsup_dataset_indexes) == 0:
-            print(
+            logger.info(
                 f"The training is in a fully-supervised manner with "
                 f"{len(dataset_names)} dataset(s) ({dataset_names})"
             )
         else:
             no_label_datasets = [dataset_names[i] for i in unsup_dataset_indexes]
-            print(
+            logger.info(
                 f"The training is in a un/semi-supervised manner with "
-                f"{len(dataset_names)} dataset(s) ({dataset_names}),\n"
+                f"{len(dataset_names)} dataset(s) {dataset_names},\n"
                 f"where {no_label_datasets} have no labels."
             )
 
         train_items = list()
 
-        for d in cfg.DATASETS.NAMES:
+        for idx, (d, dm) in enumerate(zip(cfg.DATASETS.NAMES, cfg.DATASETS.TRAINS_MODE)):
             dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL,
                                               cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
                                               cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT)
+            if idx in unsup_dataset_indexes:
+                # remove the labels in unsupervised dataset
+                try:
+                    new_labels = pseudo_labels[idx]
+                except:
+                    new_labels = list(range(len(dataset)))
+                    logger.warning(f"no labels are provided for {d}")
+                dataset.renew_labels(new_labels)
             if comm.is_main_process():
                 dataset.show_train()
-            train_items.append(dataset.train)
+            train_items.append(getattr(dataset, dm))
     else:
         for i, idx in enumerate(unsup_dataset_indexes):
-            for idx_i, pid in enumerate(pseudo_labels[i]):
-                train_items[idx].train[idx_i][1] = pid
+            train_items[idx].renew_labels(pseudo_labels[i])
 
     train_transforms = build_transforms(cfg, is_train=True)
     train_set = NewCommDataset(train_items, train_transforms, relabel=True)
 
-    num_workers = cfg.DATALOADER.NUM_WORKERS
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()
 
-    # TODO: build sampler_registry
-    # data_sampler = SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.dataset,
-    #                                                                  batch_size=cfg.SOLVER.IMS_PER_BATCH,
-    #                                                                  num_instances=num_instance,
-    #                                                                  size=len(train_set)
-    if cfg.DATALOADER.PK_SAMPLER:
-        if cfg.DATALOADER.NAIVE_WAY:
-            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items,
-                                                         cfg.SOLVER.IMS_PER_BATCH, num_instance)
-        else:
-            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items,
-                                                            cfg.SOLVER.IMS_PER_BATCH, num_instance)
-    else:
-        data_sampler = samplers.TrainingSampler(len(train_set))
+    data_sampler = SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.dataset,
+                                                                     batch_size=cfg.SOLVER.IMS_PER_BATCH,
+                                                                     num_instances=num_instance,
+                                                                     size=len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, True)
 
     train_loader = torch.utils.data.DataLoader(
@@ -100,6 +99,31 @@ def build_reid_train_loader_new(cfg, train_items=None, pseudo_labels=None, epoch
         collate_fn=fast_batch_collator,
     )
     return train_loader
+
+
+def build_reid_val_loader_new(cfg):
+    test_transforms = build_transforms(cfg, is_train=False)
+    dataset_name = cfg.DATASETS.VAL
+    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root,
+                                                 cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
+                                                 cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT,
+                                                 market1501_500k=cfg.DATASETS.MARKET1501.ENABLE_500K)
+    if comm.is_main_process():
+        dataset.show_val()
+    val_items = dataset.val
+
+    val_set = CommDataset(val_items, test_transforms, relabel=False)
+
+    num_workers = cfg.DATALOADER.NUM_WORKERS
+    batch_size = cfg.TEST.IMS_PER_BATCH
+    data_sampler = samplers.InferenceSampler(len(val_set))
+    batch_sampler = torch.utils.data.BatchSampler(data_sampler, batch_size, False)
+    val_loader = DataLoader(
+        val_set,
+        batch_sampler=batch_sampler,
+        num_workers=num_workers,
+        collate_fn=fast_batch_collator)
+    return val_loader
 
 
 def build_reid_train_loader(cfg):
@@ -116,7 +140,7 @@ def build_reid_train_loader(cfg):
 
     train_set = CommDataset(train_items, train_transforms, relabel=True)
 
-    num_workers = cfg.DATALOADER.NUM_WORKERS
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()
 
@@ -153,7 +177,7 @@ def build_reid_test_loader(cfg, dataset_name):
 
     test_set = CommDataset(test_items, test_transforms, relabel=False)
 
-    num_workers = cfg.DATALOADER.NUM_WORKERS
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     batch_size = cfg.TEST.IMS_PER_BATCH
     data_sampler = samplers.InferenceSampler(len(test_set))
     batch_sampler = torch.utils.data.BatchSampler(data_sampler, batch_size, False)

@@ -28,10 +28,10 @@ from .hybrid_memory import HybridMemory
 from . import hooks
 from .common import CommDataset
 
-__all__ = ["SPCLTrainer"]
+__all__ = ["SSCTrainer"]
 
 
-class SPCLTrainer(DefaultTrainer):
+class SSCTrainer(DefaultTrainer):
     def __init__(self, cfg: CfgNode) -> None:
         self.cfg = cfg
         logger = logging.getLogger('fastreid.' + __name__)
@@ -41,8 +41,7 @@ class SPCLTrainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare training set')
-        data_loader = self.construct_unsupervised_dataloader(is_train=False)
-        # data_loader = build_reid_train_loader_new(cfg)
+        data_loader = build_reid_train_loader_new(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
