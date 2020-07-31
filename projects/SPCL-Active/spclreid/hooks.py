@@ -75,7 +75,7 @@ class ClusterHook(HookBase):
             pseudo_labeled_dataset = []
             outliers = 0
             for i, ((fname, _, cam_id), label) in enumerate(
-                    zip(sorted(self.trainer.data_loader.dataset.img_items), pseudo_labels)):
+                    zip(sorted(self.trainer.data_loader_u.dataset.img_items), pseudo_labels)):
                 indep_score = cluster_R_indep[label.item()]
                 comp_score = R_comp[i]
                 if (indep_score <= self.indep_thres) and (comp_score.item() <= cluster_R_comp[label.item()]):
@@ -95,15 +95,15 @@ class ClusterHook(HookBase):
                   .format(self.trainer.iter, (index2label > 1).sum(), (index2label == 1).sum(), 1 - self.indep_thres))
 
             memory.labels = pseudo_labels.to(self.trainer.cfg.MODEL.DEVICE)
-            self.trainer.data_loader = self.trainer.construct_unsupervised_dataloader(pseudo_labeled_dataset,
+            self.trainer.data_loader_u = self.trainer.construct_unsupervised_dataloader(pseudo_labeled_dataset,
                                                                                       is_train=True)
-            self.trainer._data_loader_iter = iter(self.trainer.data_loader)
+            self.trainer._data_loader_u_iter = iter(self.trainer.data_loader_u)
 
     def generate_pseudo_labels(self, cluster_id, num):
         labels = []
         outliers = 0
         for i, ((fname, _, cam_id), cid) in enumerate(
-                zip(sorted(self.trainer.data_loader.dataset.img_items), cluster_id)):
+                zip(sorted(self.trainer.data_loader_u.dataset.img_items), cluster_id)):
             if cid != -1:
                 labels.append(cid)
             else:
@@ -132,16 +132,16 @@ class DataloaderHook(HookBase):
             # only choose first 30 similar instances
             sim_mat = torch.argsort(dist_mat, dim=1)[:, 1:31]
             self.samplers.sample(indexes, sim_mat, targets)
-            self.trainer.data_loader = self.trainer.build_active_sample_dataloader(self.samplers.triplet_set, is_train=True)
-            self.trainer._data_loader_iter = iter(self.trainer.data_loader)
+            self.trainer.data_loader_a = self.trainer.build_active_sample_dataloader(self.samplers.triplet_set, is_train=True)
+            self.trainer._data_loader_a_iter = iter(self.trainer.data_loader_a)
             
     def get_feature(self):
         num_workers = self.trainer.cfg.DATALOADER.NUM_WORKERS
         batch_size = self.trainer.cfg.TEST.IMS_PER_BATCH
-        data_sampler = InferenceSampler(len(self.trainer.data_loader.dataset))
+        data_sampler = InferenceSampler(len(self.trainer.data_loader_a.dataset))
         batch_sampler = torch.utils.data.BatchSampler(data_sampler, batch_size, False)
         dataloader = torch.utils.data.DataLoader(
-            self.trainer.data_loader.dataset,
+            self.trainer.data_loader_a.dataset,
             num_workers=num_workers,
             batch_sampler=batch_sampler,
             collate_fn=fast_batch_collator,
@@ -153,8 +153,8 @@ class DataloaderHook(HookBase):
         with inference_context(model), torch.no_grad():
             for idx, inputs in enumerate(dataloader):
                 outputs = model(inputs)
-                features.append(outputs[0]) # ouputs->Tuple, len=3, 0->pred_feats, 1->targets, 2->camids
-                targets.append(outputs[1])
+                features.append(outputs)
+                targets.append(inputs["targets"].long())
             features = torch.cat(features)
             targets = torch.cat(targets)
         return features, targets

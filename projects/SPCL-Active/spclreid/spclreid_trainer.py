@@ -47,7 +47,8 @@ class SPCLTrainer(DefaultTrainer):
         cfg = self.auto_scale_hyperparams(cfg, data_loader_u)
 
         # active auto-scale
-        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+        cfg.defrost()
+        iters_per_epoch = len(data_loader_u.dataset) // cfg.SOLVER.IMS_PER_BATCH
         cfg.ACTIVE.TRAIN_CYCLES *= iters_per_epoch
 
         self.data_loader_u = data_loader_u
@@ -57,7 +58,7 @@ class SPCLTrainer(DefaultTrainer):
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
             model = DistributedDataParallel(
-                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
+                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False,find_unused_parameters=True
             )
         else:
             model = DataParallel(model)
@@ -161,7 +162,7 @@ class SPCLTrainer(DefaultTrainer):
 
                 start_compute_time = time.perf_counter()
                 outputs = model(inputs)
-                for fname, out_feat, pid in zip(inputs['img_path'], outputs[0], inputs['targets']):
+                for fname, out_feat, pid in zip(inputs['img_path'], outputs, inputs['targets']):
                     features[fname] = out_feat
                     labels[fname] = pid
                 if torch.cuda.is_available():
