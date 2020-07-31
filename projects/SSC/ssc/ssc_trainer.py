@@ -24,14 +24,13 @@ from fastreid.utils.logger import setup_logger, log_every_n_seconds
 from fastreid.utils import comm
 from fastreid.evaluation.evaluator import inference_context
 
-from .hybrid_memory import HybridMemory
 from . import hooks
 from .common import CommDataset
 
-__all__ = ["SPCLTrainer"]
+__all__ = ["SSCTrainer"]
 
 
-class SPCLTrainer(DefaultTrainer):
+class SSCTrainer(DefaultTrainer):
     def __init__(self, cfg: CfgNode) -> None:
         self.cfg = cfg
         logger = logging.getLogger('fastreid.' + __name__)
@@ -41,7 +40,7 @@ class SPCLTrainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare training set')
-        data_loader = self.construct_unsupervised_dataloader(is_train=False)
+        data_loader, self.datasets = build_reid_train_loader_new(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
@@ -55,11 +54,6 @@ class SPCLTrainer(DefaultTrainer):
                 model, **ddp_cfg
             )
 
-        # create hybrid memory
-        self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,
-                                   num_samples=len(data_loader.dataset),
-                                   temp=cfg.UNSUPERVISED.MEMORY_TEMP,
-                                   momentum=cfg.UNSUPERVISED.MEMORY_MOMENTUM).to(cfg.MODEL.DEVICE)
         # initialize instance features
         logger.info("Initialize instance features in the hybrid memory")
         features, _ = self.extract_features(model, data_loader)

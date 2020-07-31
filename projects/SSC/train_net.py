@@ -2,7 +2,7 @@
 """
 @author:  wuyiming
 @contact: yimingwu@hotmail.com
-@function: Adversarial Clustering
+@function: self-supervised Clustering
 """
 
 import logging

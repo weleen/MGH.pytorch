@@ -160,10 +160,10 @@ _C.DATASETS.NAMES = ("Market1501",)
 _C.DATASETS.TESTS = ("Market1501",)
 # Combine trainset and testset joint training
 _C.DATASETS.COMBINEALL = False
-# Dict of the dataset for training
-_C.DATASETS.TRAINS_MODE = ("trainval",)
-_C.DATASETS.TRAINS_UNSUPERVISED = ()
-_C.DATASETS.VAL = "Market1501"
+# Added configurations from openunreid
+# Unsupervised index for training dataset
+# this hyperparameter is used for un/semi-supervised training
+_C.DATASETS.TRAINS_UNSUPERVISED = () # (0,)
 
 # ----------------------------------------------------------------------------- #
 # CUHK03 specific parameters
@@ -190,6 +190,7 @@ _C.DATALOADER.PK_SAMPLER = True
 _C.DATALOADER.NAIVE_WAY = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
+# Number of worker for each gpu
 _C.DATALOADER.NUM_WORKERS = 8
 # Iters per epoch
 _C.DATALOADER.ITERS_PER_EPOCH = 1
@@ -211,6 +212,9 @@ _C.SOLVER.MOMENTUM = 0.9
 
 _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
+
+# Amsgrad
+_C.SOLVER.AMSGRAD = False
 
 # Multi-step learning rate options
 _C.SOLVER.SCHED = "WarmupMultiStepLR"
@@ -241,8 +245,8 @@ _C.SOLVER.CHECKPOINT_PERIOD = 60
 
 _C.SOLVER.LOG_PERIOD = 200
 # Number of images per batch
-# This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
-# see 2 images per batch
+# This is local, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
+# see 16 images per batch, there are 16 * 8 = 128 images totally.
 _C.SOLVER.IMS_PER_BATCH = 64
 
 # ----------------------------------------------------------------------------

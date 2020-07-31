@@ -220,8 +220,14 @@ class DefaultTrainer(SimpleTrainer):
         if comm.get_world_size() > 1:
             # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
             # for part of the parameters is not updated.
+            ddp_cfg = {
+                'device': [comm.get_local_rank()],
+                'broadcast_buffers': False,
+                'output_device': comm.get_local_rank(),
+                'find_unused_parameters': True
+            }
             model = DistributedDataParallel(
-                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
+                model, **ddp_cfg
             )
 
         super().__init__(model, data_loader, optimizer)

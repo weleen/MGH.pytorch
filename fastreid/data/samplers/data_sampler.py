@@ -10,8 +10,10 @@ import numpy as np
 from torch.utils.data import Sampler
 
 from fastreid.utils import comm
+from . import SAMPLER_REGISTRY
 
 
+@SAMPLER_REGISTRY.register()
 class TrainingSampler(Sampler):
     """
     In training, we only care about the "infinite stream" of training data.
@@ -23,7 +25,7 @@ class TrainingSampler(Sampler):
     or `range(size) + range(size) + ...` (if shuffle is False)
     """
 
-    def __init__(self, size: int, shuffle: bool = True, seed: Optional[int] = None):
+    def __init__(self, size: int, shuffle: bool = True, seed: Optional[int] = None, **kwargs):
         """
         Args:
             size (int): the total number of data of the underlying dataset to sample from
@@ -55,6 +57,7 @@ class TrainingSampler(Sampler):
                 yield from np.arange(self._size)
 
 
+@SAMPLER_REGISTRY.register()
 class InferenceSampler(Sampler):
     """
     Produce indices for inference.
@@ -63,7 +66,7 @@ class InferenceSampler(Sampler):
     this sampler produces different number of samples on different workers.
     """
 
-    def __init__(self, size: int):
+    def __init__(self, size: int, **kwargs):
         """
         Args:
             size (int): the total number of data of the underlying dataset to sample from

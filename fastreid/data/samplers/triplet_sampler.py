@@ -15,15 +15,16 @@ import torch
 from torch.utils.data.sampler import Sampler
 
 from fastreid.utils import comm
-
+from . import SAMPLER_REGISTRY
 
 def no_index(a, b):
     assert isinstance(a, list)
     return [i for i, j in enumerate(a) if j != b]
 
 
+@SAMPLER_REGISTRY.register()
 class BalancedIdentitySampler(Sampler):
-    def __init__(self, data_source: str, batch_size: int, num_instances: int, seed: Optional[int] = None):
+    def __init__(self, data_source: str, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
         self.batch_size = batch_size
         self.num_instances = num_instances
@@ -102,6 +103,7 @@ class BalancedIdentitySampler(Sampler):
             yield from indices
 
 
+@SAMPLER_REGISTRY.register()
 class NaiveIdentitySampler(Sampler):
     """
     Randomly sample N identities, then for each identity,
@@ -112,7 +114,7 @@ class NaiveIdentitySampler(Sampler):
     - batch_size (int): number of examples in a batch.
     """
 
-    def __init__(self, data_source: str, batch_size: int, num_instances: int, seed: Optional[int] = None):
+    def __init__(self, data_source: str, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
         self.batch_size = batch_size
         self.num_instances = num_instances
@@ -177,8 +179,9 @@ class NaiveIdentitySampler(Sampler):
             yield from indices
 
 
+@SAMPLER_REGISTRY.register()
 class RandomMultipleGallerySampler(Sampler):
-    def __init__(self, data_source, num_instances=4):
+    def __init__(self, data_source, num_instances=4, **kwargs):
         self.data_source = data_source
         self.num_instances = num_instances
 

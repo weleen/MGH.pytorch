@@ -1,4 +1,4 @@
-_BASE_: "../Base-adv.yml"
+_BASE_: "../Base-usl.yml"
 
 DATASETS:
   NAMES: ("DukeMTMC",)

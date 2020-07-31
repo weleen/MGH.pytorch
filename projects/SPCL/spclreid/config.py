@@ -9,6 +9,11 @@ from fvcore.common.config import CfgNode as CN
 def add_spclreid_config(cfg):
     _C = cfg
 
+    # -----------------------------------------------------------------------------
+    # DataLoader
+    # -----------------------------------------------------------------------------
+    _C.DATALOADER.SAMPLER_NAME = 'NaiveIdentitySampler' # 'BalancedIdentitySampler', 'TrainingSampler', etc
+
     # ----------------------------------------------------------------------------
     # Unsupervised
     # ----------------------------------------------------------------------------

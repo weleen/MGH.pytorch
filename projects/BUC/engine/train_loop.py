@@ -194,7 +194,6 @@ class SimpleTrainer(TrainerBase):
         self.criterion = ExLoss(num_train_ids, num_features=2048, t=10).cuda()
         self.nums_to_merge = int(num_train_ids * 0.05) # merge percent
 
-
     def after_step(self):
         for h in self._hooks:
             h.after_step()
