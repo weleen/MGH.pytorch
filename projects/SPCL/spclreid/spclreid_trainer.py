@@ -20,7 +20,6 @@ from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 from fastreid.data.samplers import RandomMultipleGallerySampler
 from fastreid.data.transforms import build_transforms
 from fastreid.engine.defaults import DefaultTrainer
-from fastreid.layers.sync_bn import patch_replication_callback
 from fastreid.utils.logger import setup_logger, log_every_n_seconds
 from fastreid.utils import comm
 from fastreid.evaluation.evaluator import inference_context
@@ -43,16 +42,12 @@ class SPCLTrainer(DefaultTrainer):
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare unlabeled training set')
         data_loader = self.construct_unsupervised_dataloader(is_train=False)
+        cfg = self.auto_scale_hyperparams(cfg, data_loader)
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
             model = DistributedDataParallel(
                 model, device_ids=[comm.get_local_rank()], broadcast_buffers=False
             )
-        else:
-            model = DataParallel(model)
-        if cfg.MODEL.BACKBONE.NORM == "syncBN":
-            # Monkey-patching with syncBN
-            patch_replication_callback(model)
 
         # create hybrid memory
         self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,
@@ -153,7 +148,7 @@ class SPCLTrainer(DefaultTrainer):
 
                 start_compute_time = time.perf_counter()
                 outputs = model(inputs)
-                for fname, out_feat, pid in zip(inputs['img_path'], outputs[0], inputs['targets']):
+                for fname, out_feat, pid in zip(inputs['img_path'], outputs, inputs['targets']):
                     features[fname] = out_feat
                     labels[fname] = pid
                 if torch.cuda.is_available():
@@ -293,3 +288,49 @@ class SPCLTrainer(DefaultTrainer):
         losses.backward()
 
         self.optimizer.step()
+
+    @staticmethod
+    def auto_scale_hyperparams(cfg, data_loader):
+        r"""
+        This is used for auto-computation actual training iterations,
+        because some hyper-param, such as MAX_ITER, means training epochs rather than iters,
+        so we need to convert specific hyper-param to training iterations.
+        """
+
+        cfg = cfg.clone()
+        frozen = cfg.is_frozen()
+        cfg.defrost()
+
+        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+        cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
+        cfg.SOLVER.MAX_ITER *= iters_per_epoch
+        cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
+        cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
+        cfg.SOLVER.DELAY_ITERS *= iters_per_epoch
+        for i in range(len(cfg.SOLVER.STEPS)):
+            cfg.SOLVER.STEPS[i] *= iters_per_epoch
+        cfg.SOLVER.SWA.ITER *= iters_per_epoch
+        cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
+        cfg.SOLVER.CHECKPOINT_PERIOD *= iters_per_epoch
+        cfg.MODEL.LOSSES.TRI.FREEZE_ITER *= iters_per_epoch
+
+        # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
+        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
+        cfg.SOLVER.CHECKPOINT_PERIOD = int(
+            round(cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD) * cfg.TEST.EVAL_PERIOD)
+
+        logger = logging.getLogger('fastreid.' + __name__)
+        logger.info(
+            f"Auto-scaling the config to num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, "
+            f"max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
+            f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
+            f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
+            f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
+            f"triplet_freeze_iter={cfg.MODEL.LOSSES.TRI.FREEZE_ITER}, "
+            f"iters_per_epoch={iters_per_epoch}."
+        )
+
+        if frozen: cfg.freeze()
+
+        return cfg

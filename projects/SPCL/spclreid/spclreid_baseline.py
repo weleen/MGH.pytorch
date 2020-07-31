@@ -48,9 +48,7 @@ class USL_Baseline(nn.Module):
 
     def forward(self, batched_inputs):
         if not self.training:
-            pred_feat = self.inference(batched_inputs)
-            try:              return pred_feat, batched_inputs["targets"], batched_inputs["camid"]
-            except Exception: return pred_feat
+            return self.inference(batched_inputs)
 
         images = self.preprocess_image(batched_inputs)
         targets = batched_inputs["targets"].long()
