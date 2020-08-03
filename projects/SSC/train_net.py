@@ -17,14 +17,14 @@ from fvcore.nn.precise_bn import get_bn_modules
 from fastreid.config import cfg
 from fastreid.engine import default_argument_parser, default_setup, launch
 
-from advcluster import *
+from ssc import *
 
 
 def setup(args):
     """
     Create configs and perform basic setups.
     """
-    add_advcluster_config(cfg)
+    add_ssc_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()
@@ -39,7 +39,7 @@ def main(args):
     if args.eval_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
-        model = AdvClusterTrainer.build_model(cfg)
+        model = SSCTrainer.build_model(cfg)
         model = nn.DataParallel(model).to(cfg.MODEL.DEVICE)
         Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
         if cfg.TEST.PRECISE_BN.ENABLED and get_bn_modules(model):
@@ -51,13 +51,13 @@ def main(args):
                 # Run at the same freq as (but before) evaluation.
                 model,
                 # Build a new data loader to not affect training
-                AdvClusterTrainer.build_train_loader(prebn_cfg),
+                SSCTrainer.build_train_loader(prebn_cfg),
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ).update_stats()
-        res = AdvClusterTrainer.test(cfg, model)
+        res = SSCTrainer.test(cfg, model)
         return res
 
-    trainer = AdvClusterTrainer(cfg)
+    trainer = SSCTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
     return trainer.train()
 

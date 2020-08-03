@@ -147,6 +147,8 @@ class TripletLoss(object):
         self._normalize_feature = cfg.MODEL.LOSSES.TRI.NORM_FEAT
         self._scale = cfg.MODEL.LOSSES.TRI.SCALE
         self._hard_mining = cfg.MODEL.LOSSES.TRI.HARD_MINING
+        self._freeze_iter = cfg.MODEL.LOSSES.TRI.FREEZE_ITER
+        self._iter = 0
 
     def __call__(self, _, embedding, targets):
         if self._normalize_feature:
@@ -179,9 +181,15 @@ class TripletLoss(object):
             loss = F.soft_margin_loss(dist_an - dist_ap, y)
             if loss == float('Inf'): loss = F.margin_ranking_loss(dist_an, dist_ap, y, margin=0.3)
 
-        return {
-            "loss_triplet": loss * self._scale,
-        }
+        self._iter += 1
+        if self._iter > self._freeze_iter:
+            return {
+                "loss_triplet": loss * self._scale,
+            }
+        else:
+            return {
+                "loss_triplet": loss * 0,
+            }
 
 
 class CircleLoss(object):

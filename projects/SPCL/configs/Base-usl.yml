@@ -3,31 +3,24 @@ MODEL:
 
   BACKBONE:
     NAME: "build_resnet_backbone"
-    NORM: "BN"
     DEPTH: 50
     LAST_STRIDE: 1
-    WITH_IBN: False
+    WITH_NL: True
     PRETRAIN: True
 
   HEADS:
     NAME: "BNneckHead"
-    NORM: "BN"
-    POOL_LAYER: "avgpool"
-    NECK_FEAT: "before"
+    POOL_LAYER: "gempool"
+    NECK_FEAT: "after"
     CLS_LAYER: "linear"
+    NUM_CLASSES: 0
 
   LOSSES:
-    NAME: ("CrossEntropyLoss", "TripletLoss",)
+    NAME: ("ContrastiveLoss",)
 
-    CE:
-      EPSILON: 0.1
-      SCALE: 1.
-
-    TRI:
-      MARGIN: 0.3
-      HARD_MINING: True
-      NORM_FEAT: False
-      SCALE: 1.
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
 
 INPUT:
   SIZE_TRAIN: [256, 128]
@@ -59,7 +52,7 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0.0005
   IMS_PER_BATCH: 64
 
-  STEPS: [40, 90]
+  STEPS: [40, 80]
   GAMMA: 0.1
 
   WARMUP_FACTOR: 0.01

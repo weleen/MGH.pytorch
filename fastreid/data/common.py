@@ -26,7 +26,7 @@ class CommDataset(Dataset):
     def __len__(self):
         return len(self.img_items)
 
-    def __getitem__(self, index):
+    def _get_single_item(self, index):
         img_path, pid, camid = self.img_items[index]
         img = read_image(img_path)
         if self.transform is not None: img = self.transform(img)
@@ -35,8 +35,14 @@ class CommDataset(Dataset):
             "images": img,
             "targets": pid,
             "camid": camid,
-            "img_path": img_path
+            "img_path": img_path,
+            "index": index
         }
+
+    def __getitem__(self, index):
+        if isinstance(index, (tuple, list)):
+            return [self._get_single_item(ind) for ind in index]
+        return self._get_single_item(index)
 
     @property
     def num_classes(self):
@@ -65,8 +71,8 @@ class NewCommDataset(Dataset):
     def __len__(self):
         return len(self.dataset)
 
-    def __getitem__(self, index):
-        img_path, pid, camid = self.dataset[index]
+    def _get_single_item(self, index):
+        img_path, pid, camid = self.img_items[index]
         img = read_image(img_path)
         if self.transform is not None: img = self.transform(img)
         if self.relabel: pid = self.pid_dict[pid]
@@ -74,8 +80,14 @@ class NewCommDataset(Dataset):
             "images": img,
             "targets": pid,
             "camid": camid,
-            "img_path": img_path
+            "img_path": img_path,
+            "index": index
         }
+
+    def __getitem__(self, index):
+        if isinstance(index, (tuple, list)):
+            return [self._get_single_item(ind) for ind in index]
+        return self._get_single_item(index)
 
     @property
     def num_classes(self):

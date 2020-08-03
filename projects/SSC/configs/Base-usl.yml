@@ -6,14 +6,15 @@ MODEL:
     NORM: "BN"
     DEPTH: 50
     LAST_STRIDE: 1
+    WITH_NL: True
     WITH_IBN: False
     PRETRAIN: True
 
   HEADS:
     NAME: "BNneckHead"
     NORM: "BN"
-    POOL_LAYER: "avgpool"
-    NECK_FEAT: "before"
+    POOL_LAYER: "gempool"
+    NECK_FEAT: "after"
     CLS_LAYER: "linear"
 
   LOSSES:
@@ -43,13 +44,6 @@ DATALOADER:
   NUM_INSTANCE: 4
   NUM_WORKERS: 16
 
-UNSUPERVISED:
-  EPS: 0.6
-  EPS_GAP: 0.02
-  CLUSTER_ITER: 400
-  MEMORY_TEMP: 0.05
-  MEMORY_MOMENTUM: 0.2
-
 SOLVER:
   OPT: "Adam"
   MAX_ITER: 120
@@ -59,7 +53,7 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0.0005
   IMS_PER_BATCH: 64
 
-  STEPS: [40, 90]
+  STEPS: [40, 80]
   GAMMA: 0.1
 
   WARMUP_FACTOR: 0.01

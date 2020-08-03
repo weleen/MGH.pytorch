@@ -6,7 +6,7 @@
 from fvcore.common.config import CfgNode as CN
 
 
-def add_spclreid_config(cfg):
+def add_ssc_config(cfg):
     _C = cfg
 
     # -----------------------------------------------------------------------------

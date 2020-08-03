@@ -11,7 +11,6 @@ MODEL:
     WITH_SE: False
     WITH_NL: False
     PRETRAIN: True
-    PRETRAIN_PATH: "/home/wuyiming/.cache/checkpoints/resnet50-19c8e357.pth"
 
   HEADS:
     NAME: "BNneckHead"

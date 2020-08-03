@@ -208,6 +208,20 @@ class ImageDataset(Dataset):
         logger.info('  gallery  | {:5d} | {:8d} | {:9d}'.format(num_gallery_pids, len(self.gallery), num_gallery_cams))
         logger.info('  ----------------------------------------')
 
+    def renew_labels(self, pseudo_labels):
+        assert isinstance(pseudo_labels, list), 'pseudo labels is not list'
+        assert len(pseudo_labels) == len(
+            self.data
+        ), "the number of pseudo labels should be the same as that of data"
+
+        data = []
+        for label, (img_path, _, camid) in zip(pseudo_labels, self.data):
+            if label != -1: data.append((img_path, label, camid))
+        self.data = data
+        self.num_pids, self.num_cams = self.parse_data(self.data)
+        if self.verbose:
+            self.show_train()
+
 # class VideoDataset(Dataset):
 #     """A base class representing VideoDataset.
 #     All other video datasets should subclass it.
