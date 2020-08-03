@@ -1,0 +1,16 @@
+_BASE_: "../Base-buc.yml"
+
+MODEL:
+  HEADS:
+    NECK_FEAT: "after"
+  LOSSES:
+    NAME: ("CrossEntropyLoss",)
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+DATALOADER:
+  PK_SAMPLER: False
+
+OUTPUT_DIR: "logs/BUC/market1501/buc_R50"

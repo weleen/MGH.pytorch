@@ -1,13 +1,12 @@
 # encoding: utf-8
 """
-@author:  liaoxingyu
-@contact: sherlockliao01@gmail.com
+@author:  tianjian
 """
 
 import torch
 from torch.utils.data import Dataset
 
-from fastreid.data.data_utils import read_image
+from fastreid.utils.misc import read_image
 
 
 class CommDataset(Dataset):
@@ -60,6 +59,7 @@ class CommDataset(Dataset):
         else:                     prefix = file_path.split('/')[1]
 
         return prefix + '_' + str(pid)
-
-    def update_pid_dict(self, pid_dict):
-        self.pid_dict = pid_dict
+    
+    @property
+    def num_classes(self):
+        return len(self.pids)
