@@ -16,13 +16,14 @@ from fastreid.config import cfg
 from fastreid.engine import default_argument_parser, default_setup, launch
 
 import warnings
-from bucreid import *
+from hctreid import *
 
 
 def setup(args):
     """
     Create configs and perform basic setups.
     """
+    add_hct_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()
@@ -37,7 +38,7 @@ def main(args):
     if args.eval_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
-        model = BUCTrainer.build_model(cfg)
+        model = HCTTrainer.build_model(cfg)
         model = nn.DataParallel(model).to(cfg.MODEL.DEVICE)
         Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
         if cfg.TEST.PRECISE_BN.ENABLED and get_bn_modules(model):
@@ -49,13 +50,13 @@ def main(args):
                 # Run at the same freq as (but before) evaluation.
                 model,
                 # Build a new data loader to not affect training
-                BUCTrainer.build_train_loader(prebn_cfg),
+                HCTTrainer.build_train_loader(prebn_cfg),
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ).update_stats()
-        res = BUCTrainer.test(cfg, model)
+        res = HCTTrainer.test(cfg, model)
         return res
 
-    trainer = BUCTrainer(cfg)
+    trainer = HCTTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
     return trainer.train()
 

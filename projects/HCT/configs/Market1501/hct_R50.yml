@@ -1,0 +1,30 @@
+_BASE_: "../Base-hct.yml"
+
+MODEL:
+  HEADS:
+    NECK_FEAT: "after"
+  LOSSES:
+    NAME: ("TripletLoss",)
+    TRI:
+      MARGIN: 0.5
+      HARD_MINING: True
+
+SOLVER:
+  OPT: "SGD"
+  MAX_ITER: 200
+  BASE_LR: 6e-5
+
+HCT:
+  MERGE_PERCENT: 0.07
+  MERGE_STEPS: 13
+  SIZE_PENALTY: 0.003
+  EPOCHS_PER_LOOP: 20
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+DATALOADER:
+  PK_SAMPLER: True
+
+OUTPUT_DIR: "logs/HCT/market1501/hct_R50"

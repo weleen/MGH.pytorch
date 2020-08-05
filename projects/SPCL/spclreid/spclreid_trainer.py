@@ -42,6 +42,7 @@ class SPCLTrainer(DefaultTrainer):
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare training set')
         data_loader = self.construct_unsupervised_dataloader(is_train=False)
+        # data_loader = build_reid_train_loader_new(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
