@@ -95,7 +95,6 @@ _C.MODEL.LOSSES.TRI.MARGIN = 0.3
 _C.MODEL.LOSSES.TRI.NORM_FEAT = False
 _C.MODEL.LOSSES.TRI.HARD_MINING = True
 _C.MODEL.LOSSES.TRI.SCALE = 1.0
-_C.MODEL.LOSSES.TRI.FREEZE_ITER = 0
 
 # Circle Loss options
 _C.MODEL.LOSSES.CIRCLE = CN()
@@ -160,10 +159,6 @@ _C.DATASETS.NAMES = ("Market1501",)
 _C.DATASETS.TESTS = ("Market1501",)
 # Combine trainset and testset joint training
 _C.DATASETS.COMBINEALL = False
-# Added configurations from openunreid
-# Unsupervised index for training dataset
-# this hyperparameter is used for un/semi-supervised training
-_C.DATASETS.TRAINS_UNSUPERVISED = () # (0,)
 
 # ----------------------------------------------------------------------------- #
 # CUHK03 specific parameters
@@ -190,7 +185,6 @@ _C.DATALOADER.PK_SAMPLER = True
 _C.DATALOADER.NAIVE_WAY = False
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
-# Number of worker for each gpu
 _C.DATALOADER.NUM_WORKERS = 8
 # Iters per epoch
 _C.DATALOADER.ITERS_PER_EPOCH = 1
@@ -241,7 +235,7 @@ _C.SOLVER.SWA.LR_SCHED = False
 _C.SOLVER.CHECKPOINT_PERIOD = 60
 
 _C.SOLVER.LOG_PERIOD = 200
-# Number of images per batch
+# Number of images per batch across all machines
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch
 _C.SOLVER.IMS_PER_BATCH = 64
@@ -253,7 +247,7 @@ _C.SOLVER.IMS_PER_BATCH = 64
 # see 2 images per batch
 _C.TEST = CN()
 
-_C.TEST.EVAL_PERIOD = 50
+_C.TEST.EVAL_PERIOD = 20
 
 # Number of images per batch in one process.
 _C.TEST.IMS_PER_BATCH = 64

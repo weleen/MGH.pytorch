@@ -6,9 +6,10 @@
 
 from .activation import *
 from .arcface import Arcface
+from .circle import Circle
+from .am_softmax import AMSoftmax
 from .batch_drop import BatchDrop
 from .batch_norm import *
-from .circle import Circle
 from .context_block import ContextBlock
 from .frn import FRN, TLU
 from .non_local import Non_local

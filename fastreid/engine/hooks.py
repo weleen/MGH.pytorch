@@ -33,7 +33,6 @@ __all__ = [
     "EvalHook",
     "PreciseBN",
     "FreezeLayer",
-    "SWA",
 ]
 
 """
@@ -464,7 +463,7 @@ class FreezeLayer(HookBase):
 
 
 class SWA(HookBase):
-    def __init__(self, swa_start: int, swa_freq: int, swa_lr_factor: float, eta_min: float, lr_sched=False,):
+    def __init__(self, swa_start: int, swa_freq: int, swa_lr_factor: float, eta_min: float, lr_sched=False, ):
         self.swa_start = swa_start
         self.swa_freq = swa_freq
         self.swa_lr_factor = swa_lr_factor

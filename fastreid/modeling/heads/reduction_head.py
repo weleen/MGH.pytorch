@@ -34,9 +34,10 @@ class ReductionHead(nn.Module):
         if cls_type == 'linear':    self.classifier = nn.Linear(reduction_dim, num_classes, bias=False)
         elif cls_type == 'arcface': self.classifier = Arcface(cfg, reduction_dim, num_classes)
         elif cls_type == 'circle':  self.classifier = Circle(cfg, reduction_dim, num_classes)
+        elif cls_type == 'amSoftmax': self.classifier = AMSoftmax(cfg, reduction_dim, num_classes)
         else:
             raise KeyError(f"{cls_type} is invalid, please choose from "
-                           f"'linear', 'arcface' and 'circle'.")
+                           f"'linear', 'arcface', 'amSoftmax' and 'circle'.")
 
         self.classifier.apply(weights_init_classifier)
 

@@ -9,9 +9,6 @@ MODEL:
     WITH_IBN: True
     PRETRAIN_PATH: "/home/wuyiming/.cache/torch/checkpoints/resnet50_ibn_a.pth.tar"
 
-  HEADS:
-    NUM_CLASSES: 575
-
 SOLVER:
   OPT: "SGD"
   BASE_LR: 0.01

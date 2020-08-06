@@ -24,7 +24,7 @@ class Baseline(nn.Module):
 
         # head
         pool_type = cfg.MODEL.HEADS.POOL_LAYER
-        if pool_type == 'avgpool':      pool_layer = FastGlobalAvgPool2d()
+        if pool_type == 'avgpool':  pool_layer = FastGlobalAvgPool2d()
         elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
         elif pool_type == 'gempool':    pool_layer = GeneralizedMeanPoolingP()
         elif pool_type == "avgmaxpool": pool_layer = AdaptiveAvgMaxPool2d()

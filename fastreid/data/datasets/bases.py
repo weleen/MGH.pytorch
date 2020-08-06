@@ -8,6 +8,8 @@ import copy
 import logging
 import os
 
+logger = logging.getLogger(__name__)
+
 
 class Dataset(object):
     """An abstract class representing a Dataset.
@@ -49,6 +51,9 @@ class Dataset(object):
         else:
             raise ValueError('Invalid mode. Got {}, but expected to be '
                              'one of [train | query | gallery]'.format(self.mode))
+
+        # if self.verbose:
+        #     self.show_summary()
 
     def __getitem__(self, index):
         raise NotImplementedError
@@ -176,7 +181,6 @@ class ImageDataset(Dataset):
         super(ImageDataset, self).__init__(train, query, gallery, **kwargs)
 
     def show_train(self):
-        logger = logging.getLogger(__name__)
         num_train_pids, num_train_cams = self.parse_data(self.train)
         logger.info('=> Loaded {}'.format(self.__class__.__name__))
         logger.info('  ----------------------------------------')
@@ -186,7 +190,6 @@ class ImageDataset(Dataset):
         logger.info('  ----------------------------------------')
 
     def show_test(self):
-        logger = logging.getLogger(__name__)
         num_query_pids, num_query_cams = self.parse_data(self.query)
         num_gallery_pids, num_gallery_cams = self.parse_data(self.gallery)
         logger.info('=> Loaded {}'.format(self.__class__.__name__))
@@ -195,24 +198,4 @@ class ImageDataset(Dataset):
         logger.info('  ----------------------------------------')
         logger.info('  query    | {:5d} | {:8d} | {:9d}'.format(num_query_pids, len(self.query), num_query_cams))
         logger.info('  gallery  | {:5d} | {:8d} | {:9d}'.format(num_gallery_pids, len(self.gallery), num_gallery_cams))
-        logger.info('  ----------------------------------------')
-
-    def renew_labels(self, pseudo_labels):
-        assert isinstance(pseudo_labels, list), 'pseudo labels is not list'
-        assert len(pseudo_labels) == len(
-            self.data
-        ), "the number of pseudo labels should be the same as that of data"
-
-        data = []
-        for label, (img_path, _, camid) in zip(pseudo_labels, self.data):
-            if label != -1: data.append((img_path, label, camid))
-        self.data = data
-        num_pids, num_cams = self.parse_data(self.data)
-
-        logger = logging.getLogger(__name__)
-        logger.info('=> Loaded {}'.format(self.__class__.__name__))
-        logger.info('  ----------------------------------------')
-        logger.info('  subset   | # ids | # images | # cameras')
-        logger.info('  ----------------------------------------')
-        logger.info('  train    | {:5d} | {:8d} | {:9d}'.format(num_pids, len(self.data), num_cams))
         logger.info('  ----------------------------------------')

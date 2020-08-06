@@ -4,6 +4,8 @@
 @contact: sherlockliao01@gmail.com
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,6 +21,7 @@ class Circle(nn.Module):
         self._m = cfg.MODEL.HEADS.MARGIN
 
         self.weight = Parameter(torch.Tensor(num_classes, in_feat))
+        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
 
     def forward(self, features, targets):
         sim_mat = F.linear(F.normalize(features), F.normalize(self.weight))

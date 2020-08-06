@@ -221,7 +221,7 @@ class DefaultTrainer(SimpleTrainer):
             # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
             # for part of the parameters is not updated.
             ddp_cfg = {
-                'device': [comm.get_local_rank()],
+                'device_ids': [comm.get_local_rank()],
                 'broadcast_buffers': False,
                 'output_device': comm.get_local_rank(),
                 'find_unused_parameters': True
@@ -326,11 +326,8 @@ class DefaultTrainer(SimpleTrainer):
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
 
         def test_and_save_results():
-            if comm.is_main_process():
-                self._last_eval_results = self.test(self.cfg, self.model)
-                return self._last_eval_results
-            else:
-                return None
+            self._last_eval_results = self.test(self.cfg, self.model)
+            return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
         # we can use the saved checkpoint to debug.
@@ -515,14 +512,13 @@ class DefaultTrainer(SimpleTrainer):
             cfg.SOLVER.STEPS[i] *= iters_per_epoch
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
-        cfg.SOLVER.CHECKPOINT_PERIOD *= iters_per_epoch
-        cfg.MODEL.LOSSES.TRI.FREEZE_ITER *= iters_per_epoch
 
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
-        cfg.SOLVER.CHECKPOINT_PERIOD = int(
-            round(cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD) * cfg.TEST.EVAL_PERIOD)
+
+        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        cfg.SOLVER.CHECKPOINT_PERIOD = cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch + num_mode
 
         logger = logging.getLogger(__name__)
         logger.info(
@@ -531,7 +527,6 @@ class DefaultTrainer(SimpleTrainer):
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
-            f"triplet_freeze_iter={cfg.MODEL.LOSSES.TRI.FREEZE_ITER}, "
             f"iters_per_epoch={iters_per_epoch}."
         )
 

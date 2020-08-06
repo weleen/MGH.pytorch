@@ -4,20 +4,14 @@ MODEL:
   BACKBONE:
     NAME: "build_resnet_backbone"
     NORM: "BN"
-    NORM_SPLIT: 1
     DEPTH: 50
     LAST_STRIDE: 1
     WITH_IBN: False
-    WITH_SE: False
-    WITH_NL: False
     PRETRAIN: True
 
   HEADS:
     NAME: "BNneckHead"
     NORM: "BN"
-    NORM_SPLIT: 1
-    IN_FEAT: 2048
-    REDUCTION_DIM: 512
     POOL_LAYER: "avgpool"
     NECK_FEAT: "before"
     CLS_LAYER: "linear"
@@ -26,32 +20,20 @@ MODEL:
 
   LOSSES:
     NAME: ("CrossEntropyLoss", "TripletLoss",)
+
     CE:
       EPSILON: 0.1
-      ALPHA: 0.3
       SCALE: 1.
+
     TRI:
       MARGIN: 0.3
       HARD_MINING: True
       NORM_FEAT: False
       SCALE: 1.
-    CIRCLE:
-      MARGIN: 0.25
-      ALPHA: 128
-      SCALE: 1.
-    FL:
-      ALPHA: 0.25
-      GAMMA: 2
-      SCALE: 1.
-  WEIGHTS: ""
-  PIXEL_MEAN: [0.485, 0.456, 0.406]
-  PIXEL_STD: [0.229, 0.224, 0.225]
 
 INPUT:
   SIZE_TRAIN: [256, 128]
   SIZE_TEST: [256, 128]
-  DO_FLIP: True
-  FLIP_PROB: 0.5
   REA:
     ENABLED: True
     PROB: 0.5
@@ -81,7 +63,6 @@ SOLVER:
   WARMUP_FACTOR: 0.01
   WARMUP_ITERS: 10
 
-  LOG_PERIOD: 200
   CHECKPOINT_PERIOD: 10
 
 TEST:
