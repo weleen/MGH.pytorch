@@ -18,11 +18,7 @@ from fastreid.modeling.meta_arch.build import META_ARCH_REGISTRY
 @META_ARCH_REGISTRY.register()
 class USL_Baseline(nn.Module):
     def __init__(self, cfg):
-        super().__init__()
-        self.register_buffer("pixel_mean", torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(1, -1, 1, 1))
-        self.register_buffer("pixel_std", torch.Tensor(cfg.MODEL.PIXEL_STD).view(1, -1, 1, 1))
-        self._cfg = cfg
-        # backbone
+        super().__init__()       # backbone
         self.backbone = build_backbone(cfg)
 
         # head

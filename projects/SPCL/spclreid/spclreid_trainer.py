@@ -16,7 +16,7 @@ from torch.nn.parallel import DistributedDataParallel
 from fvcore.common.config import CfgNode
 from fvcore.common.checkpoint import Checkpointer
 
-from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator, build_reid_train_loader_new
+from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator, build_reid_train_loader
 from fastreid.data.samplers import RandomMultipleGallerySampler
 from fastreid.data.transforms import build_transforms
 from fastreid.engine.defaults import DefaultTrainer
@@ -42,7 +42,6 @@ class SPCLTrainer(DefaultTrainer):
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare training set')
         data_loader = self.construct_unsupervised_dataloader(is_train=False)
-        # data_loader = build_reid_train_loader_new(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
@@ -318,14 +317,13 @@ class SPCLTrainer(DefaultTrainer):
             cfg.SOLVER.STEPS[i] *= iters_per_epoch
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
-        cfg.SOLVER.CHECKPOINT_PERIOD *= iters_per_epoch
-        cfg.MODEL.LOSSES.TRI.FREEZE_ITER *= iters_per_epoch
 
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
-        cfg.SOLVER.CHECKPOINT_PERIOD = int(
-            round(cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD) * cfg.TEST.EVAL_PERIOD)
+        
+        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        cfg.SOLVER.CHECKPOINT_PERIOD = cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch + num_mode
 
         logger = logging.getLogger('fastreid.' + __name__)
         logger.info(
@@ -334,7 +332,6 @@ class SPCLTrainer(DefaultTrainer):
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
-            f"triplet_freeze_iter={cfg.MODEL.LOSSES.TRI.FREEZE_ITER}, "
             f"iters_per_epoch={iters_per_epoch}."
         )
 
