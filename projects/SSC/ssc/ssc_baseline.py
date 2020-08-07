@@ -14,6 +14,8 @@ from fastreid.layers import get_norm
 from fastreid.utils.weight_init import weights_init_kaiming
 from fastreid.modeling.meta_arch.build import META_ARCH_REGISTRY
 
+from .modeling.losses.NTXentLoss import NTXentLoss
+
 
 @META_ARCH_REGISTRY.register()
 class SSCBaseline(nn.Module):
@@ -45,35 +47,34 @@ class SSCBaseline(nn.Module):
         return next(self.parameters()).device
 
     def forward(self, batched_inputs):
-        if not self.training:
-            return self.inference(batched_inputs)
-
         images = self.preprocess_image(batched_inputs)
-        targets = batched_inputs["targets"].long()
+        images_size = images.size()
+        if len(images_size) > 4:
+            images = images.view(-1, *images_size[2:])
+        features = self.backbone(images)
 
-        # training
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
         global_feat = self.pool_layer(features)
         bn_feat = self.bnneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
 
-        if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
-        elif self.neck_feat == "after": feat = bn_feat
+        if self.training:
+            assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
+            targets = batched_inputs["targets"].long().to(self.device)
+
+            if self.neck_feat == "before":
+                feat = global_feat[..., 0, 0]
+            elif self.neck_feat == "after":
+                feat = bn_feat
+            else:
+                raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
+
+            if len(images_size) > 4:
+                feat = feat.view(images_size[0], images_size[1], *feat.size()[1:])
+                return feat, targets, batched_inputs["index"]
+            else:
+                return feat, targets, batched_inputs["index"]
         else:
-            raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
-        # normalize the feature
-        feat = F.normalize(feat)
-
-        return feat, targets, batched_inputs['index']
-
-    def inference(self, batched_inputs):
-        assert not self.training
-        images = self.preprocess_image(batched_inputs)
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-        global_feat = self.pool_layer(features)
-        bn_feat = self.bnneck(global_feat)
-        pred_feat = bn_feat[..., 0, 0]
-        return pred_feat
+            return bn_feat
 
     def preprocess_image(self, batched_inputs):
         """
@@ -82,7 +83,8 @@ class SSCBaseline(nn.Module):
         images = batched_inputs["images"].to(self.device)
         return images
 
-    def losses(self, outputs, memory):
-        feat, targets, indexes = outputs
-        loss = memory(feat, indexes)
-        return {'contrastive_loss': loss}
+    def losses(self, outputs):
+        feat, targets, pseudo_id = outputs
+        feat1 = feat[:, 0].contiguous()
+        feat2 = feat[:, 1].contiguous()
+        return NTXentLoss(self._cfg)(feat1, feat2, pseudo_id)

@@ -3,7 +3,7 @@ MODEL:
 
   BACKBONE:
     NAME: "build_resnet_backbone"
-    NORM: "BN"
+    NORM: "syncBN"
     DEPTH: 50
     LAST_STRIDE: 1
     WITH_NL: True
@@ -12,7 +12,7 @@ MODEL:
 
   HEADS:
     NAME: "BNneckHead"
-    NORM: "BN"
+    NORM: "syncBN"
     POOL_LAYER: "gempool"
     NECK_FEAT: "after"
     CLS_LAYER: "linear"
@@ -42,10 +42,7 @@ INPUT:
 DATALOADER:
   PK_SAMPLER: False
   NUM_INSTANCE: 4
-  NUM_WORKERS: 16
-
-DATASETS:
-  TRAINS_UNSUPERVISED: (0,)
+  NUM_WORKERS: 2
 
 SOLVER:
   OPT: "Adam"

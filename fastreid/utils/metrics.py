@@ -119,3 +119,16 @@ def cluster_accuracy(output, target):
         w[output[i], target[i]] += 1
     ind = linear_assignment(w.max() - w)
     return sum([w[i, j] for i, j in ind]) * 1.0 / output.size
+
+
+def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
+    """
+    Calculate clustering accuracy, nmi and ari
+    :param label_pred: predicted matrix with shape (N,)
+    :param label_true: ground truth with shape (N,)
+    :return: Tuple(float, float, float) for acc, nmi, ari
+    """
+    nmi_score = normalized_mutual_info_score(label_true, label_pred)
+    ari_score = adjusted_rand_score(label_true, label_pred)
+    acc_score = cluster_accuracy(label_pred, label_true)
+    return acc_score, nmi_score, ari_score
