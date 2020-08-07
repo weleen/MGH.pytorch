@@ -253,3 +253,23 @@ def reduce_dict(input_dict, average=True):
             values /= world_size
         reduced_dict = {k: v for k, v in zip(names, values)}
     return reduced_dict
+
+
+class GatherLayer(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input):
+        ctx.save_for_backward(input)
+        output = [torch.zeros_like(input) for _ in range(dist.get_world_size())]
+        dist.all_gather(output, input)
+        return tuple(output)
+
+    @staticmethod
+    def backward(ctx, *grads):
+        input, = ctx.saved_tensors
+        grad_out = torch.zeros_like(input)
+        grad_out[:] = grads[dist.get_rank()]
+        return grad_out
+
+
+def concat_all_gather(tensor):
+    return torch.cat(GatherLayer.apply(tensor), dim=0)

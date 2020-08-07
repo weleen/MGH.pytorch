@@ -43,6 +43,7 @@ class TrainingSampler(Sampler):
 
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
+        self.batch_size = kwargs['batch_size'] if 'batch_size' in kwargs else 1
 
     def __iter__(self):
         start = self._rank
@@ -52,9 +53,9 @@ class TrainingSampler(Sampler):
         np.random.seed(self._seed)
         while True:
             if self._shuffle:
-                yield from np.random.permutation(self._size)
+                yield from np.random.permutation(self._size)[:round(self._size // self.batch_size * self.batch_size)]
             else:
-                yield from np.arange(self._size)
+                yield from np.arange(self._size)[:round(self._size // self.batch_size * self.batch_size)]
 
 
 @SAMPLER_REGISTRY.register()
@@ -73,9 +74,12 @@ class InferenceSampler(Sampler):
         """
         self._size = size
         assert size > 0
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
 
-        begin = 0
-        end = self._size
+        shard_size = (self._size - 1) // self._world_size + 1
+        begin = shard_size * self._rank
+        end = min(shard_size * (self._rank + 1), self._size)
         self._local_indices = range(begin, end)
 
     def __iter__(self):

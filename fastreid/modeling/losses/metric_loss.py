@@ -9,7 +9,6 @@ import torch.nn.functional as F
 
 from fastreid.utils import comm
 from fastreid.utils.metrics import euclidean_dist
-from .utils import concat_all_gather, normalize
 
 
 def softmax_weights(dist, mask):
@@ -101,12 +100,12 @@ class TripletLoss(object):
 
     def __call__(self, _, embedding, targets):
         if self._normalize_feature:
-            embedding = normalize(embedding, axis=-1)
+            embedding = F.normalize(embedding, dim=1)
 
         # For distributed training, gather all features from different process.
         if comm.get_world_size() > 1:
-            all_embedding = concat_all_gather(embedding)
-            all_targets = concat_all_gather(targets)
+            all_embedding = comm.concat_all_gather(embedding)
+            all_targets = comm.concat_all_gather(targets)
         else:
             all_embedding = embedding
             all_targets = targets

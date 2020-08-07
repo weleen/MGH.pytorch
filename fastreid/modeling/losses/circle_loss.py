@@ -9,7 +9,6 @@ from torch import nn
 import torch.nn.functional as F
 
 from fastreid.utils import comm
-from .utils import concat_all_gather
 
 
 class CircleLoss(object):
@@ -23,8 +22,8 @@ class CircleLoss(object):
         embedding = nn.functional.normalize(embedding, dim=1)
 
         if comm.get_world_size() > 1:
-            all_embedding = concat_all_gather(embedding)
-            all_targets = concat_all_gather(targets)
+            all_embedding = comm.concat_all_gather(embedding)
+            all_targets = comm.concat_all_gather(targets)
         else:
             all_embedding = embedding
             all_targets = targets

@@ -11,7 +11,6 @@ import torch
 import torch.nn.functional as F
 
 from fastreid.utils import comm
-from fastreid.modeling.losses.utils import concat_all_gather
 
 
 def sigmoid(tensor, temp=1.0):
@@ -86,8 +85,8 @@ class SmoothAP(object):
 
         # For distributed training, gather all features from different process.
         if comm.get_world_size() > 1:
-            all_embedding = concat_all_gather(embedding)
-            all_targets = concat_all_gather(targets)
+            all_embedding = comm.concat_all_gather(embedding)
+            all_targets = comm.concat_all_gather(targets)
         else:
             all_embedding = embedding
             all_targets = targets

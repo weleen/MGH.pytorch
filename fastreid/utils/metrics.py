@@ -1,5 +1,8 @@
 import torch
 import torch.nn.functional as F
+import numpy as np
+from scipy.optimize import linear_sum_assignment as linear_assignment
+from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
 
 
 def euclidean_dist(x, y):
@@ -99,3 +102,20 @@ def compute_distance_matrix(input1, input2, metric='euclidean'):
         )
 
     return distmat
+
+
+def cluster_accuracy(output, target):
+    """
+    Calculate clustering accuracy.
+    :param output: (numpy.array): predicted matrix with shape (batch_size,)
+    :param target: (numpy.array): ground truth with shape (batch_size,)
+    :return:
+    """
+    target = target.astype(np.int64)
+    assert output.size == target.size
+    D = max(output.max(), target.max()) + 1
+    w = np.zeros((D, D), dtype=np.int64)
+    for i in range(output.size):
+        w[output[i], target[i]] += 1
+    ind = linear_assignment(w.max() - w)
+    return sum([w[i, j] for i, j in ind]) * 1.0 / output.size

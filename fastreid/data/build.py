@@ -6,6 +6,7 @@
 
 import os
 import torch
+import numpy
 from torch._six import container_abcs, string_classes, int_classes
 from torch.utils.data import DataLoader
 from fastreid.utils import comm
@@ -69,13 +70,13 @@ def build_reid_test_loader(cfg, dataset_name):
 
     test_set = CommDataset(test_items, test_transforms, relabel=False)
 
-    batch_size = cfg.TEST.IMS_PER_BATCH
+    mini_batch_size = cfg.TEST.IMS_PER_BATCH // comm.get_world_size()
     data_sampler = samplers.InferenceSampler(len(test_set))
-    batch_sampler = torch.utils.data.BatchSampler(data_sampler, batch_size, False)
+    batch_sampler = torch.utils.data.BatchSampler(data_sampler, mini_batch_size, False)
     test_loader = DataLoader(
         test_set,
         batch_sampler=batch_sampler,
-        num_workers=cfg.DATALOADER.NUM_WORKERS,
+        num_workers=0,  # save some memory
         collate_fn=fast_batch_collator)
     return test_loader, len(dataset.query)
 
@@ -100,3 +101,5 @@ def fast_batch_collator(batched_inputs):
         return torch.tensor(batched_inputs)
     elif isinstance(elem, string_classes):
         return batched_inputs
+    elif isinstance(elem, numpy.integer):
+        return torch.tensor(batched_inputs)
