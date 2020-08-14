@@ -6,7 +6,7 @@
 
 from fastreid.layers import *
 from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
-from fastreid.utils.weight_init import weights_init_classifier, weights_init_kaiming
+from fastreid.utils.torch_utils import weights_init_classifier, weights_init_kaiming
 
 
 class OcclusionUnit(nn.Module):

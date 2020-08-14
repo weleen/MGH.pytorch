@@ -4,6 +4,7 @@
 @contact: sherlockliao01@gmail.com
 """
 
+import logging
 import torch
 from torch import nn
 
@@ -34,12 +35,24 @@ class Baseline(nn.Module):
                            f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
 
         in_feat = cfg.MODEL.HEADS.IN_FEAT
-        num_classes = cfg.MODEL.HEADS.NUM_CLASSES
-        self.heads = build_reid_heads(cfg, in_feat, num_classes, pool_layer)
+        self.num_classes = cfg.MODEL.HEADS.NUM_CLASSES
+        self.heads = build_reid_heads(cfg, in_feat, self.num_classes, pool_layer)
 
     @property
     def device(self):
         return next(self.parameters()).device
+
+    @torch.no_grad()
+    def initialize_centers(self, centers, labels):
+        logger = logging.getLogger(__name__)
+        if self.num_classes > 0:
+            self.heads.classifier.weight.data[labels.min().item(): labels.max().item() + 1].copy_(
+                centers.to(self.heads.classifier.weight.device))
+        else:
+            logger.warning(
+                f"there is no classifier in the {self.__class__.__name__}, "
+                f"the initialization does not function"
+            )
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)

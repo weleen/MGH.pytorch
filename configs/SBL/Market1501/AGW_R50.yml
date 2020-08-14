@@ -1,0 +1,7 @@
+_BASE_: "../Base-sbl.yml"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/SBL/market1501/AGW_R50"

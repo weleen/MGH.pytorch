@@ -19,7 +19,7 @@ def softmax_weights(dist, mask):
     return W
 
 
-def hard_example_mining(dist_mat, is_pos, is_neg):
+def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
     """For each anchor, find the hardest positive and negative sample.
     Args:
       dist_mat: pair wise distance between samples, shape [N, M]
@@ -58,6 +58,8 @@ def hard_example_mining(dist_mat, is_pos, is_neg):
     dist_ap = dist_ap.squeeze(1)
     dist_an = dist_an.squeeze(1)
 
+    if return_index:
+        return dist_ap, dist_an, relative_p_inds, relative_n_inds
     return dist_ap, dist_an
 
 
@@ -133,3 +135,30 @@ class TripletLoss(object):
             "loss_triplet": loss * self._scale,
         }
 
+
+class SoftmaxTriplet(TripletLoss):
+    def __call__(self, _, embedding, targets):
+        if self._normalize_feature:
+            embedding = F.normalize(embedding, dim=1)
+
+        # For distributed training, gather all features from different process.
+        if comm.get_world_size() > 1:
+            all_embedding = comm.concat_all_gather(embedding)
+            all_targets = comm.concat_all_gather(targets)
+        else:
+            all_embedding = embedding
+            all_targets = targets
+
+        dist_mat = euclidean_dist(embedding, all_embedding)
+
+        N, M = dist_mat.size()
+        is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
+        is_neg = targets.view(N, 1).expand(N, M).ne(all_targets.view(M, 1).expand(M, N).t())
+
+        dist_ap, dist_an, ap_idx, an_idx = hard_example_mining(dist_mat, is_pos, is_neg, return_index=True)
+
+        triplet_dist = F.log_softmax(torch.stack((dist_ap, dist_an), dim=1))
+        loss = (-self._margin * triplet_dist[:, 0] - (1 - self._margin) * triplet_dist[:, 1]).mean()
+        return {
+            "loss_softmax_triplet": loss * self._scale,
+        }

@@ -23,3 +23,7 @@ def add_ssc_config(cfg):
     _C.UNSUPERVISED.CLUSTER_ITER = 400
     # Number of clusters
     _C.UNSUPERVISED.CLUSTER_SIZE = 500
+    # Topk for RankStatisticLoss
+    _C.UNSUPERVISED.TOPK = 5
+    _C.UNSUPERVISED.RAMPUP_ITER = 50
+    _C.UNSUPERVISED.RAMPUP_COEFF = 10.

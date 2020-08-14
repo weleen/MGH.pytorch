@@ -4,14 +4,15 @@
 @contact: sherlockliao01@gmail.com
 """
 
-__all__ = ['RandomErasing', 'RandomPatch', 'AugMix', ]
+__all__ = ['RandomErasing', 'RandomPatch', 'AugMix', 'GaussianBlur', 'MutualTransform']
 
+import copy
 import math
 import random
 from collections import deque
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter
 
 from .functional import augmentations_reid
 
@@ -59,6 +60,9 @@ class RandomErasing(object):
                     img[0, x1:x1 + h, y1:y1 + w] = self.mean[0]
                 return img
         return img
+
+    def __repr__(self):
+        return "Randomly Erasing"
 
 
 class RandomPatch(object):
@@ -177,3 +181,38 @@ class AugMix(object):
 
         mixed = (1 - m) * image + m * mix
         return mixed
+
+
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=(0.1, 2.0)):
+        self.sigma = sigma
+
+    def __call__(self, img):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        img = img.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return img
+
+    def __repr__(self):
+        return "GaussianBlur Transformer"
+
+
+class MutualTransform:
+    """Apply the transformer more times on a same raw image."""
+
+    def __init__(self, transformer, times=2):
+        self.transformer = transformer
+        self.times = times
+
+    def __call__(self, img):
+        imgs = []
+        for _ in range(self.times):
+            img_copy = copy.deepcopy(img)
+            img_copy = self.transformer(img_copy)
+            imgs.append(img_copy)
+
+        return imgs
+
+    def __repr__(self):
+        return "Mutual Transformer"

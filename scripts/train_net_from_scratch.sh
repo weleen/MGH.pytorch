@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # enviornment for socket
 # please use ifconfig to check local network name
-export GLOO_SOCKET_IFNAME=eno1
 python tools/train_net.py --config-file configs/VERIWild/AGW_R50.yml \
                           --num-gpus 4 \
                           MODEL.HEADS.CLS_LAYER "arcface" \

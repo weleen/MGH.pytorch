@@ -8,8 +8,10 @@ import os
 import tempfile
 import time
 from collections import Counter
+from itertools import accumulate
 
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
@@ -17,10 +19,13 @@ from fvcore.common.timer import Timer
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fvcore.common.file_io import PathManager
 
+from fastreid.data import build_reid_train_loader_new
 from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.solver import optim
 from fastreid.utils import comm
 from fastreid.utils.events import EventStorage, EventWriter
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
+from fastreid.utils.logger import log_every_n_seconds
 from .train_loop import HookBase
 
 __all__ = [
@@ -33,11 +38,14 @@ __all__ = [
     "EvalHook",
     "PreciseBN",
     "FreezeLayer",
+    "LabelGeneratorHook"
 ]
 
 """
 Implement some common hooks.
 """
+
+logger = logging.getLogger(__name__)
 
 
 class CallbackHook(HookBase):
@@ -101,7 +109,6 @@ class IterationTimer(HookBase):
         self._total_timer.pause()
 
     def after_train(self):
-        logger = logging.getLogger(__name__)
         total_time = time.perf_counter() - self._start_time
         total_time_minus_hooks = self._total_timer.seconds()
         hook_time = total_time - total_time_minus_hooks
@@ -366,9 +373,8 @@ class PreciseBN(HookBase):
             num_iter (int): number of iterations used to compute the precise
                 statistics.
         """
-        self._logger = logging.getLogger(__name__)
         if len(get_bn_modules(model)) == 0:
-            self._logger.info(
+            logger.info(
                 "PreciseBN is disabled because model does not contain BN layers in training mode."
             )
             self._disabled = True
@@ -400,14 +406,14 @@ class PreciseBN(HookBase):
         def data_loader():
             for num_iter in itertools.count(1):
                 if num_iter % 100 == 0:
-                    self._logger.info(
+                    logger.info(
                         "Running precise-BN ... {}/{} iterations.".format(num_iter, self._num_iter)
                     )
                 # This way we can reuse the same iterator
                 yield next(self._data_iter)
 
         with EventStorage():  # capture events in a new storage to discard them
-            self._logger.info(
+            logger.info(
                 "Running precise-BN for {} iterations...  ".format(self._num_iter)
                 + "Note that this could produce different statistics every time."
             )
@@ -416,8 +422,6 @@ class PreciseBN(HookBase):
 
 class FreezeLayer(HookBase):
     def __init__(self, model, open_layer_names, freeze_iters):
-        self._logger = logging.getLogger(__name__)
-
         if hasattr(model, 'module'):
             model = model.module
         self.model = model
@@ -444,7 +448,7 @@ class FreezeLayer(HookBase):
     def freeze_specific_layer(self):
         for layer in self.open_layer_names:
             if not hasattr(self.model, layer):
-                self._logger.info(f'{layer} is not an attribute of the model, will skip this layer')
+                logger.info(f'{layer} is not an attribute of the model, will skip this layer')
 
         for name, module in self.model.named_children():
             if name in self.open_layer_names:
@@ -494,3 +498,188 @@ class SWA(HookBase):
         is_final = next_iter == self.trainer.max_iter
         if is_final:
             self.trainer.optimizer.swap_swa_param()
+
+
+class LabelGeneratorHook(HookBase):
+    __factory = {
+        'dbscan': label_generator_dbscan,
+        'kmeans': label_generator_kmeans
+    }
+
+    def __init__(self, cfg, models):
+        self._step_timer = Timer()
+        self._cfg = cfg.clone()
+        if isinstance(models, torch.nn.Module):
+            models = [models]
+        self.models = models
+        self._data_loader_cluster = build_reid_train_loader_new(cfg, is_train=False)
+        self._datasets = self._data_loader_cluster.dataset  # save the original dataset
+
+        assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
+        assert cfg.PSEUDO.NAME in self.__factory.keys(), \
+            f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
+        self.label_generator = self.__factory[cfg.PSEUDO.NAME]
+        logger.info('generate pseudo labels with setting {}'.format(cfg.PSEUDO))
+
+        self.num_classes = []
+        self.indep_thres = []
+        if cfg.PSEUDO.NAME == 'kmeans':
+            self.num_classes = cfg.PSEUDO.NUM_CLUSTER
+
+    def before_step(self):
+        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 or self.trainer.iter == self.trainer.start_iter:
+            self._step_timer.reset()
+            self.update_labels()
+            sec = self._step_timer.seconds()
+            logger.info("Updating labels costs {}".format(str(datetime.timedelta(seconds=int(sec)))))
+            comm.synchronize()
+
+    def update_labels(self):
+        logger.info(f"{'*' * 20}\nStart updating pseudo labels on iteration {self.trainer.iter}\n{'*' * 20}")
+        if self.trainer.iter == self.trainer.start_iter or not hasattr(self.trainer, 'memory'):
+            # initialize in the first iteration
+            all_features = []
+            for model in self.models:
+                features = self.extract_features(model)
+                all_features.append(features)
+            all_features = torch.stack(all_features, dim=0).mean(0)
+        else:
+            all_features = self.trainer.memory.features.clone()
+
+        if self._cfg.PSEUDO.NORM_FEAT:
+            all_features = F.normalize(all_features, p=2, dim=1)
+        datasets_size = self._datasets.datasets_size
+        datasets_size_range = list(accumulate([0] + datasets_size))
+
+        all_labels = []
+        all_centers = []
+        for idx, dataset in enumerate(self._datasets):
+            dataset_name = self._cfg.DATASETS.NAMES[idx].lower()
+            if self.indep_thres:
+                indep_thres = self.indep_thres[idx]
+            else:
+                indep_thres = None
+            if self.num_classes:
+                num_classes = self.num_classes[idx]
+            else:
+                num_classes = None
+
+            if comm.is_main_process():
+                # clustering only on first GPU
+                start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
+                if idx in self._cfg.PSEUDO.UNSUP:
+                    labels, centers, num_classes, indep_thres = self.label_generator(
+                        self._cfg,
+                        all_features[start_id: end_id],
+                        num_classes=num_classes,
+                        indep_thres=indep_thres
+                    )
+                    if self._cfg.PSEUDO.NORM_CENTER:
+                        centers = F.normalize(centers, p=2, dim=1)
+                else:
+                    dataset = self._datasets[idx]
+                    labels = [int(item[1].split('_')) for item in dataset.data]
+            comm.synchronize()
+
+            # broadcast to other process
+            if comm.get_world_size() > 1:
+                num_classes = int(comm.broadcast_value(num_classes, 0))
+                if self._cfg.PSEUDO.NAME == "dbscan" and len(self._cfg.PSEUDO.DBSCAN.EPS) > 1:
+                    # use clustering reliability criterion
+                    indep_thres = comm.broadcast_value(indep_thres, 0)
+                if comm.get_rank() > 0:
+                    labels = torch.arange(len(dataset)).long()
+                    centers = torch.zeros((num_classes, all_features.size(-1))).float()
+                labels = comm.broadcast_tensor(labels, 0)
+                centers = comm.broadcast_tensor(centers, 0)
+
+            # show the label statistics
+            self.show_label_summary(labels, dataset_name)
+            # add the dataset name
+            all_labels.extend([dataset_name + str(l) for l in labels])
+
+            try:
+                self.indep_thres[idx] = indep_thres
+            except:
+                self.indep_thres.append(indep_thres)
+            try:
+                self.num_classes[idx] = num_classes
+            except:
+                self.num_classes.append(num_classes)
+
+            # update model classifier
+            if idx in self._cfg.PSEUDO.UNSUP:
+                for model in self.models:
+                    if hasattr(model, 'module'):
+                        model.module.initialize_centers(centers, labels)
+                    else:
+                        model.initialize_centers(centers, labels)
+
+        # update the dataloader, modify the original dataset,
+        self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
+                                                               datasets=)
+
+        logger.info(f"{'*' * 20}\nFinished updating pseudo label {'*' * 20}\n")
+
+    def show_label_summary(self, labels, dataset_name):
+        pass
+
+    @torch.no_grad()
+    def extract_features(self, model):
+        total = len(self._data_loader_cluster)
+        data_iter = iter(self._data_loader_cluster)
+        num_warmup = min(5, total - 1)
+        start_time = time.perf_counter()
+        total_compute_time = 0
+
+        features = list()
+        for idx in range(total):
+            inputs = next(data_iter)
+            if idx == num_warmup:
+                start_time = time.perf_counter()
+                total_compute_time = 0
+
+            start_compute_time = time.perf_counter()
+            outputs = model(inputs)
+            if self._cfg.PSEUDO.NORM_FEAT:
+                outputs = F.normalize(outputs, p=2, dim=-1)
+            features = features.append(outputs)
+            comm.synchronize()
+            total_compute_time += time.perf_counter() - start_compute_time
+
+            idx += 1
+            iters_after_start = idx + 1 - num_warmup * int(idx >= num_warmup)
+            seconds_per_img = total_compute_time / iters_after_start
+            if idx >= num_warmup * 2 or seconds_per_img > 30:
+                total_seconds_per_img = (time.perf_counter() - start_time) / iters_after_start
+                eta = datetime.timedelta(seconds=int(total_seconds_per_img * (total - idx - 1)))
+                log_every_n_seconds(
+                    logging.INFO,
+                    "Inference done {}/{}. {:.4f} s / img. ETA={}".format(
+                        idx + 1, total, seconds_per_img, str(eta)
+                    ),
+                    n=30,
+                )
+
+        total_time = time.perf_counter() - start_time
+        total_time_str = str(datetime.timedelta(seconds=total_time))
+        logger.info(
+            "Total inference time: {} ({:.6f} s / img per device)".format(
+                total_time_str, total_time / (total - num_warmup)
+            )
+        )
+        total_compute_time_str = str(datetime.timedelta(seconds=int(total_compute_time)))
+        logger.info(
+            "Total inference pure compute time: {} ({:.6f} s / img per device)".format(
+                total_compute_time_str, total_compute_time / (total - num_warmup)
+            )
+        )
+
+        if comm.get_world_size() > 1:
+            comm.synchronize()
+            features = torch.cat(features)
+            features = comm.gather(features)
+            features = sum(features, [])
+        features = torch.cat(features, dim=0)
+
+        return features

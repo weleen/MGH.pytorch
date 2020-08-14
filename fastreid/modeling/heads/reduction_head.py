@@ -5,7 +5,7 @@
 """
 
 from fastreid.layers import *
-from fastreid.utils.weight_init import weights_init_kaiming, weights_init_classifier
+from fastreid.utils.torch_utils import weights_init_kaiming, weights_init_classifier
 from .build import REID_HEADS_REGISTRY
 
 
@@ -24,6 +24,7 @@ class ReductionHead(nn.Module):
             nn.LeakyReLU(0.1, inplace=True),
         )
 
+        self.dropout = cfg.MODEL.HEADS.DROPOUT
         self.bnneck = get_norm(cfg.MODEL.HEADS.NORM, reduction_dim, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True)
 
         self.bottleneck.apply(weights_init_kaiming)
@@ -61,5 +62,8 @@ class ReductionHead(nn.Module):
         elif self.neck_feat == "after": feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
+
+        if self.dropout > 0:
+            feat = F.dropout(feat, p=self.dropout, training=self.training)
 
         return pred_class_logits, feat, targets

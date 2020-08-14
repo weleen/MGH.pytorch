@@ -13,7 +13,7 @@ from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.backbones.resnet import Bottleneck
 from fastreid.modeling.heads import build_reid_heads
 from fastreid.modeling.losses import reid_losses, CrossEntropyLoss
-from fastreid.utils.weight_init import weights_init_kaiming
+from fastreid.utils.torch_utils import weights_init_kaiming
 from .build import META_ARCH_REGISTRY
 
 

@@ -22,7 +22,7 @@ from torch.nn.parallel import DistributedDataParallel
 from fvcore.common.checkpoint import Checkpointer
 from fvcore.common.file_io import PathManager
 
-from fastreid.data import build_reid_test_loader, build_reid_train_loader
+from fastreid.data import build_reid_test_loader_new, build_reid_train_loader_new
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
                                  inference_on_dataset, print_csv_format)
 from fastreid.modeling.meta_arch import build_model
@@ -289,6 +289,14 @@ class DefaultTrainer(SimpleTrainer):
             hooks.LRScheduler(self.optimizer, self.scheduler),
         ]
 
+        if cfg.PSEUDO.ENABLED:
+            ret.append(
+                hooks.LabelGeneratorHook(
+                    cfg,
+                    self.model
+                )
+            )
+
         if cfg.SOLVER.SWA.ENABLED:
             ret.append(
                 hooks.SWA(
@@ -418,7 +426,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         logger = logging.getLogger(__name__)
         logger.info("Prepare training set")
-        return build_reid_train_loader(cfg)
+        return build_reid_train_loader_new(cfg)
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
@@ -428,7 +436,7 @@ class DefaultTrainer(SimpleTrainer):
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader(cfg, dataset_name)
+        return build_reid_test_loader_new(cfg, dataset_name)
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
@@ -503,7 +511,7 @@ class DefaultTrainer(SimpleTrainer):
 
         iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
-        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
+        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes if not cfg.PSEUDO.ENABLED else data_loader.dataset.num_pseudo_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
@@ -512,6 +520,7 @@ class DefaultTrainer(SimpleTrainer):
             cfg.SOLVER.STEPS[i] *= iters_per_epoch
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
+        cfg.PSEUDO.CLUSTER_ITER *= iters_per_epoch
 
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
@@ -527,6 +536,7 @@ class DefaultTrainer(SimpleTrainer):
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
+            f"pseudo_cluster_iter={cfg.PSEUDO.CLUSTER_ITER}, "
             f"iters_per_epoch={iters_per_epoch}."
         )
 

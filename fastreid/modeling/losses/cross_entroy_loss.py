@@ -41,7 +41,7 @@ class CrossEntropyLoss(object):
 
     def __call__(self, pred_class_logits, _, gt_classes):
         """
-        Compute the softmax cross entropy loss for box classification.
+        Compute the softmax cross entropy loss.
         Returns:
             scalar Tensor
         """
@@ -62,4 +62,23 @@ class CrossEntropyLoss(object):
         loss = (-targets * log_probs).mean(0).sum()
         return {
             "loss_cls": loss * self._scale,
+        }
+
+
+class SoftEntropyLoss(torch.nn.Module):
+    """
+    A class that stores information and compute losses about outputs of a head.
+    """
+    def __init__(self, cfg):
+        super(SoftEntropyLoss, self).__init__()
+        self._scale = cfg.MODEL.LOSSES.CE.SCALE
+        self.logsoftmax = torch.nn.LogSoftmax(dim=1)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, pred_class_logits, _, targets):
+        assert len(targets.shape) == 2, 'targets.shape is not 2'
+        log_probs = self.logsoftmax(pred_class_logits)
+        loss = (-self.softmax(targets).detach() * log_probs).mean(0).sum()
+        return {
+            "loss_soft_cls": loss * self._scale
         }

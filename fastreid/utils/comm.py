@@ -272,4 +272,40 @@ class GatherLayer(torch.autograd.Function):
 
 
 def concat_all_gather(tensor):
+    """
+    Concatenate tensor from all processes with the gradients.
+    :param tensor: (Tensor)
+    :return:
+    """
     return torch.cat(GatherLayer.apply(tensor), dim=0)
+
+
+@torch.no_grad()
+def broadcast_tensor(x, src, gpu=None):
+    rank = get_rank()
+    world_size = get_world_size()
+    is_dist = world_size > 1
+    if not is_dist:
+        return x
+
+    container = torch.empty_like(x).cuda(gpu)
+    if rank == src:
+        container.data.copy_(x)
+    dist.broadcast(container, src)
+    return container.cpu()
+
+
+@torch.no_grad()
+def broadcast_value(x, src, gpu=None):
+    rank = get_rank()
+    world_size = get_world_size()
+    is_dist = world_size > 1
+    if not is_dist:
+        return x
+
+    container = torch.Tensor([0.0]).cuda(gpu)
+    if rank == src:
+        tensor_x = torch.Tensor([x])
+        container.data.copy_(tensor_x)
+    dist.broadcast(container, src)
+    return container.cpu()[0].item()

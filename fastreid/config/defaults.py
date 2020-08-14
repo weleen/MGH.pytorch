@@ -74,6 +74,8 @@ _C.MODEL.HEADS.CLS_LAYER = "linear"  # "arcface" or "circle"
 # Margin and Scale for margin-based classification layer
 _C.MODEL.HEADS.MARGIN = 0.15
 _C.MODEL.HEADS.SCALE = 128
+# Dropout in the head
+_C.MODEL.HEADS.DROPOUT = False
 
 # ---------------------------------------------------------------------------- #
 # REID LOSSES options
@@ -133,6 +135,9 @@ _C.INPUT.FLIP_PROB = 0.5
 _C.INPUT.DO_PAD = True
 _C.INPUT.PADDING_MODE = 'constant'
 _C.INPUT.PADDING = 10
+# Gaussian blur
+_C.INPUT.DO_BLUR = True
+_C.INPUT.BLUR_PROB = 0.5
 # Random color jitter
 _C.INPUT.DO_CJ = False
 # Auto augmentation
@@ -148,6 +153,10 @@ _C.INPUT.REA.MEAN = [0.485, 0.456, 0.406]
 _C.INPUT.RPT = CN()
 _C.INPUT.RPT.ENABLED = False
 _C.INPUT.RPT.PROB = 0.5
+# Mutual tansform
+_C.INPUT.MUTUAL = CN()
+_C.INPUT.MUTUAL.ENABLED = False
+_C.INPUT.MUTUAL.TIMES = 2
 
 # -----------------------------------------------------------------------------
 # Dataset
@@ -179,15 +188,39 @@ _C.DATASETS.MARKET1501.ENABLE_500K = False
 # DataLoader
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
+# TODO: deprecate PK_SAMPLER and NAIVE_WAY, replace these with SAMPLER_NAME
 # P/K Sampler for data loading
 _C.DATALOADER.PK_SAMPLER = True
 # Naive sampler which don't consider balanced identity sampling
 _C.DATALOADER.NAIVE_WAY = False
+# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, TrainingSampler, InferenceSampler
+_C.DATALOADER.SAMPLER_NAME = "NaiveIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 2
 # Iters per epoch
 _C.DATALOADER.ITERS_PER_EPOCH = 1
+
+# -----------------------------------------------------------------------------
+# Pseudo label
+# -----------------------------------------------------------------------------
+_C.PSEUDO = CN()
+_C.PSEUDO.ENABLED = False
+_C.PSEUDO.NAME = 'dbscan'  # 'kmeans'
+_C.PSEUDO.UNSUP_INDEX = (0,)  # unsupervised index for training datasets, support MMT.
+_C.PSEUDO.CLUSTER_ITER = 1
+_C.PSEUDO.USE_OUTLIERS = False
+_C.PSEUDO.NORM_FEAT = True
+_C.PSEUDO.NORM_CENTER = True
+_C.PSEUDO.SEARCH_TYPE = 0
+_C.PSEUDO.NUM_CLUSTER = [500, ]
+
+_C.PSEUDO.DBSCAN = CN()
+_C.PSEUDO.DBSCAN.EPS = [0.6, ]
+_C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
+_C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
+_C.PSEUDO.DBSCAN.K1 = 30
+_C.PSEUDO.DBSCAN.K2 = 6
 
 # ---------------------------------------------------------------------------- #
 # Solver
@@ -292,4 +325,3 @@ _C.SAVE_PROJECT = True
 
 # random seed
 _C.SEED = -1
-

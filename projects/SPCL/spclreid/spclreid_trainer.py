@@ -17,7 +17,7 @@ from fvcore.common.config import CfgNode
 from fvcore.common.checkpoint import Checkpointer
 
 from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator, build_reid_train_loader
-from fastreid.data.samplers import RandomMultipleGallerySampler
+from fastreid.data.samplers import BalancedIdentitySampler
 from fastreid.data.transforms import build_transforms
 from fastreid.engine.defaults import DefaultTrainer
 from fastreid.utils.logger import setup_logger, log_every_n_seconds
@@ -116,7 +116,7 @@ class SPCLTrainer(DefaultTrainer):
 
         rmgs_flag = num_instance > 0
         if is_train and rmgs_flag and datalist is not None:
-            data_sampler = RandomMultipleGallerySampler(img_items, num_instance)
+            data_sampler = BalancedIdentitySampler(img_items, batch_size, num_instance)
         else:
             data_sampler = None
 

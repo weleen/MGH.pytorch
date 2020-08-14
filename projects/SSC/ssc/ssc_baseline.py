@@ -11,10 +11,12 @@ from torch.nn import functional as F
 from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
 from fastreid.modeling.backbones import build_backbone
 from fastreid.layers import get_norm
-from fastreid.utils.weight_init import weights_init_kaiming
+from fastreid.utils.torch_utils import weights_init_kaiming
+from fastreid.utils.misc import rampup
 from fastreid.modeling.meta_arch.build import META_ARCH_REGISTRY
 
 from .modeling.losses.NTXentLoss import NTXentLoss
+from .modeling.losses import RankStatLoss
 
 
 @META_ARCH_REGISTRY.register()
@@ -27,11 +29,16 @@ class SSCBaseline(nn.Module):
 
         # head
         pool_type = cfg.MODEL.HEADS.POOL_LAYER
-        if pool_type == 'avgpool':      pool_layer = FastGlobalAvgPool2d()
-        elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
-        elif pool_type == 'gempool':    pool_layer = GeneralizedMeanPoolingP()
-        elif pool_type == "avgmaxpool": pool_layer = AdaptiveAvgMaxPool2d()
-        elif pool_type == "identity":   pool_layer = nn.Identity()
+        if pool_type == 'avgpool':
+            pool_layer = FastGlobalAvgPool2d()
+        elif pool_type == 'maxpool':
+            pool_layer = nn.AdaptiveMaxPool2d(1)
+        elif pool_type == 'gempool':
+            pool_layer = GeneralizedMeanPoolingP()
+        elif pool_type == "avgmaxpool":
+            pool_layer = AdaptiveAvgMaxPool2d()
+        elif pool_type == "identity":
+            pool_layer = nn.Identity()
         else:
             raise KeyError(f"{pool_type} is invalid, please choose from "
                            f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
@@ -41,6 +48,9 @@ class SSCBaseline(nn.Module):
         self.bnneck = get_norm(cfg.MODEL.HEADS.NORM, in_feat, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True)
         self.bnneck.apply(weights_init_kaiming)
         self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
+
+        num_cluster = cfg.UNSUPERVISED.CLUSTER_SIZE
+        self.classifier = torch.nn.Linear(in_feat, num_cluster)
 
     @property
     def device(self):
@@ -56,6 +66,7 @@ class SSCBaseline(nn.Module):
         global_feat = self.pool_layer(features)
         bn_feat = self.bnneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
+        pred_logits = self.classifier(bn_feat)
 
         if self.training:
             assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
@@ -70,9 +81,10 @@ class SSCBaseline(nn.Module):
 
             if len(images_size) > 4:
                 feat = feat.view(images_size[0], images_size[1], *feat.size()[1:])
-                return feat, targets, batched_inputs["index"]
+                pred_logits = pred_logits.view(images_size[0], images_size[1], *pred_logits.size()[1:])
+                return feat, targets, batched_inputs["index"], pred_logits
             else:
-                return feat, targets, batched_inputs["index"]
+                return feat, targets, batched_inputs["index"], pred_logits
         else:
             return bn_feat
 
@@ -83,8 +95,14 @@ class SSCBaseline(nn.Module):
         images = batched_inputs["images"].to(self.device)
         return images
 
-    def losses(self, outputs):
-        feat, targets, pseudo_id = outputs
+    def losses(self, outputs, iter):
+        feat, targets, pseudo_id, pred_logits = outputs
         feat1 = feat[:, 0].contiguous()
         feat2 = feat[:, 1].contiguous()
-        return NTXentLoss(self._cfg)(feat1, feat2, pseudo_id)
+        prob1 = F.softmax(pred_logits[:, 0].contiguous(), dim=1)
+        prob2 = F.softmax(pred_logits[:, 1].contiguous(), dim=1)
+        rampup_scale = rampup(iter, self._cfg.UNSUPERVISED.RAMPUP_ITER, self._cfg.UNSUPERVISED.RAMPUP_COEFF)
+        loss_dict = {'consistency_loss': F.mse_loss(prob1, prob2) * rampup_scale}
+        loss_dict.update(RankStatLoss(self._cfg)(feat1, feat2, prob1, prob2))
+        return loss_dict
+        # return NTXentLoss(self._cfg)(feat1, feat2, pseudo_id)

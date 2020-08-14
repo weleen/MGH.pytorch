@@ -5,7 +5,7 @@
 """
 
 from .build_losses import reid_losses
-from .cross_entroy_loss import CrossEntropyLoss
+from .cross_entroy_loss import CrossEntropyLoss, SoftEntropyLoss
 from .focal_loss import FocalLoss
-from .metric_loss import TripletLoss
+from .metric_loss import TripletLoss, SoftmaxTriplet
 from .circle_loss import CircleLoss

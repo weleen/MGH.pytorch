@@ -9,7 +9,7 @@ from torch.nn import init
 from torch.nn import functional as F
 
 from fastreid.layers import *
-from fastreid.utils.weight_init import weights_init_kaiming, weights_init_classifier
+from fastreid.utils.torch_utils import weights_init_kaiming, weights_init_classifier
 from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
 
 

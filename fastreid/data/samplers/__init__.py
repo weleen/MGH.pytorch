@@ -11,7 +11,7 @@ Registry for sampling strategy.
 It must returns an instance of :class:Sampler
 """
 
-from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler
+from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler
 from .data_sampler import TrainingSampler, InferenceSampler
 
 __all__ = [k for k in globals().keys() if "builtin" not in k and not k.startswith("_")]

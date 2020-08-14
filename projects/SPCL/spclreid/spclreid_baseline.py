@@ -11,7 +11,7 @@ from torch.nn import functional as F
 from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
 from fastreid.modeling.backbones import build_backbone
 from fastreid.layers import get_norm
-from fastreid.utils.weight_init import weights_init_kaiming
+from fastreid.utils.torch_utils import weights_init_kaiming
 from fastreid.modeling.meta_arch.build import META_ARCH_REGISTRY
 
 
@@ -40,7 +40,7 @@ class USL_Baseline(nn.Module):
 
     @property
     def device(self):
-        return self.pixel_mean.device
+        return next(self.parameters()).device
 
     def forward(self, batched_inputs):
         if not self.training:

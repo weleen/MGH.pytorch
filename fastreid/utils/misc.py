@@ -143,3 +143,39 @@ def get_free_gpu(num_device=1) -> str:
     os.system('rm gpu_tmp')
     gpu_index = np.argsort(memory_available)[-num_device:].tolist()
     return ','.join(gpu_index) if len(gpu_index) > 1 else str(gpu_index[0])
+
+
+def sigmoid_rampup(current, rampup_length):
+    """Exponential rampup from https://arxiv.org/abs/1610.02242"""
+    if rampup_length == 0:
+        return 1.0
+    else:
+        current = np.clip(current, 0.0, rampup_length)
+        phase = 1.0 - current / rampup_length
+        return float(np.exp(-5.0 * phase * phase))
+
+
+def linear_rampup(current, rampup_length):
+    """Linear rampup"""
+    assert current >= 0 and rampup_length >= 0
+    if current >= rampup_length:
+        return 1.0
+    else:
+        return current / rampup_length
+
+
+def cosine_rampdown(current, rampdown_length):
+    """Cosine rampdown from https://arxiv.org/abs/1608.03983"""
+    assert 0 <= current <= rampdown_length
+    return float(.5 * (np.cos(np.pi * current / rampdown_length) + 1))
+
+
+def rampup(iter, rampup_iter, rampup_coeff, type='sigmoid'):
+    if type == 'sigmoid':
+        return rampup_coeff * sigmoid_rampup(iter, rampup_iter)
+    elif type == 'linear':
+        return rampup_coeff * linear_rampup(iter, rampup_iter)
+    elif type == 'cosine':
+        return rampup_coeff * cosine_rampdown(iter, rampup_iter)
+    else:
+        raise NotImplementedError
