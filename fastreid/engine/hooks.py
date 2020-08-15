@@ -508,18 +508,17 @@ class LabelGeneratorHook(HookBase):
 
     def __init__(self, cfg, models):
         self._step_timer = Timer()
-        self._cfg = cfg.clone()
+        self._cfg = cfg
         if isinstance(models, torch.nn.Module):
             models = [models]
         self.models = models
         self._data_loader_cluster = build_reid_train_loader_new(cfg, is_train=False)
-        self._datasets = self._data_loader_cluster.dataset  # save the original dataset
+        self._common_dataset = self._data_loader_cluster.dataset  # save the original dataset
 
         assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
         assert cfg.PSEUDO.NAME in self.__factory.keys(), \
             f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
         self.label_generator = self.__factory[cfg.PSEUDO.NAME]
-        logger.info('generate pseudo labels with setting {}'.format(cfg.PSEUDO))
 
         self.num_classes = []
         self.indep_thres = []
@@ -527,11 +526,10 @@ class LabelGeneratorHook(HookBase):
             self.num_classes = cfg.PSEUDO.NUM_CLUSTER
 
     def before_step(self):
-        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 or self.trainer.iter == self.trainer.start_iter:
+        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 \
+                or self.trainer.iter == self.trainer.start_iter:
             self._step_timer.reset()
             self.update_labels()
-            sec = self._step_timer.seconds()
-            logger.info("Updating labels costs {}".format(str(datetime.timedelta(seconds=int(sec)))))
             comm.synchronize()
 
     def update_labels(self):
@@ -548,12 +546,13 @@ class LabelGeneratorHook(HookBase):
 
         if self._cfg.PSEUDO.NORM_FEAT:
             all_features = F.normalize(all_features, p=2, dim=1)
-        datasets_size = self._datasets.datasets_size
+        datasets_size = self._common_dataset.datasets_size
         datasets_size_range = list(accumulate([0] + datasets_size))
 
+        all_datasets = []
         all_labels = []
         all_centers = []
-        for idx, dataset in enumerate(self._datasets):
+        for idx, dataset in enumerate(self._common_dataset.datasets):
             dataset_name = self._cfg.DATASETS.NAMES[idx].lower()
             if self.indep_thres:
                 indep_thres = self.indep_thres[idx]
@@ -577,8 +576,12 @@ class LabelGeneratorHook(HookBase):
                     if self._cfg.PSEUDO.NORM_CENTER:
                         centers = F.normalize(centers, p=2, dim=1)
                 else:
-                    dataset = self._datasets[idx]
-                    labels = [int(item[1].split('_')) for item in dataset.data]
+                    # labels must be int
+                    labels = [int(item[1].split('_')) if isinstance(item[1], str) else int(item[1])
+                              for item in dataset.data]
+                    num_classes = len(set(labels))
+                    centers = torch.zeros((num_classes, all_features.size(-1))).float()
+
             comm.synchronize()
 
             # broadcast to other process
@@ -593,10 +596,11 @@ class LabelGeneratorHook(HookBase):
                 labels = comm.broadcast_tensor(labels, 0)
                 centers = comm.broadcast_tensor(centers, 0)
 
-            # show the label statistics
             self.show_label_summary(labels, dataset_name)
             # add the dataset name
-            all_labels.extend([dataset_name + str(l) for l in labels])
+            labels = [dataset_name + '_' + str(l) if l != -1 else l for l in labels]
+            all_labels.append(labels)
+            all_datasets.append(self._common_dataset.rebuild_datasets(dataset, labels))
 
             try:
                 self.indep_thres[idx] = indep_thres
@@ -615,11 +619,15 @@ class LabelGeneratorHook(HookBase):
                     else:
                         model.initialize_centers(centers, labels)
 
-        # update the dataloader, modify the original dataset,
+        # update the dataloader
         self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
-                                                               datasets=)
+                                                               datasets=all_datasets,
+                                                               is_train=True)
 
-        logger.info(f"{'*' * 20}\nFinished updating pseudo label {'*' * 20}\n")
+        sec = self._step_timer.seconds()
+        logger.info(f"{'*' * 20}\n"
+                    f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}\n"
+                    f"{'*' * 20}\n")
 
     def show_label_summary(self, labels, dataset_name):
         pass

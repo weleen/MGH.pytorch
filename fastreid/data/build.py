@@ -119,19 +119,15 @@ def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> 
     cfg.defrost()
     logger = logging.getLogger(__name__)
     dataset_names = cfg.DATASETS.NAMES
-    if cfg.PSEUDO.ENABLED:
-        unsup_dataset_indexes = cfg.PSEUDO.UNSUP_INDEX
-    else:
-        unsup_dataset_indexes = ()
 
     if datasets is None:
         # generally for the first epoch
-        if len(unsup_dataset_indexes) == 0:
+        if len(cfg.PSEUDO.UNSUP_INDEX) == 0:
             logger.info(
                 f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})"
             )
         else:
-            no_label_datasets = [dataset_names[i] for i in unsup_dataset_indexes]
+            no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP_INDEX]
             logger.info(
                 f"The training is in a un/semi-supervised manner with "
                 f"{len(dataset_names)} dataset(s) {dataset_names},\n"

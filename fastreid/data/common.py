@@ -5,6 +5,7 @@
 """
 from typing import List, Union
 
+import copy
 import torch
 from torch.utils.data import Dataset
 
@@ -75,11 +76,11 @@ class NewCommDataset(Dataset):
     def datasets_size(self):
         return [len(dataset.data) for dataset in self.datasets]
 
-    def renew_labels(self, datasets):
-        # 1. replace the datasets
-        # 2. reconstruct img_items
-        # 3. reconstruct pids and pid_dict
-        pass
+    @staticmethod
+    def rebuild_datasets(ori_dataset: ImageDataset, pseudo_labeles: list):
+        dataset_ = copy.deepcopy(ori_dataset)
+        dataset_.renew_labels(pseudo_labeles)
+        return dataset_
 
     def __len__(self):
         return len(self.img_items)

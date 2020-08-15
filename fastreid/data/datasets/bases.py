@@ -199,3 +199,25 @@ class ImageDataset(Dataset):
         logger.info('  query    | {:5d} | {:8d} | {:9d}'.format(num_query_pids, len(self.query), num_query_cams))
         logger.info('  gallery  | {:5d} | {:8d} | {:9d}'.format(num_gallery_pids, len(self.gallery), num_gallery_cams))
         logger.info('  ----------------------------------------')
+
+    def renew_labels(self, pseudo_labels):
+        assert isinstance(pseudo_labels, list), 'pseudo labels is not list'
+        assert len(pseudo_labels) == len(
+            self.data
+        ), "the number of pseudo labels should be the same as that of data"
+
+        data = []
+        for label, (img_path, _, camid) in zip(pseudo_labels, self.data):
+            if label != -1:
+                data.append((img_path, label, camid))
+        self.data = data
+        num_pids, num_cams = self.parse_data(self.data)
+
+        logger = logging.getLogger(__name__)
+        logger.info('=> Loaded {}'.format(self.__class__.__name__))
+        logger.info('  ----------------------------------------')
+        logger.info('  subset   | # ids | # images | # cameras')
+        logger.info('  ----------------------------------------')
+        logger.info('  train    | {:5d} | {:8d} | {:9d}'.format(num_pids, len(self.data), num_cams))
+        logger.info('  ----------------------------------------')
+
