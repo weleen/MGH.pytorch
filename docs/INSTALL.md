@@ -8,3 +8,8 @@
 - [yacs](https://github.com/rbgirshick/yacs)
 - Cython (optional to compile evaluation code)
 - tensorboard (needed for visualization): `pip install tensorboard`
+- gdown (for automatically downloading pre-train model)
+- sklearn
+- termcolor
+- tabulate
+- [faiss](https://github.com/facebookresearch/faiss) `pip install faiss-cpu`

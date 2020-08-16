@@ -2,10 +2,10 @@
 
 ## Prepare pretrained model
 
-If you use origin ResNet, you do not need to do anything. But if you want to use ResNet-ibn or ResNeSt, you need to download pretrain model in [here](https://drive.google.com/open?id=1thS2B8UOSBi_cJX6zRy6YYRwz_nVFI_S).
-And then you need to put it in `~/.cache/torch/checkpoints` or anywhere you like.
+If you use backbones supported by fastreid, you do not need to do anything. It will automatically download the pre-train models.
+But if your network is not connected, you can download pre-train models manually and put it in `~/.cache/torch/checkpoints`.
 
-Then you should set the pretrain model path in `configs/Base-bagtricks.yml`.
+If you want to use other pre-train models, such as MoCo pre-train, you can download by yourself and set the pre-train model path in `configs/Base-bagtricks.yml`.
 
 ## Compile with cython to accelerate evalution
 
