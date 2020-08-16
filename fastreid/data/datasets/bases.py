@@ -204,7 +204,8 @@ class ImageDataset(Dataset):
         assert isinstance(pseudo_labels, list), 'pseudo labels is not list'
         assert len(pseudo_labels) == len(
             self.data
-        ), "the number of pseudo labels should be the same as that of data"
+        ), "the number of pseudo labels {} should be the same as that of data {}"\
+            .format(len(pseudo_labels), len(self.data))
 
         data = []
         for label, (img_path, _, camid) in zip(pseudo_labels, self.data):

@@ -43,6 +43,7 @@ class TrainingSampler(Sampler):
 
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
+        # support distributed training
         self.batch_size = kwargs['batch_size'] if 'batch_size' in kwargs else 1
 
     def __iter__(self):

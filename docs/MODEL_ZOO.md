@@ -90,6 +90,17 @@ For the leaderboard on public benchmarks, please refer to [LEADERBOARD.md](LEADE
 
 
 ### Supervised on object re-ID
+#### FastReID Model Zoo and Baselines
+
+This file documents collection of baselines trained with fastreid. All numbers were obtained with 1 NVIDIA P40 GPU.
+The software in use were PyTorch 1.4, CUDA 10.1.
+
+In addition to these official baseline models, you can find more models in [projects/](https://github.com/JDAI-CV/fast-reid/tree/master/projects).
+
+- The "Name" column contains a link to the config file.
+Running `tools/train_net.py` with this config file and 1 GPU will reproduce the model.
+- The *model id* column is provided for ease of reference. To check downloaded file integrity, any model on this page contains tis md5 prefix in its file name.
+- Training curves and other statistics can be found in `metrics` for each model.
 
 **BoT**:
 

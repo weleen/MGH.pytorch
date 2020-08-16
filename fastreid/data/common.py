@@ -23,7 +23,7 @@ class CommDataset(Dataset):
 
         self.pid_dict = {}
         if self.relabel:
-            # Sort the list, or the set will result in different pids on different process
+            # Sort the list, or the set will result in different pids on different processes
             self.pids = sorted(list(set([item[1] for item in img_items])))
             self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
 
@@ -69,6 +69,7 @@ class NewCommDataset(Dataset):
 
         self.pid_dict = {}
         if self.relabel:
+            # Sort the list, or the set will result in different pids on different processes
             self.pids = sorted(list(set([item[1] for item in self.img_items])))
             self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
 
