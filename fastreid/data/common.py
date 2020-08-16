@@ -62,7 +62,7 @@ class NewCommDataset(Dataset):
         else:
             self.datasets = [datasets]
         self.img_items = list()
-        for dataset in datasets:
+        for dataset in self.datasets:
             self.img_items.extend(dataset.data)
         self.transform = transform
         self.relabel = relabel
@@ -78,6 +78,8 @@ class NewCommDataset(Dataset):
 
     @staticmethod
     def rebuild_datasets(ori_dataset: ImageDataset, pseudo_labeles: list):
+        """Build single dataset by replace label
+        """
         dataset_ = copy.deepcopy(ori_dataset)
         dataset_.renew_labels(pseudo_labeles)
         return dataset_

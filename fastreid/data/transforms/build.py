@@ -39,7 +39,12 @@ def build_transforms(cfg, is_train=True):
         blur_prob = cfg.INPUT.BLUR_PROB
 
         # color jitter
-        do_cj = cfg.INPUT.DO_CJ
+        do_cj = cfg.INPUT.CJ.ENABLED
+        cj_prob = cfg.INPUT.CJ.PROB
+        cj_brightness = cfg.INPUT.CJ.BRIGHTNESS
+        cj_contrast = cfg.INPUT.CJ.CONTRAST
+        cj_saturation = cfg.INPUT.CJ.SATURATION
+        cj_hue = cfg.INPUT.CJ.HUE
 
         # random erasing
         do_rea = cfg.INPUT.REA.ENABLED
@@ -65,7 +70,7 @@ def build_transforms(cfg, is_train=True):
         if do_blur:
             res.append(T.RandomApply([GaussianBlur([0.1, 2.0])], p=blur_prob))
         if do_cj:
-            res.append(T.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0))
+            res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=cj_prob))
         if do_augmix:
             res.append(AugMix())
         res.append(T.ToTensor())

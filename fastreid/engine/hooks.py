@@ -26,6 +26,7 @@ from fastreid.utils import comm
 from fastreid.utils.events import EventStorage, EventWriter
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.logger import log_every_n_seconds
+from fastreid.utils.metrics import cluster_metrics
 from .train_loop import HookBase
 
 __all__ = [
@@ -506,12 +507,10 @@ class LabelGeneratorHook(HookBase):
         'kmeans': label_generator_kmeans
     }
 
-    def __init__(self, cfg, models):
+    def __init__(self, cfg, model):
         self._step_timer = Timer()
         self._cfg = cfg
-        if isinstance(models, torch.nn.Module):
-            models = [models]
-        self.models = models
+        self.model = model
         self._data_loader_cluster = build_reid_train_loader_new(cfg, is_train=False)
         self._common_dataset = self._data_loader_cluster.dataset  # save the original dataset
 
@@ -537,9 +536,8 @@ class LabelGeneratorHook(HookBase):
         if self.trainer.iter == self.trainer.start_iter or not hasattr(self.trainer, 'memory'):
             # initialize in the first iteration
             all_features = []
-            for model in self.models:
-                features = self.extract_features(model)
-                all_features.append(features)
+            features = self.extract_features(self.model)
+            all_features.append(features)
             all_features = torch.stack(all_features, dim=0).mean(0)
         else:
             all_features = self.trainer.memory.features.clone()
@@ -551,7 +549,7 @@ class LabelGeneratorHook(HookBase):
 
         all_datasets = []
         all_labels = []
-        all_centers = []
+        num_pid = 0
         for idx, dataset in enumerate(self._common_dataset.datasets):
             dataset_name = self._cfg.DATASETS.NAMES[idx].lower()
             if self.indep_thres:
@@ -613,16 +611,19 @@ class LabelGeneratorHook(HookBase):
 
             # update model classifier
             if idx in self._cfg.PSEUDO.UNSUP:
-                for model in self.models:
-                    if hasattr(model, 'module'):
-                        model.module.initialize_centers(centers, labels)
-                    else:
-                        model.initialize_centers(centers, labels)
+                if hasattr(self.model, 'module'):
+                    self.model.module.initialize_centers(centers, labels)
+                else:
+                    self.model.initialize_centers(centers, labels)
 
         # update the dataloader
         self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
                                                                datasets=all_datasets,
                                                                is_train=True)
+        # update cfg
+        self._cfg.defrost()
+        self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader.dataset.num_classes
+        self._cfg.freeze()
 
         sec = self._step_timer.seconds()
         logger.info(f"{'*' * 20}\n"

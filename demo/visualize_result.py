@@ -16,7 +16,7 @@ from torch.backends import cudnn
 sys.path.append('.')
 
 from fastreid.evaluation import evaluate_rank
-from fastreid.config import get_cfg
+from fastreid.config import cfg
 from fastreid.utils.logger import setup_logger
 from fastreid.data import build_reid_test_loader
 from predictor import FeatureExtractionDemo
@@ -28,7 +28,6 @@ logger = logging.getLogger('fastreid.visualize_result')
 
 def setup_cfg(args):
     # load config from file and command-line arguments
-    cfg = get_cfg()
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

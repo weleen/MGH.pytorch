@@ -9,9 +9,7 @@ import itertools
 from collections import defaultdict
 from typing import Optional
 
-import random
 import numpy as np
-import torch
 from torch.utils.data.sampler import Sampler
 
 from fastreid.utils import comm

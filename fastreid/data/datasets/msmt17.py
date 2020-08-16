@@ -46,8 +46,7 @@ class MSMT17(ImageDataset):
     dataset_name = 'msmt17'
 
     def __init__(self, root='datasets', **kwargs):
-        self.root = root
-        self.dataset_dir = self.root
+        self.dataset_dir = root
 
         has_main_dir = False
         for main_dir in VERSION_DICT:

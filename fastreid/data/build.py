@@ -20,9 +20,10 @@ from .transforms import build_transforms
 _root = os.getenv("FASTREID_DATASETS", "datasets")
 
 
-def build_reid_train_loader(cfg, is_train=True):
+def build_reid_train_loader(cfg):
     cfg = cfg.clone()
     cfg.defrost()
+
     train_items = list()
     for d in cfg.DATASETS.NAMES:
         dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL,
@@ -34,7 +35,7 @@ def build_reid_train_loader(cfg, is_train=True):
 
     iters_per_epoch = len(train_items) // cfg.SOLVER.IMS_PER_BATCH
     cfg.SOLVER.MAX_ITER *= iters_per_epoch
-    train_transforms = build_transforms(cfg, is_train=is_train)
+    train_transforms = build_transforms(cfg, is_train=True)
     train_set = CommDataset(train_items, train_transforms, relabel=True)
 
     num_workers = cfg.DATALOADER.NUM_WORKERS

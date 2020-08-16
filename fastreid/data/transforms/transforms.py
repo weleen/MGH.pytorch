@@ -61,9 +61,6 @@ class RandomErasing(object):
                 return img
         return img
 
-    def __repr__(self):
-        return "Randomly Erasing"
-
 
 class RandomPatch(object):
     """Random patch data augmentation.

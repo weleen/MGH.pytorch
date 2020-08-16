@@ -139,7 +139,13 @@ _C.INPUT.PADDING = 10
 _C.INPUT.DO_BLUR = True
 _C.INPUT.BLUR_PROB = 0.5
 # Random color jitter
-_C.INPUT.DO_CJ = False
+_C.INPUT.CJ = CN()
+_C.INPUT.CJ.ENABLED = False
+_C.INPUT.CJ.PROB = 0.8
+_C.INPUT.CJ.BRIGHTNESS = 0.15
+_C.INPUT.CJ.CONTRAST = 0.15
+_C.INPUT.CJ.SATURATION = 0.1
+_C.INPUT.CJ.HUE = 0.1
 # Auto augmentation
 _C.INPUT.DO_AUTOAUG = False
 # Augmix augmentation
@@ -265,7 +271,7 @@ _C.SOLVER.SWA.LR_FACTOR = 10.
 _C.SOLVER.SWA.ETA_MIN_LR = 3.5e-6
 _C.SOLVER.SWA.LR_SCHED = False
 
-_C.SOLVER.CHECKPOINT_PERIOD = 60
+_C.SOLVER.CHECKPOINT_PERIOD = 20
 
 _C.SOLVER.LOG_PERIOD = 200
 # Number of images per batch across all machines
@@ -285,6 +291,7 @@ _C.TEST.EVAL_PERIOD = 20
 # Number of images per batch in one process.
 _C.TEST.IMS_PER_BATCH = 64
 _C.TEST.METRIC = "cosine"
+_C.TEST.ROC_ENABLED = False
 
 # Average query expansion
 _C.TEST.AQE = CN()

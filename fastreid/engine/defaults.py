@@ -511,7 +511,7 @@ class DefaultTrainer(SimpleTrainer):
 
         iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
-        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes if not cfg.PSEUDO.ENABLED else data_loader.dataset.num_pseudo_classes
+        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
