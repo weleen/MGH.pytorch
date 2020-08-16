@@ -27,6 +27,7 @@ from fastreid.utils.events import EventStorage, EventWriter
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.logger import log_every_n_seconds
 from fastreid.utils.metrics import cluster_metrics
+from fastreid.evaluation.evaluator import inference_context
 from .train_loop import HookBase
 
 __all__ = [
@@ -532,7 +533,7 @@ class LabelGeneratorHook(HookBase):
             comm.synchronize()
 
     def update_labels(self):
-        logger.info(f"{'*' * 20}\nStart updating pseudo labels on iteration {self.trainer.iter}\n{'*' * 20}")
+        logger.info(f"\n{'*' * 20}\nStart updating pseudo labels on iteration {self.trainer.iter}\n{'*' * 20}")
         if self.trainer.iter == self.trainer.start_iter or not hasattr(self.trainer, 'memory'):
             # initialize in the first iteration
             all_features = []
@@ -626,7 +627,7 @@ class LabelGeneratorHook(HookBase):
         self._cfg.freeze()
 
         sec = self._step_timer.seconds()
-        logger.info(f"{'*' * 20}\n"
+        logger.info(f"\n{'*' * 20}\n"
                     f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}\n"
                     f"{'*' * 20}\n")
 
@@ -642,33 +643,34 @@ class LabelGeneratorHook(HookBase):
         total_compute_time = 0
 
         features = list()
-        for idx in range(total):
-            inputs = next(data_iter)
-            if idx == num_warmup:
-                start_time = time.perf_counter()
-                total_compute_time = 0
+        with inference_context(model), torch.no_grad():
+            for idx in range(total):
+                inputs = next(data_iter)
+                if idx == num_warmup:
+                    start_time = time.perf_counter()
+                    total_compute_time = 0
 
-            start_compute_time = time.perf_counter()
-            outputs = model(inputs)
-            if self._cfg.PSEUDO.NORM_FEAT:
-                outputs = F.normalize(outputs, p=2, dim=-1)
-            features = features.append(outputs)
-            comm.synchronize()
-            total_compute_time += time.perf_counter() - start_compute_time
+                start_compute_time = time.perf_counter()
+                outputs = model(inputs)
+                if self._cfg.PSEUDO.NORM_FEAT:
+                    outputs = F.normalize(outputs, p=2, dim=-1)
+                features.append(outputs)
+                comm.synchronize()
+                total_compute_time += time.perf_counter() - start_compute_time
 
-            idx += 1
-            iters_after_start = idx + 1 - num_warmup * int(idx >= num_warmup)
-            seconds_per_img = total_compute_time / iters_after_start
-            if idx >= num_warmup * 2 or seconds_per_img > 30:
-                total_seconds_per_img = (time.perf_counter() - start_time) / iters_after_start
-                eta = datetime.timedelta(seconds=int(total_seconds_per_img * (total - idx - 1)))
-                log_every_n_seconds(
-                    logging.INFO,
-                    "Inference done {}/{}. {:.4f} s / img. ETA={}".format(
-                        idx + 1, total, seconds_per_img, str(eta)
-                    ),
-                    n=30,
-                )
+                idx += 1
+                iters_after_start = idx + 1 - num_warmup * int(idx >= num_warmup)
+                seconds_per_img = total_compute_time / iters_after_start
+                if idx >= num_warmup * 2 or seconds_per_img > 30:
+                    total_seconds_per_img = (time.perf_counter() - start_time) / iters_after_start
+                    eta = datetime.timedelta(seconds=int(total_seconds_per_img * (total - idx - 1)))
+                    log_every_n_seconds(
+                        logging.INFO,
+                        "Inference done {}/{}. {:.4f} s / img. ETA={}".format(
+                            idx + 1, total, seconds_per_img, str(eta)
+                        ),
+                        n=30,
+                    )
 
         total_time = time.perf_counter() - start_time
         total_time_str = str(datetime.timedelta(seconds=total_time))
@@ -688,7 +690,6 @@ class LabelGeneratorHook(HookBase):
             comm.synchronize()
             features = torch.cat(features)
             features = comm.gather(features)
-            features = sum(features, [])
         features = torch.cat(features, dim=0)
 
         return features

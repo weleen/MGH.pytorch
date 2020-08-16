@@ -72,9 +72,8 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
     dist = compute_distance_matrix(features,
                                    features,
                                    metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
-                                   min_samples=cfg.PSEUDO.MIN_SAMPLES,
-                                   k1=cfg.PSEUDO.K1,
-                                   k2=cfg.PSEUDO.K2,
+                                   k1=cfg.PSEUDO.DBSCAN.K1,
+                                   k2=cfg.PSEUDO.DBSCAN.K2,
                                    search_type=cfg.PSEUDO.SEARCH_TYPE)
     features = features.cpu()
     # clustering

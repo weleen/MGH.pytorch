@@ -123,12 +123,12 @@ def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> 
 
     if datasets is None:
         # generally for the first epoch
-        if len(cfg.PSEUDO.UNSUP_INDEX) == 0:
+        if len(cfg.PSEUDO.UNSUP) == 0:
             logger.info(
                 f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})"
             )
         else:
-            no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP_INDEX]
+            no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP]
             logger.info(
                 f"The training is in a un/semi-supervised manner with "
                 f"{len(dataset_names)} dataset(s) {dataset_names},\n"
@@ -155,10 +155,11 @@ def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> 
         data_sampler = samplers.SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.img_items,
                                                                                   batch_size=cfg.SOLVER.IMS_PER_BATCH,
                                                                                   num_instances=num_instance,
-                                                                                  size=len(train_set))
+                                                                                  size=len(train_set),
+                                                                                  is_train=is_train)
     else:
         data_sampler = samplers.InferenceSampler(len(train_set))
-    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, True)
+    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, is_train)
 
     train_loader = torch.utils.data.DataLoader(
         train_set,

@@ -16,7 +16,7 @@ def k_reciprocal_neigh(initial_rank, i, k1):
 
 
 @torch.no_grad()
-def jaccard_dist(input1, input2, k1=20, k2=6, search_option=0, fp16=False):
+def jaccard_dist(input1, input2, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
     assert input1.size() == input2.size(), "input1 and input2 must be same."
     features = input1
     if search_option < 3: features = features.cuda()
