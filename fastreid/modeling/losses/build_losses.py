@@ -8,6 +8,8 @@ from .. import losses as Loss
 
 
 def reid_losses(cfg, pred_class_logits, global_features, gt_classes, prefix='') -> dict:
+    if cfg.PSEUDO.ENABLED:
+        pred_class_logits = pred_class_logits[:, :cfg.MODEL.HEADS.NUM_CLASSES]
     loss_dict = {}
     for loss_name in cfg.MODEL.LOSSES.NAME:
         loss = getattr(Loss, loss_name)(cfg)(pred_class_logits, global_features, gt_classes)

@@ -15,11 +15,7 @@ def k_reciprocal_neigh(initial_rank, i, k1):
     return forward_k_neigh_index[fi]
 
 
-@torch.no_grad()
-def jaccard_dist(input1, input2, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
-    assert input1.size() == input2.size(), "input1 and input2 must be same."
-    features = input1
-    if search_option < 3: features = features.cuda()
+def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
     ngpus = faiss.get_num_gpus()
     N = features.size(0)
     mat_type = np.float16 if fp16 else np.float32
@@ -61,36 +57,21 @@ def jaccard_dist(input1, input2, k1=20, k2=6, search_option=0, fp16=False, **kwa
         k_reciprocal_expansion_index = k_reciprocal_index
         for candidate in k_reciprocal_index:
             candidate_k_reciprocal_index = nn_k1_half[candidate]
-            if len(
-                    np.intersect1d(candidate_k_reciprocal_index, k_reciprocal_index)
-            ) > 2 / 3 * len(candidate_k_reciprocal_index):
+            if len(np.intersect1d(candidate_k_reciprocal_index, k_reciprocal_index)) > 2 / 3 * len(
+                    candidate_k_reciprocal_index):
                 k_reciprocal_expansion_index = np.append(
-                    k_reciprocal_expansion_index, candidate_k_reciprocal_index
-                )
+                    k_reciprocal_expansion_index, candidate_k_reciprocal_index)
 
         k_reciprocal_expansion_index = np.unique(
-            k_reciprocal_expansion_index
-        )  # element-wise unique
-
-        x = features[i].unsqueeze(0).contiguous()
-        y = features[k_reciprocal_expansion_index]
-        m, n = x.size(0), y.size(0)
-        dist = (
-                torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n)
-                + torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-        )
-        dist.addmm_(x, y.t(), beta=1, alpha=-2)
-
+            k_reciprocal_expansion_index)  # element-wise unique
+        dist = 2 - 2 * torch.mm(features[i].unsqueeze(0).contiguous(),
+                                features[k_reciprocal_expansion_index].t())
         if fp16:
-            V[i, k_reciprocal_expansion_index] = (
-                F.softmax(-dist, dim=1).view(-1).cpu().numpy().astype(mat_type)
-            )
+            V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy().astype(mat_type)
         else:
-            V[i, k_reciprocal_expansion_index] = (
-                F.softmax(-dist, dim=1).view(-1).cpu().numpy()
-            )
+            V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy()
 
-    del nn_k1, nn_k1_half, x, y
+    del nn_k1, nn_k1_half
     features = features.cpu()
 
     if k2 != 1:
@@ -221,7 +202,7 @@ def compute_distance_matrix(input1, input2, metric='euclidean', **kwargs):
     elif metric == 'hamming':
         distmat = hamming_distance(input1, input2)
     elif metric == 'jaccard':
-        distmat = jaccard_dist(input1, input2, **kwargs)
+        distmat = jaccard_dist(input1, **kwargs)
     else:
         raise ValueError(
             'Unknown distance metric: {}. '
@@ -244,17 +225,18 @@ def cluster_accuracy(output, target):
     w = np.zeros((D, D), dtype=np.int64)
     for i in range(output.size):
         w[output[i], target[i]] += 1
-    ind = linear_assignment(w.max() - w)
-    return sum([w[i, j] for i, j in ind]) * 1.0 / output.size
+    row_ind, col_ind = linear_assignment(w.max() - w)
+    return sum([w[i, j] for i, j in zip(row_ind, col_ind)]) * 1.0 / output.size
 
 
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     """
     Calculate clustering accuracy, nmi and ari
-    :param label_pred: predicted matrix with shape (N,)
-    :param label_true: ground truth with shape (N,)
+    :param label_pred(np.int64): predicted matrix with shape (N,)
+    :param label_true(np.int64): ground truth with shape (N,)
     :return: Tuple(float, float, float) for acc, nmi, ari
     """
+    assert label_true.dtype == label_pred.dtype == np.int64, "dtype error."
     nmi_score = normalized_mutual_info_score(label_true, label_pred)
     ari_score = adjusted_rand_score(label_true, label_pred)
     acc_score = cluster_accuracy(label_pred, label_true)

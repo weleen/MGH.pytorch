@@ -50,6 +50,9 @@ class BalancedIdentitySampler(Sampler):
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
 
+    def __len__(self):
+        return int(np.floor(self.num_identities * self.num_instances * 1.0 / self._world_size))
+
     def _get_epoch_indices(self):
         # Shuffle identity list
         identities = np.random.permutation(self.num_identities)
@@ -140,6 +143,9 @@ class NaiveIdentitySampler(Sampler):
 
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
+
+    def __len__(self):
+        return int(np.floor(len(self.index_pid.keys()) * 1.0 / self._world_size))
 
     def _get_epoch_indices(self):
         batch_idxs_dict = defaultdict(list)

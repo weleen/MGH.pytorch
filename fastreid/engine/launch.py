@@ -62,7 +62,7 @@ def launch(main_func, num_gpus_per_machine, num_machines=1, machine_rank=0, dist
         )
     else:
         # select gpus
-        os.environ['CUDA_VISIBLE_DEVICES'] = get_free_gpu()
+        # os.environ['CUDA_VISIBLE_DEVICES'] = get_free_gpu()
         main_func(*args)
 
 

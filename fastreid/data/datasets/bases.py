@@ -212,13 +212,13 @@ class ImageDataset(Dataset):
             if label != -1:
                 data.append((img_path, label, camid))
         self.data = data
-        num_pids, num_cams = self.parse_data(self.data)
+        self.num_train_pids, self.num_train_cams = self.parse_data(self.data)
 
         logger = logging.getLogger(__name__)
         logger.info('=> Loaded {}'.format(self.__class__.__name__))
         logger.info('  ----------------------------------------')
         logger.info('  subset   | # ids | # images | # cameras')
         logger.info('  ----------------------------------------')
-        logger.info('  train    | {:5d} | {:8d} | {:9d}'.format(num_pids, len(self.data), num_cams))
+        logger.info('  train    | {:5d} | {:8d} | {:9d}'.format(self.num_train_pids, len(self.data), self.num_train_cams))
         logger.info('  ----------------------------------------')
 

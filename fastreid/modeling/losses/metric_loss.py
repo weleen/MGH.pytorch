@@ -8,7 +8,7 @@ import torch
 import torch.nn.functional as F
 
 from fastreid.utils import comm
-from fastreid.utils.metrics import euclidean_dist
+from fastreid.utils.metrics import compute_distance_matrix
 
 
 def softmax_weights(dist, mask):
@@ -112,7 +112,7 @@ class TripletLoss(object):
             all_embedding = embedding
             all_targets = targets
 
-        dist_mat = euclidean_dist(embedding, all_embedding)
+        dist_mat = compute_distance_matrix(embedding, all_embedding)
 
         N, M = dist_mat.size()
         is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
@@ -136,7 +136,7 @@ class TripletLoss(object):
         }
 
 
-class SoftmaxTriplet(TripletLoss):
+class SoftmaxTripletLoss(TripletLoss):
     def __call__(self, _, embedding, targets):
         if self._normalize_feature:
             embedding = F.normalize(embedding, dim=1)
@@ -149,7 +149,7 @@ class SoftmaxTriplet(TripletLoss):
             all_embedding = embedding
             all_targets = targets
 
-        dist_mat = euclidean_dist(embedding, all_embedding)
+        dist_mat = compute_distance_matrix(embedding, all_embedding)
 
         N, M = dist_mat.size()
         is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
@@ -157,7 +157,7 @@ class SoftmaxTriplet(TripletLoss):
 
         dist_ap, dist_an, ap_idx, an_idx = hard_example_mining(dist_mat, is_pos, is_neg, return_index=True)
 
-        triplet_dist = F.log_softmax(torch.stack((dist_ap, dist_an), dim=1))
+        triplet_dist = F.log_softmax(torch.stack((dist_ap, dist_an), dim=1), dim=1)
         loss = (-self._margin * triplet_dist[:, 0] - (1 - self._margin) * triplet_dist[:, 1]).mean()
         return {
             "loss_softmax_triplet": loss * self._scale,

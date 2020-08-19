@@ -24,7 +24,7 @@ class CommDataset(Dataset):
         self.pid_dict = {}
         if self.relabel:
             # Sort the list, or the set will result in different pids on different processes
-            self.pids = sorted(list(set([item[1] for item in img_items])))
+            self.pids = sorted(set([item[1] for item in img_items]))
             self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
 
     def __len__(self):
@@ -77,14 +77,6 @@ class NewCommDataset(Dataset):
     def datasets_size(self):
         return [len(dataset.data) for dataset in self.datasets]
 
-    @staticmethod
-    def rebuild_datasets(ori_dataset: ImageDataset, pseudo_labeles: list):
-        """Build single dataset by replace label
-        """
-        dataset_ = copy.deepcopy(ori_dataset)
-        dataset_.renew_labels(pseudo_labeles)
-        return dataset_
-
     def __len__(self):
         return len(self.img_items)
 
@@ -109,4 +101,4 @@ class NewCommDataset(Dataset):
 
     @property
     def num_classes(self):
-        return len(self.pids)
+        return len(set([item[1] for item in self.img_items]))

@@ -7,6 +7,9 @@ import logging
 import os
 import tempfile
 import time
+import copy
+import numpy as np
+import collections
 from collections import Counter
 from itertools import accumulate
 
@@ -533,24 +536,25 @@ class LabelGeneratorHook(HookBase):
             comm.synchronize()
 
     def update_labels(self):
-        logger.info(f"\n{'*' * 20}\nStart updating pseudo labels on iteration {self.trainer.iter}\n{'*' * 20}")
+        logger.info(f"Start updating pseudo labels on iteration {self.trainer.iter}")
         if self.trainer.iter == self.trainer.start_iter or not hasattr(self.trainer, 'memory'):
             # initialize in the first iteration
             all_features = []
-            features = self.extract_features(self.model)
+            features, true_label = self.extract_features(self.model)
             all_features.append(features)
             all_features = torch.stack(all_features, dim=0).mean(0)
         else:
             all_features = self.trainer.memory.features.clone()
+            true_label = torch.Tensor(
+                [self._common_dataset.pid_dict[item[1]] for item in self._common_dataset.img_items]).long()
 
         if self._cfg.PSEUDO.NORM_FEAT:
             all_features = F.normalize(all_features, p=2, dim=1)
         datasets_size = self._common_dataset.datasets_size
         datasets_size_range = list(accumulate([0] + datasets_size))
 
-        all_datasets = []
         all_labels = []
-        num_pid = 0
+        start_cls_id = 0
         for idx, dataset in enumerate(self._common_dataset.datasets):
             dataset_name = self._cfg.DATASETS.NAMES[idx].lower()
             if self.indep_thres:
@@ -576,10 +580,11 @@ class LabelGeneratorHook(HookBase):
                         centers = F.normalize(centers, p=2, dim=1)
                 else:
                     # labels must be int
-                    labels = [int(item[1].split('_')) if isinstance(item[1], str) else int(item[1])
-                              for item in dataset.data]
-                    num_classes = len(set(labels))
+                    labels = copy.deepcopy(true_label[start_id: end_id])
+                    labels -= labels.min()
+                    num_classes = len(labels.unique())
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
+                    logger.info("Use the ground truth labels for dataset {}".format(dataset_name))
 
             comm.synchronize()
 
@@ -595,11 +600,26 @@ class LabelGeneratorHook(HookBase):
                 labels = comm.broadcast_tensor(labels, 0)
                 centers = comm.broadcast_tensor(centers, 0)
 
-            self.show_label_summary(labels, dataset_name)
-            # add the dataset name
-            labels = [dataset_name + '_' + str(l) if l != -1 else l for l in labels]
-            all_labels.append(labels)
-            all_datasets.append(self._common_dataset.rebuild_datasets(dataset, labels))
+            acc_score, nmi_score, ari_score = cluster_metrics(labels.long().numpy(), true_label.long().numpy())
+
+            # statistics of clusters and un-clustered instances
+            index2label = collections.defaultdict(int)
+            for label in labels.tolist():
+                index2label[label] += 1
+            unused_ins_num = index2label.pop(-1) if -1 in index2label.keys() else 0
+            index2label = np.array(list(index2label.values()))
+            clu_num = (index2label > 1).sum()
+            unclu_ins_num = (index2label == 1).sum()
+
+            logger.info(f"Cluster Statistic: "
+                        f"acc_score: {acc_score}, nmi_score: {nmi_score}, ari_score: {ari_score} "
+                        f"clusters {clu_num}, "
+                        f"un-clustered instances {unclu_ins_num}, "
+                        f"unused instances {unused_ins_num}")
+            # modify the label with previous num_classes
+            previous_classes = sum(self.num_classes[:idx])
+            labels = torch.Tensor([l + previous_classes if l.item() != -1 else l.item() for l in labels])
+            all_labels.append(labels.tolist())
 
             try:
                 self.indep_thres[idx] = indep_thres
@@ -611,57 +631,62 @@ class LabelGeneratorHook(HookBase):
                 self.num_classes.append(num_classes)
 
             # update model classifier
+            center_labels = torch.arange(start_cls_id, start_cls_id + num_classes)
+            start_cls_id += num_classes
             if idx in self._cfg.PSEUDO.UNSUP:
                 if hasattr(self.model, 'module'):
-                    self.model.module.initialize_centers(centers, labels)
+                    self.model.module.initialize_centers(centers, center_labels)
                 else:
-                    self.model.initialize_centers(centers, labels)
+                    self.model.initialize_centers(centers, center_labels)
 
-        # update the dataloader
+        # update the dataloader and iter
         self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
-                                                               datasets=all_datasets,
-                                                               is_train=True)
+                                                               datasets=self._common_dataset.datasets,
+                                                               pseudo_labels=all_labels,
+                                                               is_train=True,
+                                                               relabel=False)
+        self.trainer._data_loader_iter = iter(self.trainer.data_loader)
         # update cfg
-        self._cfg.defrost()
-        self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader.dataset.num_classes
-        self._cfg.freeze()
+        if self._cfg.is_frozen():
+            self._cfg.defrost()
+            self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader.dataset.num_classes
+            self._cfg.freeze()
+        else:
+            self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader.dataset.num_classes
+
+        # reset optim (optional)
+        if self._cfg.PSEUDO.RESET_OPT:
+            self.trainer.optimizer.state = collections.defaultdict(dict)
 
         sec = self._step_timer.seconds()
-        logger.info(f"\n{'*' * 20}\n"
-                    f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}\n"
-                    f"{'*' * 20}\n")
-
-    def show_label_summary(self, labels, dataset_name):
-        pass
+        logger.info(f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}")
 
     @torch.no_grad()
     def extract_features(self, model):
         total = len(self._data_loader_cluster)
         data_iter = iter(self._data_loader_cluster)
-        num_warmup = min(5, total - 1)
         start_time = time.perf_counter()
         total_compute_time = 0
 
         features = list()
+        true_label = list()
         with inference_context(model), torch.no_grad():
             for idx in range(total):
                 inputs = next(data_iter)
-                if idx == num_warmup:
-                    start_time = time.perf_counter()
-                    total_compute_time = 0
 
                 start_compute_time = time.perf_counter()
                 outputs = model(inputs)
                 if self._cfg.PSEUDO.NORM_FEAT:
-                    outputs = F.normalize(outputs, p=2, dim=-1)
+                    outputs = F.normalize(outputs, p=2, dim=1)
                 features.append(outputs)
+                true_label.append(inputs['targets'])
                 comm.synchronize()
                 total_compute_time += time.perf_counter() - start_compute_time
 
                 idx += 1
-                iters_after_start = idx + 1 - num_warmup * int(idx >= num_warmup)
+                iters_after_start = idx + 1
                 seconds_per_img = total_compute_time / iters_after_start
-                if idx >= num_warmup * 2 or seconds_per_img > 30:
+                if seconds_per_img > 30:
                     total_seconds_per_img = (time.perf_counter() - start_time) / iters_after_start
                     eta = datetime.timedelta(seconds=int(total_seconds_per_img * (total - idx - 1)))
                     log_every_n_seconds(
@@ -676,20 +701,17 @@ class LabelGeneratorHook(HookBase):
         total_time_str = str(datetime.timedelta(seconds=total_time))
         logger.info(
             "Total inference time: {} ({:.6f} s / img per device)".format(
-                total_time_str, total_time / (total - num_warmup)
-            )
-        )
-        total_compute_time_str = str(datetime.timedelta(seconds=int(total_compute_time)))
-        logger.info(
-            "Total inference pure compute time: {} ({:.6f} s / img per device)".format(
-                total_compute_time_str, total_compute_time / (total - num_warmup)
+                total_time_str, total_time / total
             )
         )
 
         if comm.get_world_size() > 1:
             comm.synchronize()
             features = torch.cat(features)
+            true_label = torch.cat(true_label)
             features = comm.gather(features)
+            true_label = comm.gather(true_label)
         features = torch.cat(features, dim=0)
+        true_label = torch.cat(true_label, dim=0)
 
-        return features
+        return features, true_label

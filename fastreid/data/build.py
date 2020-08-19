@@ -6,6 +6,7 @@
 
 import os
 import torch
+import copy
 import numpy
 import logging
 from torch._six import container_abcs, string_classes, int_classes
@@ -107,12 +108,13 @@ def fast_batch_collator(batched_inputs):
         return torch.tensor(batched_inputs)
 
 
-def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> DataLoader:
+def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train=True, relabel=True, **kwargs) -> DataLoader:
     """
     build dataloader for training and clustering.
     :param cfg: CfgNode
     :param datasets: list(ImageDataset)
     :param is_train: bool, True for training, False for clustering or validation.
+    :param relabel: relabel or not
     :param kwargs:
     :return: DataLoader
     """
@@ -131,8 +133,7 @@ def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> 
             no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP]
             logger.info(
                 f"The training is in a un/semi-supervised manner with "
-                f"{len(dataset_names)} dataset(s) {dataset_names},\n"
-                f"where {no_label_datasets} have no labels."
+                f"{len(dataset_names)} dataset(s) {dataset_names}, where {no_label_datasets} have no labels."
             )
 
         datasets = list()
@@ -141,9 +142,13 @@ def build_reid_train_loader_new(cfg, datasets=None, is_train=True, **kwargs) -> 
                                               cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
                                               cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT)
             datasets.append(dataset)
+    else:
+        datasets = copy.deepcopy(datasets)
+        for idx in cfg.PSEUDO.UNSUP:
+            datasets[idx].renew_labels(pseudo_labels[idx])
 
     train_transforms = build_transforms(cfg, is_train=is_train)
-    train_set = NewCommDataset(datasets, train_transforms, relabel=True)
+    train_set = NewCommDataset(datasets, train_transforms, relabel=relabel)
 
     iters_per_epoch = len(train_set) // cfg.SOLVER.IMS_PER_BATCH
     cfg.SOLVER.MAX_ITER *= iters_per_epoch

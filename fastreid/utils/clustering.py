@@ -42,7 +42,7 @@ def label_generator_dbscan_single(cfg, features, dist, eps, **kwargs):
     min_samples = cfg.PSEUDO.DBSCAN.MIN_SAMPLES
     use_outliers = cfg.PSEUDO.USE_OUTLIERS
 
-    cluster = DBSCAN(eps=eps, min_samples=min_samples, metric="precomputed", n_jobs=-1, )
+    cluster = DBSCAN(eps=eps, min_samples=min_samples, metric="precomputed", n_jobs=-1)
     labels = cluster.fit_predict(dist)
     num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
 

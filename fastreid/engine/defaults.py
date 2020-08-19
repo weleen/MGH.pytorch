@@ -229,6 +229,10 @@ class DefaultTrainer(SimpleTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
+        else:
+            # FIXME: DataParallel problem
+            logger.warning("Please use distributed training.")
+            model = torch.nn.DataParallel(model)
 
         super().__init__(model, data_loader, optimizer)
 
@@ -292,7 +296,7 @@ class DefaultTrainer(SimpleTrainer):
         if cfg.PSEUDO.ENABLED:
             ret.append(
                 hooks.LabelGeneratorHook(
-                    cfg,
+                    self.cfg,
                     self.model
                 )
             )
@@ -509,7 +513,7 @@ class DefaultTrainer(SimpleTrainer):
         frozen = cfg.is_frozen()
         cfg.defrost()
 
-        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+        iters_per_epoch = len(data_loader.batch_sampler)
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
         cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
