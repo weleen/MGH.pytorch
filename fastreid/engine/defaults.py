@@ -212,7 +212,7 @@ class DefaultTrainer(SimpleTrainer):
 
         # Assume these objects must be constructed in this order.
         data_loader = self.build_train_loader(cfg)
-        cfg = self.auto_scale_hyperparams(cfg, data_loader)
+        cfg = self.auto_scale_hyperparams(cfg, data_loader, is_start=True)
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
 
@@ -502,7 +502,7 @@ class DefaultTrainer(SimpleTrainer):
         return results
 
     @staticmethod
-    def auto_scale_hyperparams(cfg, data_loader):
+    def auto_scale_hyperparams(cfg, data_loader, is_start=False):
         r"""
         This is used for auto-computation actual training iterations,
         because some hyper-param, such as MAX_ITER, means training epochs rather than iters,
@@ -515,7 +515,10 @@ class DefaultTrainer(SimpleTrainer):
 
         iters_per_epoch = len(data_loader.batch_sampler)
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
-        cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
+        if is_start:
+            cfg.MODEL.HEADS.NUM_CLASSES = len(data_loader.dataset)
+        else:
+            cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
