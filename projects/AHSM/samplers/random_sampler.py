@@ -22,6 +22,7 @@ class RandomSampler:
             index1 = index1.item()
             mask = np.random.permutation(len(sim_mat[i]))
             for index2 in sim_mat[i][mask][:self.K]:
+            # for index2 in sim_mat[i][:self.K]:
                 index2 = index2.item()
                 if targets[index2] == targets[index1]:
                     pos_set.append(index2)
