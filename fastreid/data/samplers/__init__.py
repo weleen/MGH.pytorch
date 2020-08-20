@@ -13,5 +13,6 @@ It must returns an instance of :class:Sampler
 
 from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler
 from .data_sampler import TrainingSampler, InferenceSampler
+from .active_triplet_sampler import ActiveTripletSampler
 
 __all__ = [k for k in globals().keys() if "builtin" not in k and not k.startswith("_")]

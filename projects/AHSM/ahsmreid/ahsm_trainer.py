@@ -21,16 +21,18 @@ from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 
 from fastreid.data.transforms import build_transforms
 from fastreid.engine.defaults import DefaultTrainer
-from fastreid.layers.sync_bn import patch_replication_callback
 from fastreid.utils.logger import setup_logger, log_every_n_seconds
 from fastreid.utils import comm
 from fastreid.evaluation.evaluator import inference_context
 
-from fastreid.engine import hooks
+# from fastreid.engine import hooks
 from fastreid.data.common import CommDataset
 
 import random
 from fastreid.data import samplers
+
+from . import hooks
+
 __all__ = ["AHSMTrainer"]
 
 
@@ -44,13 +46,9 @@ class AHSMTrainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         logger.info('Prepare active hard sampling data set')
-        data_loader,self.labeled_set,self.unlabeled_set = self.build_active_sample_dataloader(is_train=False)       
-        self.label_num = len(self.labeled_set)
+        data_loader, self.data_len = self.build_active_sample_dataloader(is_train=False)       
         # For training, wrap with DP. But don't need this for inference.
         model = DataParallel(model)
-        if cfg.MODEL.BACKBONE.NORM == "syncBN":
-            # Monkey-patching with syncBN
-            patch_replication_callback(model)
         model = model.cuda()
         super(DefaultTrainer, self).__init__(model, data_loader, optimizer)
 
@@ -65,17 +63,15 @@ class AHSMTrainer(DefaultTrainer):
             scheduler=self.scheduler,
         )
         self.start_iter = 0
+        if cfg.SOLVER.SWA.ENABLED:
+            self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
+        else:
+            self.max_iter = cfg.SOLVER.MAX_ITER
+        self.cfg = cfg
         
-        
-        self.max_iter = cfg.ACTIVE.TRAIN_CYCLES
+        self.register_hooks(self.build_hooks())
 
-        #self.register_hooks(self.build_hooks())
-
-    def build_active_sample_dataloader(self,
-                                datalist: List = None,
-                                is_train: bool = False,
-                                is_sample_loader:bool=False
-                                ) -> torch.utils.data.DataLoader:
+    def build_active_sample_dataloader(self, datalist: set = None, is_train: bool = False, is_sample_loader:bool=False) -> torch.utils.data.DataLoader:
         """
         :param datalist: dataset list. if dataset is None, random initialize the labeled/unlabeled list.
         :param is_train: build training transformation and sampler.
@@ -88,27 +84,23 @@ class AHSMTrainer(DefaultTrainer):
             dataset.show_train()
             train_items.extend(dataset.train)
 
-        if datalist is None:
-            indices = list(range(len(train_items)))
-            random.shuffle(indices)
-            random_num=int(self.cfg.ACTIVE.INITIAL_RATE * len(train_items)/2)*2 #must be even number
-            labeled_set = indices[:random_num]
-            unlabeled_set = indices[random_num:]
-            load_items = labeled_set
-        else:
-            load_items = datalist  
-        
-        data_set = CommDataset([train_items[i] for i in load_items], transforms, relabel=True)
-        print('Length of the labeled dataset:',data_set.__len__())
+        data_set = CommDataset(train_items, transforms, relabel=True)
+        if datalist: 
+            print('Length of the triplet set:', len(datalist))
         num_workers = self.cfg.DATALOADER.NUM_WORKERS
         batch_size = self.cfg.SOLVER.IMS_PER_BATCH
         num_instance = self.cfg.DATALOADER.NUM_INSTANCE
 
-        
         if self.cfg.DATALOADER.PK_SAMPLER:
             data_sampler = samplers.RandomIdentitySampler(data_set.img_items, batch_size, num_instance)
         else:
             data_sampler = samplers.TrainingSampler(len(data_set))
+
+        if datalist is None:
+            data_len = len(train_items)
+        else:
+            data_sampler = samplers.ActiveTripletSampler(datalist)
+
         batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, batch_size, True)
 
         data_loader = torch.utils.data.DataLoader(
@@ -118,37 +110,81 @@ class AHSMTrainer(DefaultTrainer):
             collate_fn=fast_batch_collator,
         )
         if datalist is None:
-            return data_loader,labeled_set,unlabeled_set
+            return data_loader, data_len
         else:
             return data_loader
 
-   
+    def build_hooks(self):
+        """
+        Build a list of default hooks, including timing, evaluation,
+        checkpointing, lr scheduling, precise BN, writing events.
+        Returns:
+            list[HookBase]:
+        """
+        logger = logging.getLogger(__name__)
+        cfg = self.cfg.clone()
+        cfg.defrost()
+        cfg.DATALOADER.NUM_WORKERS = 0  # save some memory and time for PreciseBN
+        cfg.DATASETS.NAMES = tuple([cfg.TEST.PRECISE_BN.DATASET])  # set dataset name for PreciseBN
+
+        ret = [
+            hooks.IterationTimer(),
+            hooks.LRScheduler(self.optimizer, self.scheduler),
+        ]
+
+        # Dataloader Hook
+        ret.append(
+            hooks.DataloaderHook(cfg, self.data_len)
+        )
+
+        if cfg.SOLVER.SWA.ENABLED:
+            ret.append(
+                hooks.SWA(
+                    cfg.SOLVER.MAX_ITER,
+                    cfg.SOLVER.SWA.PERIOD,
+                    cfg.SOLVER.SWA.LR_FACTOR,
+                    cfg.SOLVER.SWA.ETA_MIN_LR,
+                    cfg.SOLVER.SWA.LR_SCHED,
+                )
+            )
+
+        if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(self.model):
+            logger.info("Prepare precise BN dataset")
+            ret.append(hooks.PreciseBN(
+                # Run at the same freq as (but before) evaluation.
+                self.model,
+                # Build a new data loader to not affect training
+                self.build_train_loader(cfg),
+                cfg.TEST.PRECISE_BN.NUM_ITER,
+            ))
+
+        if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
+            open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
+            logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
+            ret.append(hooks.FreezeLayer(
+                self.model,
+                cfg.MODEL.OPEN_LAYERS,
+                cfg.SOLVER.FREEZE_ITERS,
+            ))
+        # Do PreciseBN before checkpointer, because it updates the model and need to
+        # be saved by checkpointer.
+        # This is not always the best: if checkpointing has a different frequency,
+        # some checkpoints may have more precise statistics than others.
+        # if comm.is_main_process():
+        ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
+
+        def test_and_save_results():
+            self._last_eval_results = self.test(self.cfg, self.model)
+            return self._last_eval_results
+
+        # Do evaluation after checkpointer, because then if it fails,
+        # we can use the saved checkpoint to debug.
+        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
+
+        # run writers in the end, so that evaluation metrics are written
+        ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
+        return ret
     
 
-    def active_train(self):
-        for cycle in range(self.cfg.ACTIVE.SAMPLE_CYCLES):
-            #print('!!!!!!!:',cycle,len(self.labeled_set),len(self.unlabeled_set))
-            self.register_hooks(self.build_hooks())
-            DefaultTrainer.train(self)
-            self.labeled_set,self.unlabeled_set=\
-                    self.random_sample(self.labeled_set,self.unlabeled_set,self.label_num)
-            #unlabeled_loader=self.build_active_sample_dataloader(self.unlabeled_set,is_sample_loader=True)           
-            self.data_loader=self.build_active_sample_dataloader(self.labeled_set)
-            
-
-    def random_sample(self,labeled_set,unlabeled_set,labeled_num):
-        new_labeled_set = labeled_set
-        new_unlabeled_set = unlabeled_set
-        random.shuffle(new_unlabeled_set)
-
-        new_labeled_set+=new_unlabeled_set[:labeled_num]
-        new_unlabeled_set=new_unlabeled_set[labeled_num:]
-        return new_labeled_set,new_unlabeled_set
-
-    def uncertainty_sample(self,model,unlabeled_loader):
-
-        
-
-        return unlabeled_loader
 
 

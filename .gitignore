@@ -5,4 +5,5 @@ __pycache__
 *.so
 logs/
 .ipynb_checkpoints
-logs
+datasets
+*.c
