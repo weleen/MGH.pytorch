@@ -11,7 +11,7 @@ Registry for sampling strategy.
 It must returns an instance of :class:Sampler
 """
 
-from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler
+from .triplet_sampler import BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler
 from .data_sampler import TrainingSampler, InferenceSampler
 from .active_triplet_sampler import ActiveTripletSampler
 

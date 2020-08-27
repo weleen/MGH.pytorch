@@ -1,13 +1,11 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import logging
-import os
 
 import torch
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
 from fastreid.utils import comm
-from fastreid.utils.misc import get_free_gpu
 
 __all__ = ["launch"]
 
@@ -61,8 +59,6 @@ def launch(main_func, num_gpus_per_machine, num_machines=1, machine_rank=0, dist
             daemon=False,
         )
     else:
-        # select gpus
-        # os.environ['CUDA_VISIBLE_DEVICES'] = get_free_gpu()
         main_func(*args)
 
 

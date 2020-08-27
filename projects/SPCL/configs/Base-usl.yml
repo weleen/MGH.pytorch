@@ -10,7 +10,7 @@ MODEL:
 
   HEADS:
     NAME: "BNneckHead"
-    POOL_LAYER: "gempool"
+    POOL_LAYER: "avgpool"
     NECK_FEAT: "after"
     CLS_LAYER: "linear"
     NUM_CLASSES: 0

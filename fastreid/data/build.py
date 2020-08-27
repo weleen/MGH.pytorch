@@ -27,9 +27,7 @@ def build_reid_train_loader(cfg):
 
     train_items = list()
     for d in cfg.DATASETS.NAMES:
-        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL,
-                                          cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
-                                          cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT)
+        dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
         if comm.is_main_process():
             dataset.show_train()
         train_items.extend(dataset.train)
@@ -43,10 +41,15 @@ def build_reid_train_loader(cfg):
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()
 
-    data_sampler = samplers.SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.img_items,
-                                                                              batch_size=cfg.SOLVER.IMS_PER_BATCH,
-                                                                              num_instances=num_instance,
-                                                                              size=len(train_set))
+    if cfg.DATALOADER.PK_SAMPLER:
+        if cfg.DATALOADER.NAIVE_WAY:
+            data_sampler = samplers.NaiveIdentitySampler(train_set.img_items,
+                                                         cfg.SOLVER.IMS_PER_BATCH, num_instance)
+        else:
+            data_sampler = samplers.BalancedIdentitySampler(train_set.img_items,
+                                                            cfg.SOLVER.IMS_PER_BATCH, num_instance)
+    else:
+        data_sampler = samplers.TrainingSampler(len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, True)
 
     train_loader = torch.utils.data.DataLoader(
@@ -62,10 +65,7 @@ def build_reid_test_loader(cfg, dataset_name):
     cfg = cfg.clone()
     cfg.defrost()
 
-    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root,
-                                                 cuhk03_labeled=cfg.DATASETS.CUHK03.LABELED,
-                                                 cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT,
-                                                 market1501_500k=cfg.DATASETS.MARKET1501.ENABLE_500K)
+    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
     if comm.is_main_process():
         dataset.show_test()
     test_items = dataset.query + dataset.gallery
@@ -125,15 +125,20 @@ def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train
 
     if datasets is None:
         # generally for the first epoch
-        if len(cfg.PSEUDO.UNSUP) == 0:
-            logger.info(
-                f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})"
-            )
+        if is_train:
+            if not cfg.PSEUDO.ENABLED:
+                logger.info(
+                    f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})"
+                )
+            else:
+                no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP]
+                logger.info(
+                    f"The training is in a un/semi-supervised manner with "
+                    f"{len(dataset_names)} dataset(s) {dataset_names}, where {no_label_datasets} have no labels."
+                )
         else:
-            no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP]
             logger.info(
-                f"The training is in a un/semi-supervised manner with "
-                f"{len(dataset_names)} dataset(s) {dataset_names}, where {no_label_datasets} have no labels."
+                f"Build the dataset {dataset_names} for validation or testing, where the sampler is InferenceSampler."
             )
 
         datasets = list()
@@ -145,6 +150,7 @@ def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train
     else:
         datasets = copy.deepcopy(datasets)
         for idx in cfg.PSEUDO.UNSUP:
+            logger.info(f"Replace the label in dataset {dataset_names[idx]}.")
             datasets[idx].renew_labels(pseudo_labels[idx])
 
     train_transforms = build_transforms(cfg, is_train=is_train)
@@ -164,7 +170,7 @@ def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train
                                                                                   is_train=is_train)
     else:
         data_sampler = samplers.InferenceSampler(len(train_set))
-    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, is_train)
+    batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, drop_last=is_train)
 
     train_loader = torch.utils.data.DataLoader(
         train_set,

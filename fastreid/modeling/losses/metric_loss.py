@@ -163,6 +163,7 @@ class SoftmaxTripletLoss(TripletLoss):
             "loss_softmax_triplet": loss * self._scale,
         }
 
+
 class ActiveTripletLoss(object):
     def __init__(self, cfg):
         # TODO: add in default config

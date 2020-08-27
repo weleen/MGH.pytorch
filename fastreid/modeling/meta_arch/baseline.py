@@ -78,6 +78,8 @@ class Baseline(nn.Module):
         images = batched_inputs["images"].to(self.device)
         return images
 
-    def losses(self, outputs):
+    def losses(self, outputs, **kwargs):
         logits, feat, targets = outputs
+        if 'memory' in kwargs.keys():
+            return kwargs['memory'](feat, targets)  # targets equal to index
         return reid_losses(self._cfg, logits, feat, targets)

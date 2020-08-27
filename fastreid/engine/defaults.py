@@ -229,10 +229,6 @@ class DefaultTrainer(SimpleTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
-        else:
-            # FIXME: DataParallel problem
-            logger.warning("Please use distributed training.")
-            model = torch.nn.DataParallel(model)
 
         super().__init__(model, data_loader, optimizer)
 
@@ -513,9 +509,10 @@ class DefaultTrainer(SimpleTrainer):
         frozen = cfg.is_frozen()
         cfg.defrost()
 
-        iters_per_epoch = len(data_loader.batch_sampler)
+        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
-        if is_start:
+        if is_start and cfg.PSEUDO.ENABLED:
+            # In unsupervised learning, set the num_classes as dataset size in the first epoch
             cfg.MODEL.HEADS.NUM_CLASSES = len(data_loader.dataset)
         else:
             cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
@@ -529,12 +526,12 @@ class DefaultTrainer(SimpleTrainer):
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
         cfg.PSEUDO.CLUSTER_ITER *= iters_per_epoch
 
+        ckpt_multiple = cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
         num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
-
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
-        cfg.SOLVER.CHECKPOINT_PERIOD = cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch + num_mode
+        # Change checkpoint saving period consistent with evaluation period.
+        cfg.SOLVER.CHECKPOINT_PERIOD = int(cfg.TEST.EVAL_PERIOD * ckpt_multiple)
 
         logger = logging.getLogger(__name__)
         logger.info(
@@ -543,9 +540,12 @@ class DefaultTrainer(SimpleTrainer):
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
-            f"pseudo_cluster_iter={cfg.PSEUDO.CLUSTER_ITER}, "
             f"iters_per_epoch={iters_per_epoch}."
         )
+        if cfg.PSEUDO.ENABLED:
+            logger.info(
+                f"pseudo_cluster_iter={cfg.PSEUDO.CLUSTER_ITER}."
+            )
 
         if frozen: cfg.freeze()
 

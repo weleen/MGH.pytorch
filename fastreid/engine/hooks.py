@@ -28,9 +28,9 @@ from fastreid.solver import optim
 from fastreid.utils import comm
 from fastreid.utils.events import EventStorage, EventWriter
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
-from fastreid.utils.logger import log_every_n_seconds
 from fastreid.utils.metrics import cluster_metrics
-from fastreid.evaluation.evaluator import inference_context
+from fastreid.utils.torch_utils import extract_features
+
 from .train_loop import HookBase
 
 __all__ = [
@@ -537,14 +537,23 @@ class LabelGeneratorHook(HookBase):
 
     def update_labels(self):
         logger.info(f"Start updating pseudo labels on iteration {self.trainer.iter}")
-        if self.trainer.iter == self.trainer.start_iter or not hasattr(self.trainer, 'memory'):
-            # initialize in the first iteration
+
+        if not hasattr(self.trainer, 'memory'):
             all_features = []
-            features, true_label = self.extract_features(self.model)
+            features, true_label = extract_features(self.model,
+                                                    self._data_loader_cluster,
+                                                    self._cfg.PSEUDO.NORM_FEAT)
             all_features.append(features)
             all_features = torch.stack(all_features, dim=0).mean(0)
         else:
             all_features = self.trainer.memory.features.clone()
+            true_label = []
+            for idx, dataset in enumerate(self._common_dataset.datasets):
+                if idx in self._cfg.PSEUDO.UNSUP:
+                    true_label.append([self._common_dataset.pid_dict[item[1]] for item
+                                       in self._common_dataset.datasets[idx].data])
+                else:
+                    true_label.append([i for i in range(self._common_dataset.datasets[idx].num_train_pids)])
             true_label = torch.Tensor(
                 [self._common_dataset.pid_dict[item[1]] for item in self._common_dataset.img_items]).long()
 
@@ -557,31 +566,33 @@ class LabelGeneratorHook(HookBase):
         start_cls_id = 0
         for idx, dataset in enumerate(self._common_dataset.datasets):
             dataset_name = self._cfg.DATASETS.NAMES[idx].lower()
-            if self.indep_thres:
+            try:
                 indep_thres = self.indep_thres[idx]
-            else:
+            except:
                 indep_thres = None
-            if self.num_classes:
+            try:
                 num_classes = self.num_classes[idx]
-            else:
+            except:
                 num_classes = None
 
             if comm.is_main_process():
                 # clustering only on first GPU
-                start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
+                start_id = 0
                 if idx in self._cfg.PSEUDO.UNSUP:
                     labels, centers, num_classes, indep_thres = self.label_generator(
                         self._cfg,
-                        all_features[start_id: end_id],
+                        all_features[start_id: start_id + len(dataset)],
                         num_classes=num_classes,
                         indep_thres=indep_thres
                     )
                     if self._cfg.PSEUDO.NORM_CENTER:
                         centers = F.normalize(centers, p=2, dim=1)
+                    start_id += len(dataset)
                 else:
+                    end_id = start_id + dataset
                     # labels must be int
                     labels = copy.deepcopy(true_label[start_id: end_id])
-                    labels -= labels.min()
+                    labels -= labels.min()  # make the index start from 0
                     num_classes = len(labels.unique())
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
                     logger.info("Use the ground truth labels for dataset {}".format(dataset_name))
@@ -612,13 +623,13 @@ class LabelGeneratorHook(HookBase):
             unclu_ins_num = (index2label == 1).sum()
 
             logger.info(f"Cluster Statistic: "
-                        f"acc_score: {acc_score}, nmi_score: {nmi_score}, ari_score: {ari_score} "
+                        f"acc_score: {acc_score:.2e}, nmi_score: {nmi_score:.2e}, ari_score: {ari_score:.2e} "
                         f"clusters {clu_num}, "
                         f"un-clustered instances {unclu_ins_num}, "
                         f"unused instances {unused_ins_num}")
             # modify the label with previous num_classes
             previous_classes = sum(self.num_classes[:idx])
-            labels = torch.Tensor([l + previous_classes if l.item() != -1 else l.item() for l in labels])
+            labels = torch.Tensor([l + previous_classes if l.item() != -1 else l.item() for l in labels]).long()
             all_labels.append(labels.tolist())
 
             try:
@@ -630,14 +641,18 @@ class LabelGeneratorHook(HookBase):
             except:
                 self.num_classes.append(num_classes)
 
-            # update model classifier
-            center_labels = torch.arange(start_cls_id, start_cls_id + num_classes)
-            start_cls_id += num_classes
-            if idx in self._cfg.PSEUDO.UNSUP:
-                if hasattr(self.model, 'module'):
-                    self.model.module.initialize_centers(centers, center_labels)
-                else:
-                    self.model.initialize_centers(centers, center_labels)
+            if not hasattr(self.trainer, 'memory'):
+                # update model classifier
+                center_labels = torch.arange(start_cls_id, start_cls_id + num_classes)
+                start_cls_id += num_classes
+                if idx in self._cfg.PSEUDO.UNSUP:
+                    if hasattr(self.model, 'module'):
+                        self.model.module.initialize_centers(centers, center_labels)
+                    else:
+                        self.model.initialize_centers(centers, center_labels)
+            else:
+                # update memory labels
+                self.trainer.memory._update_label(labels)
 
         # update the dataloader and iter
         self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
@@ -660,58 +675,3 @@ class LabelGeneratorHook(HookBase):
 
         sec = self._step_timer.seconds()
         logger.info(f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}")
-
-    @torch.no_grad()
-    def extract_features(self, model):
-        total = len(self._data_loader_cluster)
-        data_iter = iter(self._data_loader_cluster)
-        start_time = time.perf_counter()
-        total_compute_time = 0
-
-        features = list()
-        true_label = list()
-        with inference_context(model), torch.no_grad():
-            for idx in range(total):
-                inputs = next(data_iter)
-
-                start_compute_time = time.perf_counter()
-                outputs = model(inputs)
-                if self._cfg.PSEUDO.NORM_FEAT:
-                    outputs = F.normalize(outputs, p=2, dim=1)
-                features.append(outputs)
-                true_label.append(inputs['targets'])
-                comm.synchronize()
-                total_compute_time += time.perf_counter() - start_compute_time
-
-                idx += 1
-                iters_after_start = idx + 1
-                seconds_per_img = total_compute_time / iters_after_start
-                if seconds_per_img > 30:
-                    total_seconds_per_img = (time.perf_counter() - start_time) / iters_after_start
-                    eta = datetime.timedelta(seconds=int(total_seconds_per_img * (total - idx - 1)))
-                    log_every_n_seconds(
-                        logging.INFO,
-                        "Inference done {}/{}. {:.4f} s / img. ETA={}".format(
-                            idx + 1, total, seconds_per_img, str(eta)
-                        ),
-                        n=30,
-                    )
-
-        total_time = time.perf_counter() - start_time
-        total_time_str = str(datetime.timedelta(seconds=total_time))
-        logger.info(
-            "Total inference time: {} ({:.6f} s / img per device)".format(
-                total_time_str, total_time / total
-            )
-        )
-
-        if comm.get_world_size() > 1:
-            comm.synchronize()
-            features = torch.cat(features)
-            true_label = torch.cat(true_label)
-            features = comm.gather(features)
-            true_label = comm.gather(true_label)
-        features = torch.cat(features, dim=0)
-        true_label = torch.cat(true_label, dim=0)
-
-        return features, true_label

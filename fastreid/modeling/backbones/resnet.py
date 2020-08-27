@@ -230,7 +230,7 @@ class ResNet(nn.Module):
 
         return x
 
-    def random_init(self, zero_init_residual=False):
+    def random_init(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
@@ -239,17 +239,6 @@ class ResNet(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
-        # Zero-initialize the last BN in each residual branch,
-        # so that the residual branch starts with zeros, and each residual block
-        # behaves like an identity.
-        # This improves the model by 0.2~0.3% according to
-        # https://arxiv.org/abs/1706.02677
-        if zero_init_residual:
-            for m in self.modules():
-                if isinstance(m, Bottleneck):
-                    nn.init.constant_(m.bn3.weight, 0)
-                elif isinstance(m, BasicBlock):
-                    nn.init.constant_(m.bn2.weight, 0)
 
 def init_pretrained_weights(key, with_ibn, with_se):
     """Initializes model with pretrained weights.

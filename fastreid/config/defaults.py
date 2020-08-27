@@ -199,7 +199,7 @@ _C.DATALOADER = CN()
 _C.DATALOADER.PK_SAMPLER = True
 # Naive sampler which don't consider balanced identity sampling
 _C.DATALOADER.NAIVE_WAY = False
-# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, TrainingSampler, InferenceSampler
+# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler
 _C.DATALOADER.SAMPLER_NAME = "NaiveIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
@@ -228,6 +228,12 @@ _C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
 _C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
 _C.PSEUDO.DBSCAN.K1 = 30
 _C.PSEUDO.DBSCAN.K2 = 6
+
+# Memory related options for Self-paced learning
+# Temperature for scaling contrastive loss
+_C.PSEUDO.MEMORY = CN()
+_C.PSEUDO.MEMORY.TEMP = 0.05
+_C.PSEUDO.MEMORY.MOMENTUM = 0.2
 
 # ---------------------------------------------------------------------------- #
 # Solver

@@ -1,0 +1,7 @@
+_BASE_: "../Base-spcl.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+OUTPUT_DIR: "logs/SpCL/msmt17/AGW_R50"

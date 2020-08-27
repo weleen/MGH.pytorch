@@ -5,8 +5,6 @@
 """
 from typing import List, Union
 
-import copy
-import torch
 from torch.utils.data import Dataset
 
 from fastreid.utils.misc import read_image

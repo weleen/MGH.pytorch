@@ -46,9 +46,6 @@ class TrainingSampler(Sampler):
         # support distributed training
         self.num_samples = int(np.floor(self._size * 1.0 / self._world_size))
 
-    def __len__(self):
-        return self.num_samples
-
     def __iter__(self):
         start = self._rank
         yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
