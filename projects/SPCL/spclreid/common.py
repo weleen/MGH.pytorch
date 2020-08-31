@@ -14,21 +14,14 @@ class CommDataset(Dataset):
     """Image Person ReID Dataset"""
 
     def __init__(self, img_items, transform=None, relabel=True):
+        self.img_items = img_items
         self.transform = transform
         self.relabel = relabel
 
-        self.pid_dict = {}
-        if self.relabel:
-            self.img_items = []
-            pids = set()
-            for i, item in enumerate(img_items):
-                pid = self.get_pids(item[0], item[1])
-                self.img_items.append((item[0], pid, item[2]))  # replace pid
-                pids.add(pid)
-            self.pids = pids
-            self.pid_dict = dict([(p, i) for i, p in enumerate(sorted(self.pids))])
-        else:
-            self.img_items = img_items
+        pid_set = set([i[1] for i in img_items])
+
+        self.pids = sorted(list(pid_set))
+        if relabel: self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
 
     def __len__(self):
         return len(self.img_items)
@@ -39,16 +32,13 @@ class CommDataset(Dataset):
         if self.transform is not None: img = self.transform(img)
         if self.relabel: pid = self.pid_dict[pid]
         return {
-            'images': img,
-            'targets': pid,
-            'camid': camid,
-            'img_path': img_path,
-            'index': index
+            "images": img,
+            "targets": pid,
+            "camid": camid,
+            "img_path": img_path,
+            "index": index
         }
 
-    @staticmethod
-    def get_pids(file_path, pid):
-        """ Suitable for muilti-dataset training """
-        if 'cuhk03' in file_path: prefix = 'cuhk'
-        else: prefix = file_path.split('/')[1]
-        return prefix + '_' + str(pid)
+    @property
+    def num_classes(self):
+        return len(self.pids)

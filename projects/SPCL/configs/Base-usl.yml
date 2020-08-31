@@ -3,7 +3,7 @@ MODEL:
 
   BACKBONE:
     NAME: "build_resnet_backbone"
-    DEPTH: 50
+    DEPTH: "50x"
     LAST_STRIDE: 1
     WITH_NL: True
     PRETRAIN: True
@@ -59,7 +59,7 @@ SOLVER:
   WARMUP_ITERS: 0
 
   LOG_PERIOD: 200
-  CHECKPOINT_PERIOD: 20
+  CHECKPOINT_PERIOD: 10
 
 TEST:
   EVAL_PERIOD: 10

@@ -46,7 +46,7 @@ class SPCLTrainer(DefaultTrainer):
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
             ddp_cfg = {
-                'device': [comm.get_local_rank()],
+                'devices_id': [comm.get_local_rank()],
                 'broadcast_buffers': False,
                 'output_device': comm.get_local_rank(),
                 'find_unused_parameters': True
@@ -54,6 +54,8 @@ class SPCLTrainer(DefaultTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
+        else:
+            model = torch.nn.DataParallel(model)
 
         # create hybrid memory
         self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,
@@ -294,47 +296,3 @@ class SPCLTrainer(DefaultTrainer):
         losses.backward()
 
         self.optimizer.step()
-
-    @staticmethod
-    def auto_scale_hyperparams(cfg, data_loader):
-        r"""
-        This is used for auto-computation actual training iterations,
-        because some hyper-param, such as MAX_ITER, means training epochs rather than iters,
-        so we need to convert specific hyper-param to training iterations.
-        """
-
-        cfg = cfg.clone()
-        frozen = cfg.is_frozen()
-        cfg.defrost()
-
-        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
-        cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
-        cfg.SOLVER.MAX_ITER *= iters_per_epoch
-        cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
-        cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
-        cfg.SOLVER.DELAY_ITERS *= iters_per_epoch
-        for i in range(len(cfg.SOLVER.STEPS)):
-            cfg.SOLVER.STEPS[i] *= iters_per_epoch
-        cfg.SOLVER.SWA.ITER *= iters_per_epoch
-        cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
-
-        # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
-        cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
-        
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
-        cfg.SOLVER.CHECKPOINT_PERIOD = cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch + num_mode
-
-        logger = logging.getLogger('fastreid.' + __name__)
-        logger.info(
-            f"Auto-scaling the config to num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, "
-            f"max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
-            f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
-            f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
-            f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
-            f"iters_per_epoch={iters_per_epoch}."
-        )
-
-        if frozen: cfg.freeze()
-
-        return cfg
