@@ -7,6 +7,8 @@
 import copy
 import logging
 import os
+from tabulate import tabulate
+from termcolor import colored
 
 logger = logging.getLogger(__name__)
 
@@ -147,26 +149,6 @@ class Dataset(object):
             if not os.path.exists(fpath):
                 raise RuntimeError('"{}" is not found'.format(fpath))
 
-    def __repr__(self):
-        num_train_pids, num_train_cams = self.parse_data(self.train)
-        num_query_pids, num_query_cams = self.parse_data(self.query)
-        num_gallery_pids, num_gallery_cams = self.parse_data(self.gallery)
-
-        msg = '  ----------------------------------------\n' \
-              '  subset   | # ids | # items | # cameras\n' \
-              '  ----------------------------------------\n' \
-              '  train    | {:5d} | {:7d} | {:9d}\n' \
-              '  query    | {:5d} | {:7d} | {:9d}\n' \
-              '  gallery  | {:5d} | {:7d} | {:9d}\n' \
-              '  ----------------------------------------\n' \
-              '  items: images for image dataset\n'.format(
-            num_train_pids, len(self.train), num_train_cams,
-            num_query_pids, len(self.query), num_query_cams,
-            num_gallery_pids, len(self.gallery), num_gallery_cams
-        )
-
-        return msg
-
 
 class ImageDataset(Dataset):
     """A base class representing ImageDataset.
@@ -182,23 +164,37 @@ class ImageDataset(Dataset):
 
     def show_train(self):
         num_train_pids, num_train_cams = self.parse_data(self.train)
-        logger.info('=> Loaded {}'.format(self.__class__.__name__))
-        logger.info('  ----------------------------------------')
-        logger.info('  subset   | # ids | # images | # cameras')
-        logger.info('  ----------------------------------------')
-        logger.info('  train    | {:5d} | {:8d} | {:9d}'.format(num_train_pids, len(self.train), num_train_cams))
-        logger.info('  ----------------------------------------')
+
+        headers = ['subset', '# ids', '# images', '# cameras']
+        csv_results = [['train', num_train_pids, len(self.train), num_train_cams]]
+
+        # tabulate it
+        table = tabulate(
+            csv_results,
+            tablefmt="pipe",
+            headers=headers,
+            numalign="left",
+        )
+        logger.info(f"=> Loaded {self.__class__.__name__} in csv format: \n" + colored(table, "cyan"))
 
     def show_test(self):
         num_query_pids, num_query_cams = self.parse_data(self.query)
         num_gallery_pids, num_gallery_cams = self.parse_data(self.gallery)
-        logger.info('=> Loaded {}'.format(self.__class__.__name__))
-        logger.info('  ----------------------------------------')
-        logger.info('  subset   | # ids | # images | # cameras')
-        logger.info('  ----------------------------------------')
-        logger.info('  query    | {:5d} | {:8d} | {:9d}'.format(num_query_pids, len(self.query), num_query_cams))
-        logger.info('  gallery  | {:5d} | {:8d} | {:9d}'.format(num_gallery_pids, len(self.gallery), num_gallery_cams))
-        logger.info('  ----------------------------------------')
+
+        headers = ['subset', '# ids', '# images', '# cameras']
+        csv_results = [
+            ['query', num_query_pids, len(self.query), num_query_cams],
+            ['gallery', num_gallery_pids, len(self.gallery), num_gallery_cams],
+        ]
+
+        # tabulate it
+        table = tabulate(
+            csv_results,
+            tablefmt="pipe",
+            headers=headers,
+            numalign="left",
+        )
+        logger.info(f"=> Loaded {self.__class__.__name__} in csv format: \n" + colored(table, "cyan"))
 
     def renew_labels(self, pseudo_labels):
         assert isinstance(pseudo_labels, list), 'pseudo labels is not list'

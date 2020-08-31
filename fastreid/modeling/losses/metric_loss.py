@@ -19,7 +19,7 @@ def softmax_weights(dist, mask):
     return W
 
 
-def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
+def hard_example_mining(dist_mat, is_pos, is_neg):
     """For each anchor, find the hardest positive and negative sample.
     Args:
       dist_mat: pair wise distance between samples, shape [N, M]
@@ -58,8 +58,6 @@ def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
     dist_ap = dist_ap.squeeze(1)
     dist_an = dist_an.squeeze(1)
 
-    if return_index:
-        return dist_ap, dist_an, relative_p_inds, relative_n_inds
     return dist_ap, dist_an
 
 
@@ -114,9 +112,9 @@ class TripletLoss(object):
 
         dist_mat = compute_distance_matrix(embedding, all_embedding)
 
-        N, M = dist_mat.size()
-        is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
-        is_neg = targets.view(N, 1).expand(N, M).ne(all_targets.view(M, 1).expand(M, N).t())
+        N = dist_mat.size(0)
+        is_pos = all_targets.view(N, 1).expand(N, N).eq(all_targets.view(N, 1).expand(N, N).t())
+        is_neg = all_targets.view(N, 1).expand(N, N).ne(all_targets.view(N, 1).expand(N, N).t())
 
         if self._hard_mining:
             dist_ap, dist_an = hard_example_mining(dist_mat, is_pos, is_neg)

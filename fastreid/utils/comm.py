@@ -255,6 +255,28 @@ def reduce_dict(input_dict, average=True):
     return reduced_dict
 
 
+def concat_all_gather(tensor):
+    """
+    Performs all_gather operation on the provided tensors.
+    *** Warning ***: torch.distributed.all_gather has no gradient.
+    """
+    tensors_gather = [torch.ones_like(tensor)
+                      for _ in range(torch.distributed.get_world_size())]
+    torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
+
+    output = torch.cat(tensors_gather, dim=0)
+    return output
+
+
+# def concat_all_gather(tensor):
+#     """
+#     Concatenate tensor from all processes with the gradients.
+#     :param tensor: (Tensor)
+#     :return:
+#     """
+#     return torch.cat(GatherLayer.apply(tensor), dim=0)
+
+
 class GatherLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
@@ -269,16 +291,6 @@ class GatherLayer(torch.autograd.Function):
         grad_out = torch.zeros_like(input)
         grad_out[:] = grads[dist.get_rank()]
         return grad_out
-
-
-def concat_all_gather(tensor):
-    """
-    Concatenate tensor from all processes with the gradients.
-    :param tensor: (Tensor)
-    :return:
-    """
-    return torch.cat(GatherLayer.apply(tensor), dim=0)
-
 
 @torch.no_grad()
 def broadcast_tensor(x, src, gpu=None):

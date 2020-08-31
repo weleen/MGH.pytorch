@@ -12,7 +12,6 @@ import argparse
 import logging
 import os
 import sys
-import random
 from collections import OrderedDict
 
 import torch
@@ -22,7 +21,8 @@ from torch.nn.parallel import DistributedDataParallel
 from fvcore.common.checkpoint import Checkpointer
 from fvcore.common.file_io import PathManager
 
-from fastreid.data import build_reid_test_loader_new, build_reid_train_loader_new
+from fastreid.data import build_reid_test_loader, build_reid_train_loader, \
+    build_reid_test_loader_new, build_reid_train_loader_new
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
                                  inference_on_dataset, print_csv_format)
 from fastreid.modeling.meta_arch import build_model
@@ -32,7 +32,8 @@ from fastreid.utils.env import seed_all_rng
 from fastreid.utils.misc import collect_env_info, cp_projects
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
 from fastreid.utils.logger import setup_logger
-from . import hooks, SimpleTrainer
+from . import hooks
+from .train_loop import SimpleTrainer
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -43,19 +44,7 @@ def default_argument_parser():
     Returns:
         argparse.ArgumentParser:
     """
-    parser = argparse.ArgumentParser(
-        epilog=f"""
-        Examples:
-
-        Run on single machine:
-            $ {sys.argv[0]} --num-gpus 8 --config-file cfg.yaml MODEL.WEIGHTS /path/to/weight.pth
-
-        Run on multiple machines:
-            (machine0)$ {sys.argv[0]} --machine-rank 0 --num-machines 2 --dist-url <URL> [--other-flags]
-            (machine1)$ {sys.argv[0]} --machine-rank 1 --num-machines 2 --dist-url <URL> [--other-flags]
-        """,
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
+    parser = argparse.ArgumentParser(description="fastreid Training")
     parser.add_argument("--config-file", default="", metavar="FILE", help="path to config file")
     parser.add_argument(
         "--resume",
@@ -72,7 +61,7 @@ def default_argument_parser():
     # PyTorch still may leave orphan processes in multi-gpu training.
     # Therefore we use a deterministic way to obtain port,
     # so that users are aware of orphan processes by seeing the port occupied.
-    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14 + random.randint(0, 10)
+    port = 2 ** 15 + 2 ** 14 + hash(os.getuid() if sys.platform != "win32" else 1) % 2 ** 14 + int(torch.randint(10, (1,)))
     parser.add_argument("--dist-url", default="tcp://127.0.0.1:{}".format(port))
     parser.add_argument(
         "opts",
@@ -98,7 +87,7 @@ def default_setup(cfg, args):
         PathManager.mkdirs(output_dir)
 
     rank = comm.get_rank()
-    setup_logger(output_dir, distributed_rank=rank, name='fvcore')
+    setup_logger(output_dir, distributed_rank=rank, name="fvcore")
     logger = setup_logger(output_dir, distributed_rank=rank)
 
     logger.info("Rank of current process: {}. World size: {}".format(rank, comm.get_world_size()))
@@ -344,6 +333,7 @@ class DefaultTrainer(SimpleTrainer):
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
             ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
+
         return ret
 
     def build_writers(self):
@@ -490,7 +480,6 @@ class DefaultTrainer(SimpleTrainer):
             ), "Evaluator must return a dict on the main process. Got {} instead.".format(
                 results
             )
-            logger.info("Evaluation results for {} in csv format:".format(dataset_name))
             print_csv_format(results)
 
         if len(results) == 1: results = list(results.values())[0]
@@ -528,8 +517,8 @@ class DefaultTrainer(SimpleTrainer):
 
         ckpt_multiple = cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
-        cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
+        eval_num_mod = (cfg.SOLVER.LOG_PERIOD - cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + eval_num_mod
         # Change checkpoint saving period consistent with evaluation period.
         cfg.SOLVER.CHECKPOINT_PERIOD = int(cfg.TEST.EVAL_PERIOD * ckpt_multiple)
 

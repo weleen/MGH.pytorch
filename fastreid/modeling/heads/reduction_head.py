@@ -20,25 +20,20 @@ class ReductionHead(nn.Module):
 
         self.bottleneck = nn.Sequential(
             nn.Conv2d(in_feat, reduction_dim, 1, 1, bias=False),
-            get_norm(cfg.MODEL.HEADS.NORM, reduction_dim, cfg.MODEL.HEADS.NORM_SPLIT),
-            nn.LeakyReLU(0.1, inplace=True),
+            get_norm(cfg.MODEL.HEADS.NORM, reduction_dim, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True),
         )
 
-        self.dropout = cfg.MODEL.HEADS.DROPOUT
-        self.bnneck = get_norm(cfg.MODEL.HEADS.NORM, reduction_dim, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True)
-
         self.bottleneck.apply(weights_init_kaiming)
-        self.bnneck.apply(weights_init_kaiming)
 
         # identity classification layer
         cls_type = cfg.MODEL.HEADS.CLS_LAYER
-        if cls_type == 'linear':    self.classifier = nn.Linear(reduction_dim, num_classes, bias=False)
-        elif cls_type == 'arcface': self.classifier = Arcface(cfg, reduction_dim, num_classes)
-        elif cls_type == 'circle':  self.classifier = Circle(cfg, reduction_dim, num_classes)
-        elif cls_type == 'amSoftmax': self.classifier = AMSoftmax(cfg, reduction_dim, num_classes)
+        if cls_type == 'linear':          self.classifier = nn.Linear(reduction_dim, num_classes, bias=False)
+        elif cls_type == 'arcSoftmax':    self.classifier = ArcSoftmax(cfg, reduction_dim, num_classes)
+        elif cls_type == 'circleSoftmax': self.classifier = CircleSoftmax(cfg, reduction_dim, num_classes)
+        elif cls_type == 'amSoftmax':     self.classifier = AMSoftmax(cfg, reduction_dim, num_classes)
         else:
             raise KeyError(f"{cls_type} is invalid, please choose from "
-                           f"'linear', 'arcface', 'amSoftmax' and 'circle'.")
+                           f"'linear', 'arcSoftmax', 'amSoftmax' and 'circleSoftmax'.")
 
         self.classifier.apply(weights_init_classifier)
 
@@ -46,24 +41,22 @@ class ReductionHead(nn.Module):
         """
         See :class:`ReIDHeads.forward`.
         """
-        features = self.pool_layer(features)
-        global_feat = self.bottleneck(features)
-        bn_feat = self.bnneck(global_feat)
+        global_feat = self.pool_layer(features)
+        bn_feat = self.bottleneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
 
         # Evaluation
         if not self.training: return bn_feat
 
         # Training
-        try:              pred_class_logits = self.classifier(bn_feat)
-        except TypeError: pred_class_logits = self.classifier(bn_feat, targets)
+        if self.classifier.__class__.__name__ == 'Linear':
+            pred_class_logits = self.classifier(bn_feat)
+        else:
+            pred_class_logits = self.classifier(bn_feat, targets)
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
         elif self.neck_feat == "after": feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
-
-        if self.dropout > 0:
-            feat = F.dropout(feat, p=self.dropout, training=self.training)
 
         return pred_class_logits, feat, targets

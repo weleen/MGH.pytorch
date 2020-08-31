@@ -5,21 +5,26 @@
 """
 
 import logging
+import os
 import sys
 
 sys.path.append('.')
 
 from torch.nn.parallel import DistributedDataParallel
+from fvcore.common.checkpoint import Checkpointer
 
 from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from fastreid.utils import comm
-
-from fvcore.common.checkpoint import Checkpointer
+from fastreid.evaluation import ReidEvaluator
 
 
 class Trainer(DefaultTrainer):
-    pass
+    @classmethod
+    def build_evaluator(cls, cfg, num_query, output_folder=None):
+        if output_folder is None:
+            output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
+        return ReidEvaluator(cfg, num_query)
 
 
 def setup(args):

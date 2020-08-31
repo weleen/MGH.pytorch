@@ -29,13 +29,13 @@ The configs are made for 1-GPU training.
 If you want to train model with 4 GPUs, you can run:
 
 ```bash
-./tools/train_net.py --config-file ./configs/Market1501/bagtricks_R50.yml --num-gpus 4
+python tools/train_net.py --config-file ./configs/Market1501/bagtricks_R50.yml --num-gpus 4
 ```
 
 To evaluate a model's performance, use
 
 ```bash
-./tools/train_net.py --config-file ./configs/Market1501/bagtricks_R50.yml --eval-only \
+python tools/train_net.py --config-file ./configs/Market1501/bagtricks_R50.yml --eval-only \
 MODEL.WEIGHTS /path/to/checkpoint_file MODEL.DEVICE "cuda:0"
 ```
 

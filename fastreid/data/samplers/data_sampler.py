@@ -43,8 +43,6 @@ class TrainingSampler(Sampler):
 
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
-        # support distributed training
-        self.num_samples = int(np.floor(self._size * 1.0 / self._world_size))
 
     def __iter__(self):
         start = self._rank
@@ -54,9 +52,9 @@ class TrainingSampler(Sampler):
         np.random.seed(self._seed)
         while True:
             if self._shuffle:
-                yield from np.random.permutation(self._size)[:round(self.num_samples * self._world_size)]
+                yield from np.random.permutation(self._size)
             else:
-                yield from np.arange(self._size)[:round(self.num_samples * self._world_size)]
+                yield from np.arange(self._size)
 
 
 @SAMPLER_REGISTRY.register()

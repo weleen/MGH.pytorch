@@ -19,11 +19,10 @@ class CommDataset(Dataset):
         self.transform = transform
         self.relabel = relabel
 
-        self.pid_dict = {}
-        if self.relabel:
-            # Sort the list, or the set will result in different pids on different processes
-            self.pids = sorted(set([item[1] for item in img_items]))
-            self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
+        pid_set = set([i[1] for i in img_items])
+
+        self.pids = sorted(list(pid_set))
+        if relabel: self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
 
     def __len__(self):
         return len(self.img_items)
@@ -65,11 +64,11 @@ class NewCommDataset(Dataset):
         self.transform = transform
         self.relabel = relabel
 
-        self.pid_dict = {}
-        if self.relabel:
-            # Sort the list, or the set will result in different pids on different processes
-            self.pids = sorted(list(set([item[1] for item in self.img_items])))
-            self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
+        pid_set = set([i[1] for i in self.img_items])
+
+        self.pids = sorted(list(pid_set))
+        if relabel: self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
+
 
     @property
     def datasets_size(self):

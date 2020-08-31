@@ -23,22 +23,15 @@ from fastreid.utils import comm
 
 logger = logging.getLogger(__name__)
 model_urls = {
-    18: 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    34: 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    50: 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    101: 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-    152: 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-}
-
-model_urls_ibn = {
-    18: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet18_ibn_a-2f571257.pth',
-    34: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet34_ibn_a-94bc1577.pth',
-    50: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet50_ibn_a-d9d0bb7b.pth',
-    101: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet101_ibn_a-59ea0ac6.pth'
-}
-
-model_urls_ibn_se = {
-    101: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/se_resnet101_ibn_a-fabed4e2.pth',
+    '18x': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
+    '34x': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
+    '50x': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    '101x': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
+    'ibn_18x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet18_ibn_a-2f571257.pth',
+    'ibn_34x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet34_ibn_a-94bc1577.pth',
+    'ibn_50x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet50_ibn_a-d9d0bb7b.pth',
+    'ibn_101x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnet101_ibn_a-59ea0ac6.pth',
+    'se_ibn_101x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/se_resnet101_ibn_a-fabed4e2.pth',
 }
 
 
@@ -240,7 +233,7 @@ class ResNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 
-def init_pretrained_weights(key, with_ibn, with_se):
+def init_pretrained_weights(key):
     """Initializes model with pretrained weights.
 
     Layers that don't match with pretrained layers in name or size are kept unchanged.
@@ -275,14 +268,7 @@ def init_pretrained_weights(key, with_ibn, with_se):
             # Unexpected OSError, re-raise.
             raise
 
-    if with_ibn:
-        if with_se:
-            _model_urls = model_urls_ibn_se
-        else:
-            _model_urls = model_urls_ibn
-    else:
-        _model_urls = model_urls
-    filename = _model_urls[key].split('/')[-1]
+    filename = model_urls[key].split('/')[-1]
 
     cached_file = os.path.join(model_dir, filename)
 
@@ -317,9 +303,27 @@ def build_resnet_backbone(cfg):
     with_nl = cfg.MODEL.BACKBONE.WITH_NL
     depth = cfg.MODEL.BACKBONE.DEPTH
 
-    num_blocks_per_stage = {34: [3, 4, 6, 3], 50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], }[depth]
-    nl_layers_per_stage = {34: [3, 4, 6, 3], 50: [0, 2, 3, 0], 101: [0, 2, 9, 0]}[depth]
-    block = {34: BasicBlock, 50: Bottleneck, 101: Bottleneck}[depth]
+    num_blocks_per_stage = {
+        '18x': [2, 2, 2, 2],
+        '34x': [3, 4, 6, 3],
+        '50x': [3, 4, 6, 3],
+        '101x': [3, 4, 23, 3],
+    }[depth]
+
+    nl_layers_per_stage = {
+        '18x': [0, 0, 0, 0],
+        '34x': [0, 0, 0, 0],
+        '50x': [0, 2, 3, 0],
+        '101x': [0, 2, 9, 0]
+    }[depth]
+
+    block = {
+        '18x': BasicBlock,
+        '34x': BasicBlock,
+        '50x': Bottleneck,
+        '101x': Bottleneck
+    }[depth]
+
     model = ResNet(last_stride, bn_norm, num_splits, with_ibn, with_se, with_nl, block,
                    num_blocks_per_stage, nl_layers_per_stage)
     if pretrain:
@@ -336,8 +340,10 @@ def build_resnet_backbone(cfg):
                 raise e
         else:
             key = depth
+            if with_ibn: key = 'ibn_' + key
+            if with_se:  key = 'se_' + key
 
-            state_dict = init_pretrained_weights(key, with_ibn, with_se)
+            state_dict = init_pretrained_weights(key)
 
         incompatible = model.load_state_dict(state_dict, strict=False)
         if incompatible.missing_keys:

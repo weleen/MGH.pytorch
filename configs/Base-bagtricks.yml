@@ -4,7 +4,7 @@ MODEL:
   BACKBONE:
     NAME: "build_resnet_backbone"
     NORM: "BN"
-    DEPTH: 50
+    DEPTH: "50x"
     LAST_STRIDE: 1
     WITH_IBN: False
     PRETRAIN: True
@@ -15,8 +15,6 @@ MODEL:
     POOL_LAYER: "avgpool"
     NECK_FEAT: "before"
     CLS_LAYER: "linear"
-    MARGIN: 0.15
-    SCALE: 128
 
   LOSSES:
     NAME: ("CrossEntropyLoss", "TripletLoss",)

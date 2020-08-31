@@ -204,6 +204,7 @@ cpdef eval_market1501_cy(float[:,:] distmat, float[:,:] q_feats, float[:,:] g_fe
         float[:] tmp_cmc = np.zeros(num_g, dtype=np.float32)
         float tmp_cmc_sum
 
+
     for q_idx in range(num_q):
         # get query pid and camid
         q_pid = q_pids[q_idx]

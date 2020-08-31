@@ -93,7 +93,6 @@ class MSMT17(ImageDataset):
         #       do not add val images to the training set.
         if 'combineall' in kwargs and kwargs['combineall']:
             train += val
-
         super(MSMT17, self).__init__(train, query, gallery, **kwargs)
 
     def process_dir(self, dir_path, list_path, is_train=True):

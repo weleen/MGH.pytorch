@@ -50,7 +50,6 @@ def build_transforms(cfg, is_train=True):
         do_rea = cfg.INPUT.REA.ENABLED
         rea_prob = cfg.INPUT.REA.PROB
         rea_mean = cfg.INPUT.REA.MEAN
-
         # random patch
         do_rpt = cfg.INPUT.RPT.ENABLED
         rpt_prob = cfg.INPUT.RPT.PROB

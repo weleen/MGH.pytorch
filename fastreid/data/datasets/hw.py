@@ -18,7 +18,7 @@ class HWData(ImageDataset):
 
         required_files = {
             self.dataset_dir,
-            self.train_set,
+            self.train_dir,
         }
 
         self.check_before_run(required_files)

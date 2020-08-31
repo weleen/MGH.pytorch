@@ -1,7 +1,7 @@
 # encoding: utf-8
 """
 @author:  xingyu liao
-@contact: liaoxingyu5@jd.com
+@contact: sherlockliao01@gmail.com
 """
 
 # based on:
@@ -13,15 +13,14 @@ import math
 import torch
 import torch.nn as nn
 
-from fvcore.common.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
-
 from fastreid.layers import IBN, get_norm
+from fvcore.common.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
 from fastreid.utils import comm
 from .build import BACKBONE_REGISTRY
 
 logger = logging.getLogger(__name__)
 model_urls = {
-    101: 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnext101_ibn_a-6ace051d.pth',
+    'ibn_101x': 'https://github.com/XingangPan/IBN-Net/releases/download/v1.0/resnext101_ibn_a-6ace051d.pth',
 }
 
 
@@ -237,8 +236,8 @@ def build_resnext_backbone(cfg):
     with_nl = cfg.MODEL.BACKBONE.WITH_NL
     depth = cfg.MODEL.BACKBONE.DEPTH
 
-    num_blocks_per_stage = {50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 152: [3, 8, 36, 3], }[depth]
-    nl_layers_per_stage = {50: [0, 2, 3, 0], 101: [0, 2, 3, 0]}[depth]
+    num_blocks_per_stage = {'50x': [3, 4, 6, 3], '101x': [3, 4, 23, 3], '152x': [3, 8, 36, 3], }[depth]
+    nl_layers_per_stage = {'50x': [0, 2, 3, 0], '101x': [0, 2, 3, 0]}[depth]
     model = ResNeXt(last_stride, bn_norm, num_splits, with_ibn, Bottleneck, num_blocks_per_stage)
 
     if pretrain:

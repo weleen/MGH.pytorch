@@ -30,7 +30,7 @@ _C.MODEL.OPEN_LAYERS = ['']
 _C.MODEL.BACKBONE = CN()
 
 _C.MODEL.BACKBONE.NAME = "build_resnet_backbone"
-_C.MODEL.BACKBONE.DEPTH = 50
+_C.MODEL.BACKBONE.DEPTH = "50x"
 _C.MODEL.BACKBONE.LAST_STRIDE = 1
 # Normalization method for the convolution layers.
 _C.MODEL.BACKBONE.NORM = "BN"
@@ -69,13 +69,11 @@ _C.MODEL.HEADS.NECK_FEAT = "before"  # options: before, after
 _C.MODEL.HEADS.POOL_LAYER = "avgpool"
 
 # Classification layer type
-_C.MODEL.HEADS.CLS_LAYER = "linear"  # "arcface" or "circle"
+_C.MODEL.HEADS.CLS_LAYER = "linear"  # "arcSoftmax" or "circleSoftmax"
 
 # Margin and Scale for margin-based classification layer
 _C.MODEL.HEADS.MARGIN = 0.15
 _C.MODEL.HEADS.SCALE = 128
-# Dropout in the head
-_C.MODEL.HEADS.DROPOUT = False
 
 # ---------------------------------------------------------------------------- #
 # REID LOSSES options
@@ -203,7 +201,7 @@ _C.DATALOADER.NAIVE_WAY = False
 _C.DATALOADER.SAMPLER_NAME = "NaiveIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
-_C.DATALOADER.NUM_WORKERS = 2
+_C.DATALOADER.NUM_WORKERS = 8
 # Iters per epoch
 _C.DATALOADER.ITERS_PER_EPOCH = 1
 
@@ -281,7 +279,7 @@ _C.SOLVER.SWA.LR_SCHED = False
 _C.SOLVER.CHECKPOINT_PERIOD = 20
 
 _C.SOLVER.LOG_PERIOD = 200
-# Number of images per batch across all machines
+# Number of images per batch across all machines.
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch
 _C.SOLVER.IMS_PER_BATCH = 64

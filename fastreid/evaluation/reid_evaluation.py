@@ -38,23 +38,21 @@ class ReidEvaluator(DatasetEvaluator):
         self.camids = []
 
     def process(self, inputs, outputs):
-        self.pids.extend(inputs["targets"].numpy())
-        self.camids.extend(inputs["camid"].numpy())
+        self.pids.extend(inputs["targets"])
+        self.camids.extend(inputs["camid"])
         self.features.append(outputs.cpu())
 
     @staticmethod
     def cal_dist(metric: str, query_feat: torch.tensor, gallery_feat: torch.tensor):
         assert metric in ["cosine", "euclidean"], "must choose from [cosine, euclidean], but got {}".format(metric)
         if metric == "cosine":
-            query_feat = F.normalize(query_feat, dim=1)
-            gallery_feat = F.normalize(gallery_feat, dim=1)
             dist = 1 - torch.mm(query_feat, gallery_feat.t())
         else:
             m, n = query_feat.size(0), gallery_feat.size(0)
             xx = torch.pow(query_feat, 2).sum(1, keepdim=True).expand(m, n)
             yy = torch.pow(gallery_feat, 2).sum(1, keepdim=True).expand(n, m).t()
             dist = xx + yy
-            dist.addmm_(1, -2, query_feat, gallery_feat.t())
+            dist.addmm_(query_feat, gallery_feat.t(), beta=1, alpha=-2)
             dist = dist.clamp(min=1e-12).sqrt()  # for numerical stability
         return dist.cpu().numpy()
 

@@ -15,13 +15,11 @@ from fastreid.layers import (
     SplAtConv2d,
     get_norm,
 )
-
 from fvcore.common.checkpoint import get_unexpected_parameters_message, get_missing_parameters_message
-
 from .build import BACKBONE_REGISTRY
 
 logger = logging.getLogger(__name__)
-_url_format = 'https://hangzh.s3.amazonaws.com/encoding/models/{}-{}.pth'
+_url_format = 'https://s3.us-west-1.wasabisys.com/resnest/torch/{}-{}.pth'
 
 _model_sha256 = {name: checksum for checksum, name in [
     ('528c19ca', 'resnest50'),
@@ -376,9 +374,10 @@ def build_resnest_backbone(cfg):
     with_nl = cfg.MODEL.BACKBONE.WITH_NL
     depth = cfg.MODEL.BACKBONE.DEPTH
 
-    num_blocks_per_stage = {50: [3, 4, 6, 3], 101: [3, 4, 23, 3], 200: [3, 24, 36, 3], 269: [3, 30, 48, 8]}[depth]
-    nl_layers_per_stage = {50: [0, 2, 3, 0], 101: [0, 2, 3, 0]}[depth]
-    stem_width = {50: 32, 101: 64, 200: 64, 269: 64}[depth]
+    num_blocks_per_stage = {"50x": [3, 4, 6, 3], "101x": [3, 4, 23, 3], "200x": [3, 24, 36, 3],
+                            "269x": [3, 30, 48, 8]}[depth]
+    nl_layers_per_stage = {"50x": [0, 2, 3, 0], "101x": [0, 2, 3, 0], "200x": [0, 2, 3, 0], "269x": [0, 2, 3, 0]}[depth]
+    stem_width = {"50x": 32, "101x": 64, "200x": 64, "269x": 64}[depth]
     model = ResNest(last_stride, bn_norm, num_splits, with_ibn, with_nl, Bottleneck, num_blocks_per_stage,
                     nl_layers_per_stage, radix=2, groups=1, bottleneck_width=64,
                     deep_stem=True, stem_width=stem_width, avg_down=True,

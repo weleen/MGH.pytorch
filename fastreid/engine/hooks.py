@@ -30,7 +30,6 @@ from fastreid.utils.events import EventStorage, EventWriter
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
-
 from .train_loop import HookBase
 
 __all__ = [
@@ -49,8 +48,6 @@ __all__ = [
 """
 Implement some common hooks.
 """
-
-logger = logging.getLogger(__name__)
 
 
 class CallbackHook(HookBase):
@@ -114,6 +111,7 @@ class IterationTimer(HookBase):
         self._total_timer.pause()
 
     def after_train(self):
+        logger = logging.getLogger(__name__)
         total_time = time.perf_counter() - self._start_time
         total_time_minus_hooks = self._total_timer.seconds()
         hook_time = total_time - total_time_minus_hooks
@@ -378,8 +376,9 @@ class PreciseBN(HookBase):
             num_iter (int): number of iterations used to compute the precise
                 statistics.
         """
+        self._logger = logging.getLogger(__name__)
         if len(get_bn_modules(model)) == 0:
-            logger.info(
+            self._logger.info(
                 "PreciseBN is disabled because model does not contain BN layers in training mode."
             )
             self._disabled = True
@@ -411,14 +410,14 @@ class PreciseBN(HookBase):
         def data_loader():
             for num_iter in itertools.count(1):
                 if num_iter % 100 == 0:
-                    logger.info(
+                    self._logger.info(
                         "Running precise-BN ... {}/{} iterations.".format(num_iter, self._num_iter)
                     )
                 # This way we can reuse the same iterator
                 yield next(self._data_iter)
 
         with EventStorage():  # capture events in a new storage to discard them
-            logger.info(
+            self._logger.info(
                 "Running precise-BN for {} iterations...  ".format(self._num_iter)
                 + "Note that this could produce different statistics every time."
             )
@@ -427,6 +426,7 @@ class PreciseBN(HookBase):
 
 class FreezeLayer(HookBase):
     def __init__(self, model, open_layer_names, freeze_iters):
+        self._logger = logging.getLogger(__name__)
         if hasattr(model, 'module'):
             model = model.module
         self.model = model
@@ -453,7 +453,7 @@ class FreezeLayer(HookBase):
     def freeze_specific_layer(self):
         for layer in self.open_layer_names:
             if not hasattr(self.model, layer):
-                logger.info(f'{layer} is not an attribute of the model, will skip this layer')
+                self._logger.info(f'{layer} is not an attribute of the model, will skip this layer')
 
         for name, module in self.model.named_children():
             if name in self.open_layer_names:
@@ -512,6 +512,7 @@ class LabelGeneratorHook(HookBase):
     }
 
     def __init__(self, cfg, model):
+        self._logger = logging.getLogger(__name__)
         self._step_timer = Timer()
         self._cfg = cfg
         self.model = model
@@ -536,7 +537,7 @@ class LabelGeneratorHook(HookBase):
             comm.synchronize()
 
     def update_labels(self):
-        logger.info(f"Start updating pseudo labels on iteration {self.trainer.iter}")
+        self._logger.info(f"Start updating pseudo labels on iteration {self.trainer.iter}")
 
         all_features = []
         features, true_label = extract_features(self.model,
@@ -581,7 +582,7 @@ class LabelGeneratorHook(HookBase):
                     labels -= labels.min()  # make the index start from 0
                     num_classes = len(labels.unique())
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
-                    logger.info("Use the ground truth labels for dataset {}".format(dataset_name))
+                    self._logger.info("Use the ground truth labels for dataset {}".format(dataset_name))
 
             comm.synchronize()
 
@@ -608,7 +609,7 @@ class LabelGeneratorHook(HookBase):
             clu_num = (index2label > 1).sum()
             unclu_ins_num = (index2label == 1).sum()
 
-            logger.info(f"Cluster Statistic: "
+            self._logger.info(f"Cluster Statistic: "
                         f"acc_score: {acc_score:.2e}, nmi_score: {nmi_score:.2e}, ari_score: {ari_score:.2e} "
                         f"clusters {clu_num}, "
                         f"un-clustered instances {unclu_ins_num}, "
@@ -656,4 +657,4 @@ class LabelGeneratorHook(HookBase):
             self.trainer.optimizer.state = collections.defaultdict(dict)
 
         sec = self._step_timer.seconds()
-        logger.info(f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}")
+        self._logger.info(f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}")

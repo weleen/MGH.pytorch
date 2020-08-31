@@ -5,8 +5,8 @@
 """
 
 from .activation import *
-from .arcface import Arcface
-from .circle import Circle
+from .arc_softmax import ArcSoftmax
+from .circle_softmax import CircleSoftmax
 from .am_softmax import AMSoftmax
 from .batch_drop import BatchDrop
 from .batch_norm import *

@@ -11,7 +11,7 @@ from torch import nn
 from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.heads import build_reid_heads
-from fastreid.modeling.losses import reid_losses
+from fastreid.modeling.losses import *
 from .build import META_ARCH_REGISTRY
 
 
@@ -25,7 +25,8 @@ class Baseline(nn.Module):
 
         # head
         pool_type = cfg.MODEL.HEADS.POOL_LAYER
-        if pool_type == 'avgpool':  pool_layer = FastGlobalAvgPool2d()
+        if pool_type == 'fastavgpool':  pool_layer = FastGlobalAvgPool2d()
+        elif pool_type == 'avgpool':    pool_layer = nn.AdaptiveAvgPool2d(1)
         elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
         elif pool_type == 'gempool':    pool_layer = GeneralizedMeanPoolingP()
         elif pool_type == "avgmaxpool": pool_layer = AdaptiveAvgMaxPool2d()
@@ -35,24 +36,12 @@ class Baseline(nn.Module):
                            f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
 
         in_feat = cfg.MODEL.HEADS.IN_FEAT
-        self.num_classes = cfg.MODEL.HEADS.NUM_CLASSES
-        self.heads = build_reid_heads(cfg, in_feat, self.num_classes, pool_layer)
+        num_classes = cfg.MODEL.HEADS.NUM_CLASSES
+        self.heads = build_reid_heads(cfg, in_feat, num_classes, pool_layer)
 
     @property
     def device(self):
         return next(self.parameters()).device
-
-    @torch.no_grad()
-    def initialize_centers(self, centers, labels):
-        logger = logging.getLogger(__name__)
-        if self.num_classes > 0:
-            self.heads.classifier.weight.data[labels.min().item(): labels.max().item() + 1].copy_(
-                centers.to(self.heads.classifier.weight.device))
-        else:
-            logger.warning(
-                f"there is no classifier in the {self.__class__.__name__}, "
-                f"the initialization does not function"
-            )
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
@@ -80,6 +69,16 @@ class Baseline(nn.Module):
 
     def losses(self, outputs, **kwargs):
         logits, feat, targets = outputs
-        if 'memory' in kwargs.keys():
-            return kwargs['memory'](feat, targets)  # targets equal to index
         return reid_losses(self._cfg, logits, feat, targets)
+
+    @torch.no_grad()
+    def initialize_centers(self, centers, labels):
+        logger = logging.getLogger(__name__)
+        if self.num_classes > 0:
+            self.heads.classifier.weight.data[labels.min().item(): labels.max().item() + 1].copy_(
+                centers.to(self.heads.classifier.weight.device))
+        else:
+            logger.warning(
+                f"there is no classifier in the {self.__class__.__name__}, "
+                f"the initialization does not function"
+            )

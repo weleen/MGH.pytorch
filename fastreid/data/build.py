@@ -84,6 +84,13 @@ def build_reid_test_loader(cfg, dataset_name):
     return test_loader, len(dataset.query)
 
 
+def trivial_batch_collator(batch):
+    """
+    A batch collator that does nothing.
+    """
+    return batch
+
+
 def fast_batch_collator(batched_inputs):
     """
     A simple batch collator for most common reid tasks

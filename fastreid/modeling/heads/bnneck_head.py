@@ -21,13 +21,13 @@ class BNneckHead(nn.Module):
 
         # identity classification layer
         cls_type = cfg.MODEL.HEADS.CLS_LAYER
-        if cls_type == 'linear':    self.classifier = nn.Linear(in_feat, num_classes, bias=False)
-        elif cls_type == 'arcface': self.classifier = Arcface(cfg, in_feat, num_classes)
-        elif cls_type == 'circle': self.classifier = Circle(cfg, in_feat, num_classes)
+        if cls_type == 'linear':          self.classifier = nn.Linear(in_feat, num_classes, bias=False)
+        elif cls_type == 'arcSoftmax':    self.classifier = ArcSoftmax(cfg, in_feat, num_classes)
+        elif cls_type == 'circleSoftmax': self.classifier = CircleSoftmax(cfg, in_feat, num_classes)
         elif cls_type == 'amSoftmax':     self.classifier = AMSoftmax(cfg, in_feat, num_classes)
         else:
             raise KeyError(f"{cls_type} is invalid, please choose from "
-                           f"'linear', 'arcface', 'amSoftmax' and 'circle'.")
+                           f"'linear', 'arcSoftmax', 'amSoftmax' and 'circleSoftmax'.")
 
         self.classifier.apply(weights_init_classifier)
 
@@ -43,8 +43,10 @@ class BNneckHead(nn.Module):
         if not self.training: return bn_feat
 
         # Training
-        try:              pred_class_logits = self.classifier(bn_feat)
-        except TypeError: pred_class_logits = self.classifier(bn_feat, targets)
+        if self.classifier.__class__.__name__ == 'Linear':
+            pred_class_logits = self.classifier(bn_feat)
+        else:
+            pred_class_logits = self.classifier(bn_feat, targets)
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
         elif self.neck_feat == "after": feat = bn_feat

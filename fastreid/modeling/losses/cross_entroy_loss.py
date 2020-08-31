@@ -49,7 +49,7 @@ class CrossEntropyLoss(object):
         if self._eps >= 0:
             smooth_param = self._eps
         else:
-            # adaptive lsr
+            # Adaptive label smooth regularization
             soft_label = F.softmax(pred_class_logits, dim=1)
             smooth_param = self._alpha * soft_label[torch.arange(soft_label.size(0)), gt_classes].unsqueeze(1)
 

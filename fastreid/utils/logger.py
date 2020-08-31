@@ -61,7 +61,7 @@ def setup_logger(
         ch.setLevel(logging.DEBUG)
         if color:
             formatter = _ColorfulFormatter(
-                colored("[%(asctime)s %(name)s %(levelname)s]: ", "green") + "%(message)s",
+                colored("[%(asctime)s %(name)s]: ", "green") + "%(message)s",
                 datefmt="%m/%d %H:%M:%S",
                 root_name=name,
                 abbrev_name=str(abbrev_name),
@@ -76,7 +76,7 @@ def setup_logger(
         if output.endswith(".txt") or output.endswith(".log"):
             filename = output
         else:
-            filename = os.path.join(output, "log_{}.txt".format(time.strftime("%Y-%m-%d-%H-%M-%S")))
+            filename = os.path.join(output, "log.txt")
         if distributed_rank > 0:
             filename = filename + ".rank{}".format(distributed_rank)
         PathManager.mkdirs(os.path.dirname(filename))
