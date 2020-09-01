@@ -11,7 +11,7 @@ from fastreid.engine.hooks import *
 
 
 class ClusterHook(HookBase):
-    def __init__(self, eps=0.6, eps_gap=0.02, cluster_iter=200, min_samples=4, metric='precomputed', n_jobs=-1):
+    def __init__(self, eps=0.6, eps_gap=0.02, cluster_iter=200, min_samples=4, metric='precomputed', n_jobs=-1, reset_opt=True):
         self.logger = logging.getLogger('fastreid.' + __name__)
         self.logger.info('Clustering criterion:\t'
                          'eps: {:.3f} eps_gap: {:.3f}\t'
@@ -20,6 +20,7 @@ class ClusterHook(HookBase):
         self.cluster = DBSCAN(eps=eps, min_samples=min_samples, metric=metric, n_jobs=n_jobs)
         self.cluster_tight = DBSCAN(eps=eps - eps_gap, min_samples=min_samples, metric=metric, n_jobs=n_jobs)
         self.cluster_loose = DBSCAN(eps=eps + eps_gap, min_samples=min_samples, metric=metric, n_jobs=n_jobs)
+        self.reset_opt = reset_opt
 
     def before_step(self):
         memory = self.trainer.memory
@@ -94,6 +95,9 @@ class ClusterHook(HookBase):
             self.trainer.data_loader = self.trainer.construct_unsupervised_dataloader(pseudo_labeled_dataset,
                                                                                       is_train=True)
             self.trainer._data_loader_iter = iter(self.trainer.data_loader)
+            if self.reset_opt:
+                self.logger.warning("Reset optimizer at iteration {}".format(self.trainer.iter))
+                self.trainer.optimizer.state = collections.defaultdict(dict)
 
     def generate_pseudo_labels(self, cluster_id, num):
         labels = []

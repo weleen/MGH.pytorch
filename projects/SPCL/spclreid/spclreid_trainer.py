@@ -46,7 +46,7 @@ class SPCLTrainer(DefaultTrainer):
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
             ddp_cfg = {
-                'devices_id': [comm.get_local_rank()],
+                'device_ids': [comm.get_local_rank()],
                 'broadcast_buffers': False,
                 'output_device': comm.get_local_rank(),
                 'find_unused_parameters': True
@@ -54,8 +54,6 @@ class SPCLTrainer(DefaultTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
-        else:
-            model = torch.nn.DataParallel(model)
 
         # create hybrid memory
         self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,
@@ -217,7 +215,8 @@ class SPCLTrainer(DefaultTrainer):
             hooks.ClusterHook(
                 cfg.UNSUPERVISED.EPS,
                 cfg.UNSUPERVISED.EPS_GAP,
-                cfg.UNSUPERVISED.CLUSTER_ITER
+                cfg.UNSUPERVISED.CLUSTER_ITER,
+                reset_opt=cfg.UNSUPERVISED.RESET_OPT
             )
         )
 

@@ -3,12 +3,10 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-from typing import List, Union
 
 from torch.utils.data import Dataset
 
 from fastreid.utils.misc import read_image
-from fastreid.data.datasets.bases import ImageDataset
 
 
 class CommDataset(Dataset):
@@ -27,7 +25,7 @@ class CommDataset(Dataset):
     def __len__(self):
         return len(self.img_items)
 
-    def _get_single_item(self, index):
+    def __getitem__(self, index):
         img_path, pid, camid = self.img_items[index]
         img = read_image(img_path)
         if self.transform is not None: img = self.transform(img)
@@ -40,11 +38,6 @@ class CommDataset(Dataset):
             "index": index
         }
 
-    def __getitem__(self, index):
-        if isinstance(index, (tuple, list)):
-            return [self._get_single_item(ind) for ind in index]
-        return self._get_single_item(index)
-
     @property
     def num_classes(self):
         return len(self.pids)
@@ -53,7 +46,7 @@ class CommDataset(Dataset):
 class NewCommDataset(Dataset):
     """compatible with un/semi-supervised learning"""
 
-    def __init__(self, datasets: Union[ImageDataset, List[ImageDataset]], transform=None, relabel: bool = True):
+    def __init__(self, datasets, transform=None, relabel: bool = True):
         if isinstance(datasets, list):
             self.datasets = datasets  # add this property to save the original dataset information
         else:
@@ -77,7 +70,7 @@ class NewCommDataset(Dataset):
     def __len__(self):
         return len(self.img_items)
 
-    def _get_single_item(self, index):
+    def __getitem__(self, index):
         img_path, pid, camid = self.img_items[index]
         img = read_image(img_path)
         if self.transform is not None: img = self.transform(img)
@@ -90,11 +83,6 @@ class NewCommDataset(Dataset):
             "img_path": img_path,
             "index": index
         }
-
-    def __getitem__(self, index):
-        if isinstance(index, (tuple, list)):
-            return [self._get_single_item(ind) for ind in index]
-        return self._get_single_item(index)
 
     @property
     def num_classes(self):

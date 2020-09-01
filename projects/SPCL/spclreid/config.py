@@ -8,12 +8,6 @@ from fvcore.common.config import CfgNode as CN
 
 def add_spclreid_config(cfg):
     _C = cfg
-
-    # -----------------------------------------------------------------------------
-    # DataLoader
-    # -----------------------------------------------------------------------------
-    _C.DATALOADER.SAMPLER_NAME = 'NaiveIdentitySampler' # 'BalancedIdentitySampler', 'TrainingSampler', etc
-
     # ----------------------------------------------------------------------------
     # Unsupervised
     # ----------------------------------------------------------------------------
@@ -27,3 +21,5 @@ def add_spclreid_config(cfg):
     _C.UNSUPERVISED.MEMORY_TEMP = 0.05
     # Update momentum for the hybrid memory
     _C.UNSUPERVISED.MEMORY_MOMENTUM = 0.2
+    # Reset Optimizer
+    _C.UNSUPERVISED.RESET_OPT = True

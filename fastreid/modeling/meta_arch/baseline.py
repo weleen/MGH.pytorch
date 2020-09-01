@@ -36,8 +36,8 @@ class Baseline(nn.Module):
                            f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
 
         in_feat = cfg.MODEL.HEADS.IN_FEAT
-        num_classes = cfg.MODEL.HEADS.NUM_CLASSES
-        self.heads = build_reid_heads(cfg, in_feat, num_classes, pool_layer)
+        self.num_classes = cfg.MODEL.HEADS.NUM_CLASSES
+        self.heads = build_reid_heads(cfg, in_feat, self.num_classes, pool_layer)
 
     @property
     def device(self):
@@ -64,7 +64,11 @@ class Baseline(nn.Module):
         """
         Normalize and batch the input images.
         """
-        images = batched_inputs["images"].to(self.device)
+        if isinstance(batched_inputs, dict):
+            images = batched_inputs["images"].to(self.device)
+        elif isinstance(batched_inputs, torch.Tensor):
+            images = batched_inputs.to(self.device)
+
         return images
 
     def losses(self, outputs, **kwargs):

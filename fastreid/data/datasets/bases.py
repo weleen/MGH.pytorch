@@ -63,31 +63,6 @@ class Dataset(object):
     def __len__(self):
         return len(self.data)
 
-    def __add__(self, other):
-        """Adds two datasets together (only the train set)."""
-        train = copy.deepcopy(self.train)
-
-        for img_path, pid, camid in other.train:
-            pid += self.num_train_pids
-            camid += self.num_train_cams
-            train.append((img_path, pid, camid))
-
-        ###################################
-        # Things to do beforehand:
-        # 1. set verbose=False to avoid unnecessary print
-        # 2. set combineall=False because combineall would have been applied
-        #    if it was True for a specific dataset, setting it to True will
-        #    create new IDs that should have been included
-        ###################################
-        if isinstance(train[0][0], str):
-            return ImageDataset(
-                train, self.query, self.gallery,
-                transform=self.transform,
-                mode=self.mode,
-                combineall=False,
-                verbose=False
-            )
-
     def __radd__(self, other):
         """Supports sum([dataset1, dataset2, dataset3])."""
         if other == 0:

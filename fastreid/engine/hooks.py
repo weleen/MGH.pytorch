@@ -7,14 +7,12 @@ import logging
 import os
 import tempfile
 import time
+from collections import Counter
 import copy
 import numpy as np
 import collections
-from collections import Counter
-from itertools import accumulate
 
 import torch
-import torch.nn.functional as F
 from torch import nn
 
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
@@ -547,9 +545,9 @@ class LabelGeneratorHook(HookBase):
         all_features = torch.stack(all_features, dim=0).mean(0)
 
         if self._cfg.PSEUDO.NORM_FEAT:
-            all_features = F.normalize(all_features, p=2, dim=1)
+            all_features = torch.nn.functional.normalize(all_features, p=2, dim=1)
         datasets_size = self._common_dataset.datasets_size
-        datasets_size_range = list(accumulate([0] + datasets_size))
+        datasets_size_range = list(itertools.accumulate([0] + datasets_size))
 
         all_labels = []
         start_cls_id = 0
@@ -575,7 +573,7 @@ class LabelGeneratorHook(HookBase):
                         indep_thres=indep_thres
                     )
                     if self._cfg.PSEUDO.NORM_CENTER:
-                        centers = F.normalize(centers, p=2, dim=1)
+                        centers = torch.nn.functional.normalize(centers, p=2, dim=1)
                 else:
                     # labels must be int
                     labels = copy.deepcopy(true_label[start_id: end_id])
@@ -654,6 +652,7 @@ class LabelGeneratorHook(HookBase):
 
         # reset optim (optional)
         if self._cfg.PSEUDO.RESET_OPT:
+            self._logger.info(f"Reset optimizer")
             self.trainer.optimizer.state = collections.defaultdict(dict)
 
         sec = self._step_timer.seconds()

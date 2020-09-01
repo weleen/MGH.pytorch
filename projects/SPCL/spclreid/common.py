@@ -36,7 +36,7 @@ class CommDataset(Dataset):
             "targets": pid,
             "camid": camid,
             "img_path": img_path,
-            "index": index
+            "index": int(index)
         }
 
     @property

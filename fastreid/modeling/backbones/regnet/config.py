@@ -1,6 +1,6 @@
 import os
-
 from yacs.config import CfgNode as CN
+
 
 # Global config object
 _C = CN()

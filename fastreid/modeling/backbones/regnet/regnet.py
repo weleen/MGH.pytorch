@@ -1,15 +1,16 @@
+import torch
+import os
 import logging
 import math
-
-import numpy as np
-import torch
 import torch.nn as nn
+import numpy as np
+
 from fvcore.common.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
 
 from fastreid.layers import get_norm
 from fastreid.utils import comm
-from .config import regnet_cfg
 from ..build import BACKBONE_REGISTRY
+from .config import regnet_cfg
 
 logger = logging.getLogger(__name__)
 model_urls = {

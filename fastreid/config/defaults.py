@@ -198,7 +198,7 @@ _C.DATALOADER.PK_SAMPLER = True
 # Naive sampler which don't consider balanced identity sampling
 _C.DATALOADER.NAIVE_WAY = False
 # Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler
-_C.DATALOADER.SAMPLER_NAME = "NaiveIdentitySampler"
+_C.DATALOADER.SAMPLER_NAME = "BalancedIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 8
