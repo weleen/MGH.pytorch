@@ -23,6 +23,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL+ | arXiv'20 | [PyTorch (OpenUnReID)](../tools/SpCL) | 76.0 | 89.5 | 96.2 | 97.5 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT+ | ICLR'20 | [PyTorch (OpenUnReID)](../tools/MMT) | 74.3 | 88.1 | 96.0 | 97.5 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 72.6 | 87.7 | 95.2 | 96.9 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
@@ -35,6 +36,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL+ | arXiv'20 | [PyTorch (OpenUnReID)](../tools/SpCL) | 67.1 | 82.4 | 90.8 | 93.0 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT+ | ICLR'20 | [PyTorch (OpenUnReID)](../tools/MMT) | 60.3 | 75.6 | 86.0 | 89.2 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 65.3 | 81.2 | 90.3 | 92.2 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
@@ -55,6 +57,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL+ | arXiv'20 | [PyTorch (OpenUnReID)](../tools/SpCL) | 70.4 | 83.8 | 91.2 | 93.4 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT+ | ICLR'20 | [PyTorch (OpenUnReID)](../tools/MMT) | 67.7 | 80.3 | 89.9 | 92.9 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 68.8 | 82.9 | 90.1 | 92.5 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
@@ -82,6 +85,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL+ | arXiv'20 | [PyTorch (OpenUnReID)](../tools/SpCL) | 78.2 | 90.5 | 96.6 | 97.8 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT+ | ICLR'20 | [PyTorch (OpenUnReID)](../tools/MMT) | 80.9 | 92.2 | 97.6 | 98.4 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 76.7 | 90.3 | 96.2 | 97.7  | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
@@ -107,6 +111,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 25.4 | 51.6 | 64.3 | 69.7 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT | ICLR'20 | [PyTorch](https://github.com/yxgeee/MMT) | 22.9 | 49.2 | 63.1 | 68.8 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | MMCL | CVPR'20 | [PyTorch](https://github.com/kennethwdk/MLCReID) | 15.1 | 40.8 | 51.8 | 56.7 | [Unsupervised Person Re-Identification via Multi-Label Classification](https://openaccess.thecvf.com/content_CVPR_2020/papers/Wang_Unsupervised_Person_Re-Identification_via_Multi-Label_Classification_CVPR_2020_paper.pdf) |
@@ -119,6 +124,7 @@ For trained models by `OpenUnReID`, please refer to [MODEL_ZOO.md](MODEL_ZOO.md)
 
 | Method | Venue | Code | mAP(%) | R@1(%) | R@5(%) | R@10(%) | Reference |
 | ------ | :------: | :----: | :------: | :------: | :-------: | :------: | :------ |
+| AWB | arXiv'20 | [Empty]() | - | - | - | - | [Attentive WaveBlock: Complementarity-enhanced Mutual Networks for Unsupervised Domain Adaptation in Person Re-identification](http://arxiv.org/abs/2006.06525) |
 | SpCL | arXiv'20 | [PyTorch](https://github.com/yxgeee/SpCL) | 26.5 | 53.1 | 65.8 | 70.5 | [Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID](https://arxiv.org/pdf/2006.02713.pdf) |
 | MMT | ICLR'20 | [PyTorch](https://github.com/yxgeee/MMT) | 23.3 | 50.1 | 63.9 | 69.8 | [Mutual Mean-Teaching: Pseudo Label Refinery for Unsupervised Domain Adaptation on Person Re-identification](https://openreview.net/pdf?id=rJlnOhVYPS) |
 | MMCL | CVPR'20 | [PyTorch](https://github.com/kennethwdk/MLCReID) | 16.2 | 43.6 | 54.3 | 58.9 | [Unsupervised Person Re-Identification via Multi-Label Classification](https://openaccess.thecvf.com/content_CVPR_2020/papers/Wang_Unsupervised_Person_Re-Identification_via_Multi-Label_Classification_CVPR_2020_paper.pdf) |

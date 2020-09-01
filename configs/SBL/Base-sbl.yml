@@ -1,4 +1,4 @@
-_BASE_: "../Base-Base-AGW.yml"
+_BASE_: "../Base-AGW.yml"
 
 MODEL:
   BACKBONE:
@@ -6,7 +6,7 @@ MODEL:
 
   HEADS:
     POOL_LAYER: "gempool"
-    NECK_FEAT: "after"
+    NECK_FEAT: "before"
     NUM_CLASSES: 0
 
   LOSSES:
@@ -30,10 +30,10 @@ SOLVER:
   WARMUP_ITERS: 0
 
   LOG_PERIOD: 200
-  CHECKPOINT_PERIOD: 5
+  CHECKPOINT_PERIOD: 10
 
 TEST:
-  EVAL_PERIOD: 5
+  EVAL_PERIOD: 10
   IMS_PER_BATCH: 256
 
 CUDNN_BENCHMARK: True
