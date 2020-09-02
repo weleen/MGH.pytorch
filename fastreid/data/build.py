@@ -115,11 +115,13 @@ def fast_batch_collator(batched_inputs):
         return torch.tensor(batched_inputs)
 
 
-def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train=True, relabel=True, **kwargs) -> DataLoader:
+def build_reid_train_loader_new(cfg, datasets: list = None, pseudo_labels: list = None,
+                                is_train=True, relabel=True, **kwargs) -> DataLoader:
     """
     build dataloader for training and clustering.
     :param cfg: CfgNode
     :param datasets: list(ImageDataset)
+    :param pseudo_labels:
     :param is_train: bool, True for training, False for clustering or validation.
     :param relabel: relabel or not
     :param kwargs:
@@ -155,6 +157,8 @@ def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train
                                               cuhk03_classic_split=cfg.DATASETS.CUHK03.CLASSIC_SPLIT)
             datasets.append(dataset)
     else:
+        # update the datasets with given pseudo labels
+        assert pseudo_labels is not None, "Please give pseudo_labels for the datasets"
         datasets = copy.deepcopy(datasets)
         for idx in cfg.PSEUDO.UNSUP:
             logger.info(f"Replace the label in dataset {dataset_names[idx]}.")
@@ -184,6 +188,7 @@ def build_reid_train_loader_new(cfg, datasets=None, pseudo_labels=None, is_train
         num_workers=num_workers,
         batch_sampler=batch_sampler,
         collate_fn=fast_batch_collator,
+        pin_memory=True
     )
     return train_loader
 
@@ -217,5 +222,6 @@ def build_reid_test_loader_new(cfg, dataset_name):
         test_set,
         batch_sampler=batch_sampler,
         num_workers=0,  # save some memory
-        collate_fn=fast_batch_collator)
+        collate_fn=fast_batch_collator,
+        pin_memory=True)
     return test_loader, len(dataset.query)

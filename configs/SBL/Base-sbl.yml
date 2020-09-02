@@ -11,6 +11,8 @@ MODEL:
 
   LOSSES:
     NAME: ("CrossEntropyLoss", "SoftmaxTripletLoss")
+    TRI:
+      MARGIN: 0.
 
 DATALOADER:
   SAMPLER_NAME: "BalancedIdentitySampler"
@@ -23,6 +25,7 @@ SOLVER:
   OPT: "Adam"
   MAX_ITER: 100
   BASE_LR: 0.00035
+  BIAS_LR_FACTOR: 1.
   IMS_PER_BATCH: 64
 
   STEPS: [100,]

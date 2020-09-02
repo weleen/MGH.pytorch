@@ -276,7 +276,7 @@ _C.SOLVER.SWA.LR_FACTOR = 10.
 _C.SOLVER.SWA.ETA_MIN_LR = 3.5e-6
 _C.SOLVER.SWA.LR_SCHED = False
 
-_C.SOLVER.CHECKPOINT_PERIOD = 20
+_C.SOLVER.CHECKPOINT_PERIOD = 10
 
 _C.SOLVER.LOG_PERIOD = 200
 # Number of images per batch across all machines.
@@ -330,10 +330,10 @@ _C.OUTPUT_DIR = "logs/"
 _C.CUDNN_BENCHMARK = False
 
 # deterministic
-_C.DETERMINISTIC = False
+_C.DETERMINISTIC = True
 
 # Save the project in log path
 _C.SAVE_PROJECT = True
 
 # random seed
-_C.SEED = -1
+_C.SEED = 1

@@ -113,7 +113,9 @@ def default_setup(cfg, args):
     # typical validation set.
     if not (hasattr(args, "eval_only") and args.eval_only):
         torch.backends.cudnn.benchmark = cfg.CUDNN_BENCHMARK
-    torch.backends.cudnn.deterministic = cfg.DETERMINISTIC
+    if cfg.DETERMINISTIC:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 class DefaultPredictor:
