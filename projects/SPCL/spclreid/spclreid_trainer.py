@@ -54,6 +54,8 @@ class SPCLTrainer(DefaultTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
+        else:
+            model = torch.nn.DataParallel(model)
 
         # create hybrid memory
         self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,

@@ -24,24 +24,11 @@ class Baseline(nn.Module):
         self.backbone = build_backbone(cfg)
 
         # head
-        pool_type = cfg.MODEL.HEADS.POOL_LAYER
-        if pool_type == 'fastavgpool':  pool_layer = FastGlobalAvgPool2d()
-        elif pool_type == 'avgpool':    pool_layer = nn.AdaptiveAvgPool2d(1)
-        elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
-        elif pool_type == 'gempool':    pool_layer = GeneralizedMeanPoolingP()
-        elif pool_type == "avgmaxpool": pool_layer = AdaptiveAvgMaxPool2d()
-        elif pool_type == "identity":   pool_layer = nn.Identity()
-        else:
-            raise KeyError(f"{pool_type} is invalid, please choose from "
-                           f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
-
-        in_feat = cfg.MODEL.HEADS.IN_FEAT
-        self.num_classes = cfg.MODEL.HEADS.NUM_CLASSES
-        self.heads = build_reid_heads(cfg, in_feat, self.num_classes, pool_layer)
+        self.heads = build_reid_heads(cfg)
 
     @property
     def device(self):
-        return next(self.parameters()).device
+        return self.heads.classifier.weight.device
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
@@ -56,24 +43,42 @@ class Baseline(nn.Module):
             # throw an error. We just set all the targets to 0 to avoid this problem.
             if targets.sum() < 0: targets.zero_()
 
-            return self.heads(features, targets)
+            outputs = self.heads(features, targets)
+            return {
+                "outputs": outputs,
+                "targets": targets,
+            }
         else:
-            return self.heads(features)
+            outputs = self.heads(features)
+            return outputs
 
     def preprocess_image(self, batched_inputs):
-        """
+        r"""
         Normalize and batch the input images.
         """
         if isinstance(batched_inputs, dict):
             images = batched_inputs["images"].to(self.device)
         elif isinstance(batched_inputs, torch.Tensor):
             images = batched_inputs.to(self.device)
+        else:
+            raise TypeError("batched_inputs must be dict or torch.Tensor, but get {}".format(type(batched_inputs)))
 
         return images
 
-    def losses(self, outputs, **kwargs):
-        logits, feat, targets = outputs
-        return reid_losses(self._cfg, logits, feat, targets)
+    def losses(self, outs):
+        r"""
+        Compute loss from modeling's outputs, the loss function input arguments
+        must be the same as the outputs of the model forwarding.
+        """
+        # fmt: off
+        outputs           = outs["outputs"]
+        gt_labels         = outs["targets"]
+        # model predictions
+        pred_class_logits = outputs['pred_class_logits'].detach()
+        cls_outputs       = outputs['cls_outputs']
+        pred_features     = outputs['features']
+        # fmt: on
+        return reid_losses(self._cfg, cls_outputs, pred_features, gt_labels)
 
     @torch.no_grad()
     def initialize_centers(self, centers, labels):

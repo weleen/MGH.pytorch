@@ -15,7 +15,6 @@ class CrossEntropyLoss(object):
     """
 
     def __init__(self, cfg):
-        self._num_classes = cfg.MODEL.HEADS.NUM_CLASSES
         self._eps = cfg.MODEL.LOSSES.CE.EPSILON
         self._alpha = cfg.MODEL.LOSSES.CE.ALPHA
         self._scale = cfg.MODEL.LOSSES.CE.SCALE
@@ -45,6 +44,7 @@ class CrossEntropyLoss(object):
         Returns:
             scalar Tensor
         """
+        num_classes = pred_class_logits.size(1)
         self.log_accuracy(pred_class_logits, gt_classes)
         if self._eps >= 0:
             smooth_param = self._eps
@@ -56,7 +56,7 @@ class CrossEntropyLoss(object):
         log_probs = F.log_softmax(pred_class_logits, dim=1)
         with torch.no_grad():
             targets = torch.ones_like(log_probs)
-            targets *= smooth_param / (self._num_classes - 1)
+            targets *= smooth_param / (num_classes - 1)
             targets.scatter_(1, gt_classes.data.unsqueeze(1), (1 - smooth_param))
 
         loss = (-targets * log_probs).sum(dim=1)

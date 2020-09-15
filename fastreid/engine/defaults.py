@@ -154,9 +154,9 @@ class DefaultPredictor:
         with torch.no_grad():  # https://github.com/sphinx-doc/sphinx/issues/4258
             predictions = self.model(inputs)
             # Normalize feature to compute cosine distance
-            pred_feat = F.normalize(predictions)
-            pred_feat = pred_feat.cpu().data
-            return pred_feat
+            features = F.normalize(predictions)
+            features = features.cpu().data
+            return features
 
 
 class DefaultTrainer(SimpleTrainer):
@@ -183,7 +183,7 @@ class DefaultTrainer(SimpleTrainer):
     To obtain more stable behavior, write your own training logic with other public APIs.
     Attributes:
         scheduler:
-        checkpointer (Checkpointer):
+        checkpointer:
         cfg (CfgNode):
     Examples:
     .. code-block:: python
@@ -239,6 +239,7 @@ class DefaultTrainer(SimpleTrainer):
             self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
         else:
             self.max_iter = cfg.SOLVER.MAX_ITER
+
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
@@ -442,7 +443,7 @@ class DefaultTrainer(SimpleTrainer):
             model (nn.Module):
             evaluators (list[DatasetEvaluator] or None): if None, will call
                 :meth:`build_evaluator`. Otherwise, must have the same length as
-                `cfg.DATASETS.TEST`.
+                `cfg.DATASETS.TESTS`.
         Returns:
             dict: a dict of result metrics
         """
@@ -451,8 +452,8 @@ class DefaultTrainer(SimpleTrainer):
             evaluators = [evaluators]
 
         if evaluators is not None:
-            assert len(cfg.DATASETS.TEST) == len(evaluators), "{} != {}".format(
-                len(cfg.DATASETS.TEST), len(evaluators)
+            assert len(cfg.DATASETS.TESTS) == len(evaluators), "{} != {}".format(
+                len(cfg.DATASETS.TESTS), len(evaluators)
             )
 
         results = OrderedDict()

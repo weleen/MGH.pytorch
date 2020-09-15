@@ -16,9 +16,8 @@ from torch.backends import cudnn
 
 sys.path.append('..')
 
-from fvcore.common.file_io import PathManager
-
 from fastreid.config import cfg
+from fvcore.common.file_io import PathManager
 from predictor import FeatureExtractionDemo
 
 # import some modules added in project like this below

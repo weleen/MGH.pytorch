@@ -13,7 +13,7 @@ sys.path.append('.')
 
 from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, launch
-from fastreid.utils.checkpoint import Checkpointer
+from fvcore.common.checkpoint import Checkpointer
 from fastreid.engine import hooks
 
 from partialreid import *

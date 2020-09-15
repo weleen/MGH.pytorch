@@ -11,7 +11,7 @@ from fastreid.engine.hooks import *
 
 
 class ClusterHook(HookBase):
-    def __init__(self, eps=0.6, eps_gap=0.02, cluster_iter=200, min_samples=4, metric='precomputed', n_jobs=-1, reset_opt=True):
+    def __init__(self, eps=0.6, eps_gap=0.02, cluster_iter=200, min_samples=4, metric='precomputed', n_jobs=-1, reset_opt=False):
         self.logger = logging.getLogger('fastreid.' + __name__)
         self.logger.info('Clustering criterion:\t'
                          'eps: {:.3f} eps_gap: {:.3f}\t'

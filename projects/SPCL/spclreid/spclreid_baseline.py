@@ -60,7 +60,7 @@ class USL_Baseline(nn.Module):
 
         if self.training:
             assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
-            targets = batched_inputs["targets"].long().to(self.device)
+            targets = batched_inputs["targets"].long()
 
             # normalize the feature
             feat = F.normalize(feat)
@@ -73,9 +73,9 @@ class USL_Baseline(nn.Module):
         Normalize and batch the input images.
         """
         if isinstance(batched_inputs, dict):
-            images = batched_inputs["images"].to(self.device)
+            images = batched_inputs["images"]
         elif isinstance(batched_inputs, torch.Tensor):
-            images = batched_inputs.to(self.device)
+            images = batched_inputs
         return images
 
     def losses(self, outputs, memory):

@@ -32,6 +32,8 @@ _C.MODEL.BACKBONE = CN()
 _C.MODEL.BACKBONE.NAME = "build_resnet_backbone"
 _C.MODEL.BACKBONE.DEPTH = "50x"
 _C.MODEL.BACKBONE.LAST_STRIDE = 1
+# Backbone feature dimension
+_C.MODEL.BACKBONE.FEAT_DIM = 2048
 # Normalization method for the convolution layers.
 _C.MODEL.BACKBONE.NORM = "BN"
 # Mini-batch split of Ghost BN
@@ -51,18 +53,15 @@ _C.MODEL.BACKBONE.PRETRAIN_PATH = ''
 # REID HEADS options
 # ---------------------------------------------------------------------------- #
 _C.MODEL.HEADS = CN()
-_C.MODEL.HEADS.NAME = "BNneckHead"
-
+_C.MODEL.HEADS.NAME = "EmbeddingHead"
 # Normalization method for the convolution layers.
 _C.MODEL.HEADS.NORM = "BN"
-# Mini-batch split of Ghost BN
-_C.MODEL.HEADS.NORM_SPLIT = 1
 # Number of identity
 _C.MODEL.HEADS.NUM_CLASSES = 0
-# Input feature dimension
-_C.MODEL.HEADS.IN_FEAT = 2048
-# Reduction dimension in head
-_C.MODEL.HEADS.REDUCTION_DIM = 512
+# Embedding dimension in head
+_C.MODEL.HEADS.EMBEDDING_DIM = 0
+# If use BNneck in embedding
+_C.MODEL.HEADS.WITH_BNNECK = True
 # Triplet feature using feature before(after) bnneck
 _C.MODEL.HEADS.NECK_FEAT = "before"  # options: before, after
 # Pooling layer type
@@ -218,7 +217,7 @@ _C.PSEUDO.NORM_FEAT = True
 _C.PSEUDO.NORM_CENTER = True
 _C.PSEUDO.SEARCH_TYPE = 0
 _C.PSEUDO.NUM_CLUSTER = [500, ]
-_C.PSEUDO.RESET_OPT = True
+_C.PSEUDO.RESET_OPT = False
 
 _C.PSEUDO.DBSCAN = CN()
 _C.PSEUDO.DBSCAN.EPS = [0.6, ]
@@ -238,6 +237,10 @@ _C.PSEUDO.MEMORY.MOMENTUM = 0.2
 # ---------------------------------------------------------------------------- #
 _C.SOLVER = CN()
 
+# AUTOMATIC MIXED PRECISION
+_C.SOLVER.AMP_ENABLED = False
+
+# Optimizer
 _C.SOLVER.OPT = "Adam"
 
 _C.SOLVER.MAX_ITER = 120
@@ -276,7 +279,7 @@ _C.SOLVER.SWA.LR_FACTOR = 10.
 _C.SOLVER.SWA.ETA_MIN_LR = 3.5e-6
 _C.SOLVER.SWA.LR_SCHED = False
 
-_C.SOLVER.CHECKPOINT_PERIOD = 10
+_C.SOLVER.CHECKPOINT_PERIOD = 20
 
 _C.SOLVER.LOG_PERIOD = 200
 # Number of images per batch across all machines.
@@ -336,4 +339,4 @@ _C.DETERMINISTIC = True
 _C.SAVE_PROJECT = True
 
 # random seed
-_C.SEED = 1
+_C.SEED = -1

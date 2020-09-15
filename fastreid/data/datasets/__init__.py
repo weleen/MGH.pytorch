@@ -12,10 +12,12 @@ Registry for datasets
 It must returns an instance of :class:`Backbone`.
 """
 
+# Person re-id datasets
 from .cuhk03 import CUHK03
 from .dukemtmcreid import DukeMTMC
 from .market1501 import Market1501
 from .msmt17 import MSMT17
+# Vehicle re-id datasets
 from .veri import VeRi
 from .vehicleid import VehicleID, SmallVehicleID, MediumVehicleID, LargeVehicleID
 from .veriwild import VeRiWild, SmallVeRiWild, MediumVeRiWild, LargeVeRiWild

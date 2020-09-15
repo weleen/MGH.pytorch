@@ -22,4 +22,4 @@ def add_spclreid_config(cfg):
     # Update momentum for the hybrid memory
     _C.UNSUPERVISED.MEMORY_MOMENTUM = 0.2
     # Reset Optimizer
-    _C.UNSUPERVISED.RESET_OPT = True
+    _C.UNSUPERVISED.RESET_OPT = False

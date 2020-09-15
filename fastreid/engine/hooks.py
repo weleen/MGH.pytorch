@@ -288,7 +288,7 @@ class AutogradProfiler(HookBase):
             self._profiler.export_chrome_trace(out_file)
         else:
             # Support non-posix filesystems
-            with tempfile.TemporaryDirectory(prefix="detectron2_profiler") as d:
+            with tempfile.TemporaryDirectory(prefix="fastreid_profiler") as d:
                 tmp_file = os.path.join(d, "tmp.json")
                 self._profiler.export_chrome_trace(tmp_file)
                 with open(tmp_file) as f:
@@ -608,10 +608,9 @@ class LabelGeneratorHook(HookBase):
             unclu_ins_num = (index2label == 1).sum()
 
             self._logger.info(f"Cluster Statistic: "
-                        f"acc_score: {acc_score:.2e}, nmi_score: {nmi_score:.2e}, ari_score: {ari_score:.2e} "
-                        f"clusters {clu_num}, "
-                        f"un-clustered instances {unclu_ins_num}, "
-                        f"unused instances {unused_ins_num}")
+                              f"acc_score: {acc_score:.2e}, nmi_score: {nmi_score:.2e}, ari_score: {ari_score:.2e} "
+                              f"clusters {clu_num}, un-clustered instances {unclu_ins_num}, "
+                              f"unused instances {unused_ins_num}")
             # modify the label with previous num_classes
             previous_classes = sum(self.num_classes[:idx])
             labels = torch.Tensor([l + previous_classes if l.item() != -1 else l.item() for l in labels])
