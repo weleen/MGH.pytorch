@@ -41,10 +41,10 @@ class CommDataset(Dataset):
             camid = self.cam_dict[camid]
         return {
             "images": img,
-            "targets": pid,
+            "targets": int(pid),
             "camids": camid,
             "img_paths": img_path,
-            "index": index
+            "index": int(index)
         }
 
     @property
@@ -97,10 +97,10 @@ class NewCommDataset(Dataset):
             camid = self.cam_dict[camid]
         return {
             "images": img,
-            "targets": pid,
+            "targets": int(pid),
             "camids": camid,
             "img_paths": img_path,
-            "index": index
+            "index": int(index)
         }
 
     @property

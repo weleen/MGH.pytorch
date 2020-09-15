@@ -36,8 +36,6 @@ _C.MODEL.BACKBONE.LAST_STRIDE = 1
 _C.MODEL.BACKBONE.FEAT_DIM = 2048
 # Normalization method for the convolution layers.
 _C.MODEL.BACKBONE.NORM = "BN"
-# Mini-batch split of Ghost BN
-_C.MODEL.BACKBONE.NORM_SPLIT = 1
 # If use IBN block in backbone
 _C.MODEL.BACKBONE.WITH_IBN = False
 # If use SE block in backbone
@@ -62,6 +60,8 @@ _C.MODEL.HEADS.NUM_CLASSES = 0
 _C.MODEL.HEADS.EMBEDDING_DIM = 0
 # If use BNneck in embedding
 _C.MODEL.HEADS.WITH_BNNECK = True
+# Number of cameras
+_C.MODEL.HEADS.NUM_CAMERAS = 0
 # Triplet feature using feature before(after) bnneck
 _C.MODEL.HEADS.NECK_FEAT = "before"  # options: before, after
 # Pooling layer type

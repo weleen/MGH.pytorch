@@ -18,9 +18,6 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
-from fvcore.common.checkpoint import Checkpointer
-from fvcore.common.file_io import PathManager
-
 from fastreid.data import build_reid_test_loader, build_reid_train_loader, \
     build_reid_test_loader_new, build_reid_train_loader_new
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
@@ -28,9 +25,11 @@ from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
 from fastreid.modeling.meta_arch import build_model
 from fastreid.solver import build_lr_scheduler, build_optimizer
 from fastreid.utils import comm
-from fastreid.utils.env import seed_all_rng
+from fvcore.common.checkpoint import Checkpointer
 from fastreid.utils.misc import collect_env_info, cp_projects
+from fastreid.utils.env import seed_all_rng
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
+from fvcore.common.file_io import PathManager
 from fastreid.utils.logger import setup_logger
 from . import hooks
 from .train_loop import SimpleTrainer
@@ -92,6 +91,10 @@ def default_setup(cfg, args):
 
     logger.info("Rank of current process: {}. World size: {}".format(rank, comm.get_world_size()))
     logger.info("Environment info:\n" + collect_env_info())
+    if 'CUDA_VISIBLE_DEVICES' in os.environ:
+        logger.info("CUDA_VISIBLE_DEVICES={}".format(os.environ['CUDA_VISIBLE_DEVICES']))
+    elif comm.get_world_size() == 1:
+        logger.warning("Use all gpus with torch.nn.DataParallel on the machine")
 
     logger.info("Command line arguments: " + str(args))
     if hasattr(args, "config_file") and args.config_file != "":
@@ -220,8 +223,10 @@ class DefaultTrainer(SimpleTrainer):
             model = DistributedDataParallel(
                 model, **ddp_cfg
             )
+        else:
+            model = torch.nn.DataParallel(model)
 
-        super().__init__(model, data_loader, optimizer)
+        super().__init__(model, data_loader, optimizer, cfg.SOLVER.AMP_ENABLED)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
         # Assume no other objects need to be checkpointed.
@@ -387,8 +392,8 @@ class DefaultTrainer(SimpleTrainer):
         Overwrite it if you'd like a different model.
         """
         model = build_model(cfg)
-        # logger = logging.getLogger(__name__)
-        # logger.info("Model:\n{}".format(model))
+        logger = logging.getLogger(__name__)
+        logger.info("Model:\n{}".format(model))
         return model
 
     @classmethod

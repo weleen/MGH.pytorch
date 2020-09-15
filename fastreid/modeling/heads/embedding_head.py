@@ -67,7 +67,7 @@ class EmbeddingHead(nn.Module):
         See :class:`ReIDHeads.forward`.
         """
         global_feat = self.pool_layer(features)
-        bn_feat = self.bottleneck(global_feat)
+        bn_feat = self.bnneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
 
         # Evaluation

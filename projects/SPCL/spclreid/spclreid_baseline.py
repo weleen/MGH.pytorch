@@ -22,7 +22,13 @@ class USL_Baseline(nn.Module):
         self.backbone = build_backbone(cfg)
 
         # head
-        pool_type = cfg.MODEL.HEADS.POOL_LAYER
+        feat_dim      = cfg.MODEL.BACKBONE.FEAT_DIM
+        embedding_dim = cfg.MODEL.HEADS.EMBEDDING_DIM
+        neck_feat     = cfg.MODEL.HEADS.NECK_FEAT
+        pool_type     = cfg.MODEL.HEADS.POOL_LAYER
+        with_bnneck   = cfg.MODEL.HEADS.WITH_BNNECK
+        norm_type     = cfg.MODEL.HEADS.NORM
+
         if pool_type == 'fastavgpool':  pool_layer = FastGlobalAvgPool2d()
         elif pool_type == 'avgpool':    pool_layer = nn.AdaptiveAvgPool2d(1)
         elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
@@ -35,15 +41,23 @@ class USL_Baseline(nn.Module):
 
         self.heads = nn.Sequential()
         self.heads.add_module('pool_layer', pool_layer)
-        in_feat = cfg.MODEL.HEADS.IN_FEAT
-        bnneck = get_norm(cfg.MODEL.HEADS.NORM, in_feat, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True)
+        self.neck_feat = neck_feat
+
+        bottleneck = []
+        if embedding_dim > 0:
+            bottleneck.append(nn.Conv2d(feat_dim, embedding_dim, 1, 1, bias=False))
+            feat_dim = embedding_dim
+
+        if with_bnneck:
+            bottleneck.append(get_norm(norm_type, feat_dim, bias_freeze=True))
+
+        bnneck = nn.Sequential(*bottleneck)
         bnneck.apply(weights_init_kaiming)
         self.heads.add_module('bnneck', bnneck)
-        self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
 
     @property
     def device(self):
-        return next(self.parameters()).device
+        return self.backbone.conv1.weight.device
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)

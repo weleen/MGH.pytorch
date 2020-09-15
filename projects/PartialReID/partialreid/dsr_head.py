@@ -3,9 +3,7 @@
 @author:  lingxiao he
 @contact: helingxiao3@jd.com
 """
-import torch
-import torch.nn.functional as F
-from torch import nn
+
 from fastreid.layers import *
 from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
 from fastreid.utils.torch_utils import weights_init_classifier, weights_init_kaiming

@@ -15,16 +15,15 @@ import collections
 import torch
 from torch import nn
 
-from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
-from fvcore.common.timer import Timer
-from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
-from fvcore.common.file_io import PathManager
-
-from fastreid.data import build_reid_train_loader_new
 from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.solver import optim
 from fastreid.utils import comm
+from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
 from fastreid.utils.events import EventStorage, EventWriter
+from fvcore.common.file_io import PathManager
+from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
+from fvcore.common.timer import Timer
+from fastreid.data import build_reid_train_loader_new
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
@@ -449,19 +448,26 @@ class FreezeLayer(HookBase):
             self.open_all_layer()
 
     def freeze_specific_layer(self):
-        for layer in self.open_layer_names:
-            if not hasattr(self.model, layer):
-                self._logger.info(f'{layer} is not an attribute of the model, will skip this layer')
+        for name, module in self.model.named_modules():
+            for layer in self.open_layer_names:
+                if name in layer:
+                    module.train()
+                    for p in module.parameters():
+                        p.requires_grad = True
+                else:
+                    module.eval()
+                    for p in module.parameters():
+                        p.requires_grad = False
 
-        for name, module in self.model.named_children():
-            if name in self.open_layer_names:
-                module.train()
-                for p in module.parameters():
-                    p.requires_grad = True
-            else:
-                module.eval()
-                for p in module.parameters():
-                    p.requires_grad = False
+        for layer in self.open_layer_names:
+            for name, module in self.model.named_modules():
+                if layer in name:
+                    self.open_layer_names.remove(layer)
+        if self.open_layer_names:
+            self._logger.info(f'{self.open_layer_names} is not an attribute of the model, will skip this layer')
+        # check by run
+        # for name, param in self.model.named_parameters():
+        #     print(name, param.requires_grad)
 
     def open_all_layer(self):
         self.model.train()

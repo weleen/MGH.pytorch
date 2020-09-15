@@ -8,7 +8,6 @@ import logging
 import torch
 from torch import nn
 
-from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
 from fastreid.modeling.backbones import build_backbone
 from fastreid.modeling.heads import build_reid_heads
 from fastreid.modeling.losses import *
@@ -20,6 +19,7 @@ class Baseline(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         self._cfg = cfg
+        self.num_classes = cfg.MODEL.HEADS.NUM_CLASSES
         # backbone
         self.backbone = build_backbone(cfg)
 

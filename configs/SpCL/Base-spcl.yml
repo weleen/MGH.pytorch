@@ -5,7 +5,7 @@ MODEL:
     WITH_NL: False
 
   HEADS:
-    POOL_LAYER: "gempool"
+    POOL_LAYER: "gempoolP"
     NECK_FEAT: "after"
     NUM_CLASSES: 0
 

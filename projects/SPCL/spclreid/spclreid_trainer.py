@@ -58,7 +58,7 @@ class SPCLTrainer(DefaultTrainer):
             model = torch.nn.DataParallel(model)
 
         # create hybrid memory
-        self.memory = HybridMemory(num_features=cfg.MODEL.HEADS.IN_FEAT,
+        self.memory = HybridMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM,
                                    num_samples=len(data_loader.dataset),
                                    temp=cfg.UNSUPERVISED.MEMORY_TEMP,
                                    momentum=cfg.UNSUPERVISED.MEMORY_MOMENTUM).to(cfg.MODEL.DEVICE)
@@ -68,7 +68,7 @@ class SPCLTrainer(DefaultTrainer):
         features = torch.cat([features[f].unsqueeze(0) for f, _, _ in sorted(data_loader.dataset.img_items)], 0)
         self.memory.features = F.normalize(features, dim=1).to(cfg.MODEL.DEVICE)
 
-        super(DefaultTrainer, self).__init__(model, data_loader, optimizer)
+        super(DefaultTrainer, self).__init__(model, data_loader, optimizer, cfg.SOLVER.AMP_ENABLED)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
         # Assume no other objects need to be checkpointed.
