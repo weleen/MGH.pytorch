@@ -13,6 +13,8 @@ from fastreid.modeling.backbones import build_backbone
 from fastreid.layers import get_norm
 from fastreid.utils.torch_utils import weights_init_kaiming
 from fastreid.modeling.meta_arch.build import META_ARCH_REGISTRY
+from fastreid.utils.misc import rampup
+from .modeling.losses import RankStatLoss
 
 
 @META_ARCH_REGISTRY.register()
@@ -20,7 +22,7 @@ class USL_Baseline(nn.Module):
     def __init__(self, cfg):
         super().__init__()       # backbone
         self.backbone = build_backbone(cfg)
-
+        self._cfg = cfg
         # fmt: off
         feat_dim      = cfg.MODEL.BACKBONE.FEAT_DIM
         embedding_dim = cfg.MODEL.HEADS.EMBEDDING_DIM
@@ -56,17 +58,26 @@ class USL_Baseline(nn.Module):
         bottleneck.apply(weights_init_kaiming)
         self.heads.add_module('bottleneck', bottleneck)
 
+        num_cluster = cfg.UNSUPERVISED.CLUSTER_SIZE
+        classifier = torch.nn.Linear(feat_dim, num_cluster)
+        classifier.apply(weights_init_kaiming)
+        self.heads.add_module('classifier', classifier)
+
     @property
     def device(self):
         return self.backbone.conv1.weight.device
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)
+        images_size = images.size()
+        if len(images_size) > 4:
+            images = images.view(-1, *images_size[2:])
         features = self.backbone(images)
 
         global_feat = self.heads.pool_layer(features)
         bn_feat = self.heads.bottleneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
+        pred_logits = self.heads.classifier(bn_feat)
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
         elif self.neck_feat == "after": feat = bn_feat
@@ -79,7 +90,13 @@ class USL_Baseline(nn.Module):
 
             # normalize the feature
             feat = F.normalize(feat)
-            return feat, targets, batched_inputs['index']
+
+            if len(images_size) > 4:
+                feat = feat.view(images_size[0], images_size[1], *feat.size()[1:])
+                pred_logits = pred_logits.view(images_size[0], images_size[1], *pred_logits.size()[1:])
+                return feat, targets, batched_inputs["index"], pred_logits
+            else:
+                return feat, targets, batched_inputs["index"], pred_logits
         else:
             return bn_feat
 
@@ -95,7 +112,15 @@ class USL_Baseline(nn.Module):
             raise TypeError("batched_inputs must be dict or torch.Tensor, but get {}".format(type(batched_inputs)))
         return images
 
-    def losses(self, outputs, memory):
-        feat, targets, indexes = outputs
-        loss = memory(feat, indexes)
-        return {'contrastive_loss': loss}
+    def losses(self, outputs, memory, iters):
+        feat, targets, indexes, pred_logits = outputs
+        feat1 = feat[:, 0].contiguous()
+        feat2 = feat[:, 1].contiguous()
+        loss_dict = dict()
+        loss_dict.update({'contrastrive_loss': memory(feat1, indexes)})
+        prob1 = F.softmax(pred_logits[:, 0].contiguous(), dim=1)
+        prob2 = F.softmax(pred_logits[:, 1].contiguous(), dim=1)
+        rampup_scale = rampup(iters, self._cfg.UNSUPERVISED.RAMPUP_ITER, self._cfg.UNSUPERVISED.RAMPUP_COEFF)
+        loss_dict.update({'consistency_loss': F.mse_loss(prob1, prob2) * rampup_scale})
+        loss_dict.update(RankStatLoss(self._cfg)(feat1, feat2, prob1, prob2))
+        return loss_dict

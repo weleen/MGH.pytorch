@@ -40,15 +40,13 @@ class EmbeddingHead(nn.Module):
 
         self.neck_feat = neck_feat
 
-        bottleneck = []
+        self.bottleneck = nn.Sequential()
         if embedding_dim > 0:
-            bottleneck.append(nn.Conv2d(feat_dim, embedding_dim, 1, 1, bias=False))
+            self.bottleneck.add_module('conv1', nn.Conv2d(feat_dim, embedding_dim, 1, 1, bias=False))
             feat_dim = embedding_dim
 
         if with_bnneck:
-            bottleneck.append(get_norm(norm_type, feat_dim, bias_freeze=True))
-
-        self.bnneck = nn.Sequential(*bottleneck)
+            self.bottleneck.add_module('bnneck', get_norm(norm_type, feat_dim, bias_freeze=True))
 
         # identity classification layer
         # fmt: off
@@ -59,7 +57,7 @@ class EmbeddingHead(nn.Module):
         else:                             raise KeyError(f"{cls_type} is not supported!")
         # fmt: on
 
-        self.bnneck.apply(weights_init_kaiming)
+        self.bottleneck.apply(weights_init_kaiming)
         self.classifier.apply(weights_init_classifier)
 
     def forward(self, features, targets=None):
@@ -67,7 +65,7 @@ class EmbeddingHead(nn.Module):
         See :class:`ReIDHeads.forward`.
         """
         global_feat = self.pool_layer(features)
-        bn_feat = self.bnneck(global_feat)
+        bn_feat = self.bottleneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
 
         # Evaluation

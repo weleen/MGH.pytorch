@@ -1,12 +1,11 @@
 MODEL:
-  META_ARCHITECTURE: 'SSCBaseline'
+  META_ARCHITECTURE: 'USL_Baseline'
 
   BACKBONE:
     NAME: "build_resnet_backbone"
     DEPTH: "50x"
     LAST_STRIDE: 1
     WITH_NL: False
-    WITH_IBN: False
     PRETRAIN: True
 
   HEADS:
@@ -14,19 +13,14 @@ MODEL:
     POOL_LAYER: "gempool"
     NECK_FEAT: "after"
     CLS_LAYER: "linear"
+    NUM_CLASSES: 0
 
   LOSSES:
-    NAME: ("CrossEntropyLoss", "TripletLoss",)
+    NAME: ("ContrastiveLoss",)
 
-    CE:
-      EPSILON: 0.1
-      SCALE: 1.
-
-    TRI:
-      MARGIN: 0.3
-      HARD_MINING: True
-      NORM_FEAT: False
-      SCALE: 1.
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
 
 INPUT:
   SIZE_TRAIN: [256, 128]
@@ -38,20 +32,27 @@ INPUT:
   DO_PAD: True
 
 DATALOADER:
-  PK_SAMPLER: False
+  PK_SAMPLER: True
   NUM_INSTANCE: 4
   NUM_WORKERS: 8
 
+UNSUPERVISED:
+  EPS: 0.6
+  EPS_GAP: 0.02
+  CLUSTER_ITER: 400
+  MEMORY_TEMP: 0.05
+  MEMORY_MOMENTUM: 0.2
+
 SOLVER:
   OPT: "Adam"
-  MAX_ITER: 120
+  MAX_ITER: 160
   BASE_LR: 0.00035
   BIAS_LR_FACTOR: 2.
   WEIGHT_DECAY: 0.0005
   WEIGHT_DECAY_BIAS: 0.0005
   IMS_PER_BATCH: 64
 
-  STEPS: [40, 80]
+  STEPS: [40, 80, 120]
   GAMMA: 0.1
 
   WARMUP_FACTOR: 0.01

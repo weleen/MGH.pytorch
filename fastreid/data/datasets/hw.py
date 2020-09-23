@@ -29,7 +29,7 @@ class HWData(ImageDataset):
 
         super(HWData, self).__init__(train, None, None, **kwargs)
 
-    def process_dir(self, dir_path, min_img_size=5, is_train=True, pid_size=None):
+    def process_dir(self, dir_path, min_img_size=2, is_train=True, pid_size=None):
         data = []
         pid_folders = os.listdir(dir_path)
 

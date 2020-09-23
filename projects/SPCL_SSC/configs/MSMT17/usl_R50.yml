@@ -1,0 +1,10 @@
+_BASE_: "../Base-usl.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+UNSUPERVISED:
+  CLUSTER_ITER: 800
+
+OUTPUT_DIR: "logs/SpCL/msmt17/usl_R50"

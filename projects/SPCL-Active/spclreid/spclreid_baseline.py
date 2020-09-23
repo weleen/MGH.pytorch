@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from fastreid.layers import GeneralizedMeanPoolingP, AdaptiveAvgMaxPool2d, FastGlobalAvgPool2d
+from fastreid.layers import *
 from fastreid.modeling.backbones import build_backbone
 from fastreid.layers import get_norm
 from fastreid.utils.torch_utils import weights_init_kaiming
@@ -26,58 +26,67 @@ class USL_Baseline(nn.Module):
         # backbone
         self.backbone = build_backbone(cfg)
 
-        # head
-        pool_type = cfg.MODEL.HEADS.POOL_LAYER
-        if pool_type == 'avgpool':      pool_layer = FastGlobalAvgPool2d()
-        elif pool_type == 'maxpool':    pool_layer = nn.AdaptiveMaxPool2d(1)
-        elif pool_type == 'gempool':    pool_layer = GeneralizedMeanPoolingP()
-        elif pool_type == "avgmaxpool": pool_layer = AdaptiveAvgMaxPool2d()
-        elif pool_type == "identity":   pool_layer = nn.Identity()
-        else:
-            raise KeyError(f"{pool_type} is invalid, please choose from "
-                           f"'avgpool', 'maxpool', 'gempool', 'avgmaxpool' and 'identity'.")
+        # fmt: off
+        feat_dim      = cfg.MODEL.BACKBONE.FEAT_DIM
+        embedding_dim = cfg.MODEL.HEADS.EMBEDDING_DIM
+        neck_feat     = cfg.MODEL.HEADS.NECK_FEAT
+        pool_type     = cfg.MODEL.HEADS.POOL_LAYER
+        with_bnneck   = cfg.MODEL.HEADS.WITH_BNNECK
+        norm_type     = cfg.MODEL.HEADS.NORM
 
-        self.pool_layer = pool_layer
-        in_feat = cfg.MODEL.HEADS.IN_FEAT
-        self.bnneck = get_norm(cfg.MODEL.HEADS.NORM, in_feat, cfg.MODEL.HEADS.NORM_SPLIT, bias_freeze=True)
-        self.bnneck.apply(weights_init_kaiming)
-        self.neck_feat = cfg.MODEL.HEADS.NECK_FEAT
+        if pool_type == 'fastavgpool':   pool_layer = FastGlobalAvgPool2d()
+        elif pool_type == 'avgpool':     pool_layer = nn.AdaptiveAvgPool2d(1)
+        elif pool_type == 'maxpool':     pool_layer = nn.AdaptiveMaxPool2d(1)
+        elif pool_type == 'gempoolP':    pool_layer = GeneralizedMeanPoolingP()
+        elif pool_type == 'gempool':     pool_layer = GeneralizedMeanPooling()
+        elif pool_type == "avgmaxpool":  pool_layer = AdaptiveAvgMaxPool2d()
+        elif pool_type == 'clipavgpool': pool_layer = ClipGlobalAvgPool2d()
+        elif pool_type == "identity":    pool_layer = nn.Identity()
+        elif pool_type == "flatten":     pool_layer = Flatten()
+        else:                            raise KeyError(f"{pool_type} is not supported!")
+        # fmt: on
+
+        self.heads = nn.Sequential()
+        self.heads.add_module('pool_layer', pool_layer)
+        self.neck_feat = neck_feat
+
+        bottleneck = nn.Sequential()
+        if embedding_dim > 0:
+            bottleneck.add_module('conv1', nn.Conv2d(feat_dim, embedding_dim, 1, 1, bias=False))
+            feat_dim = embedding_dim
+
+        if with_bnneck:
+            bottleneck.add_module('bnneck', get_norm(norm_type, feat_dim, bias_freeze=True))
+
+        bottleneck.apply(weights_init_kaiming)
+        self.heads.add_module('bottleneck', bottleneck)
 
     @property
     def device(self):
         return self.pixel_mean.device
 
     def forward(self, batched_inputs):
-        if not self.training:
-            pred_feat = self.inference(batched_inputs)
-            return pred_feat
-
         images = self.preprocess_image(batched_inputs)
-        targets = batched_inputs["targets"].long()
+        features = self.backbone(images)
 
-        # training
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-        global_feat = self.pool_layer(features)
-        bn_feat = self.bnneck(global_feat)
+        global_feat = self.heads.pool_layer(features)
+        bn_feat = self.heads.bottleneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]
 
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
         elif self.neck_feat == "after": feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
-        # normalize the feature
-        feat = F.normalize(feat)
 
-        return feat, targets, batched_inputs['index']
+        if self.training:
+            assert "targets" in batched_inputs, "Person ID annotation are missing in training!"
+            targets = batched_inputs["targets"].long()
 
-    def inference(self, batched_inputs):
-        assert not self.training
-        images = self.preprocess_image(batched_inputs)
-        features = self.backbone(images)  # (bs, 2048, 16, 8)
-        global_feat = self.pool_layer(features)
-        bn_feat = self.bnneck(global_feat)
-        pred_feat = bn_feat[..., 0, 0]
-        return pred_feat
+            # normalize the feature
+            feat = F.normalize(feat)
+            return feat, targets, batched_inputs['index']
+        else:
+            return bn_feat
 
     def preprocess_image(self, batched_inputs):
         """

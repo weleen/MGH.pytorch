@@ -97,6 +97,8 @@ The software in use were PyTorch 1.4, CUDA 10.1.
 
 In addition to these official baseline models, you can find more models in [projects/](https://github.com/JDAI-CV/fast-reid/tree/master/projects).
 
+### How to Read the Tables
+
 - The "Name" column contains a link to the config file.
 Running `tools/train_net.py` with this config file and 1 GPU will reproduce the model.
 - The *model id* column is provided for ease of reference. To check downloaded file integrity, any model on this page contains tis md5 prefix in its file name.

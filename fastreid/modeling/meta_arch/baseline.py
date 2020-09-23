@@ -28,7 +28,7 @@ class Baseline(nn.Module):
 
     @property
     def device(self):
-        return self.heads.classifier.weight.device
+        return self.backbone.conv1.weight.device
 
     def forward(self, batched_inputs):
         images = self.preprocess_image(batched_inputs)

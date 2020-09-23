@@ -5,7 +5,7 @@ MODEL:
     NAME: "build_resnet_backbone"
     DEPTH: "50x"
     LAST_STRIDE: 1
-    WITH_NL: True
+    WITH_NL: False
     PRETRAIN: True
 
   HEADS:
