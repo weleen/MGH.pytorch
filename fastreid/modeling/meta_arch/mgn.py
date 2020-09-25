@@ -25,7 +25,6 @@ class MGN(nn.Module):
         # fmt: off
         # backbone
         bn_norm    = cfg.MODEL.BACKBONE.NORM
-        num_splits = cfg.MODEL.BACKBONE.NORM_SPLIT
         with_se    = cfg.MODEL.BACKBONE.WITH_SE
         # fmt :on
 
@@ -43,10 +42,10 @@ class MGN(nn.Module):
         res_g_conv5 = backbone.layer4
 
         res_p_conv5 = nn.Sequential(
-            Bottleneck(1024, 512, bn_norm, num_splits, False, with_se, downsample=nn.Sequential(
-                nn.Conv2d(1024, 2048, 1, bias=False), get_norm(bn_norm, 2048, num_splits))),
-            Bottleneck(2048, 512, bn_norm, num_splits, False, with_se),
-            Bottleneck(2048, 512, bn_norm, num_splits, False, with_se))
+            Bottleneck(1024, 512, bn_norm, False, with_se, downsample=nn.Sequential(
+                nn.Conv2d(1024, 2048, 1, bias=False), get_norm(bn_norm, 2048))),
+            Bottleneck(2048, 512, bn_norm, False, with_se),
+            Bottleneck(2048, 512, bn_norm, False, with_se))
         res_p_conv5.load_state_dict(backbone.layer4.state_dict())
 
         # branch1
