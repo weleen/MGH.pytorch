@@ -16,8 +16,8 @@ def focal_loss(
         target: torch.Tensor,
         alpha: float,
         gamma: float = 2.0,
-        reduction: str = 'mean', ) -> torch.Tensor:
-    r"""Function that computes Focal loss.
+        reduction: str = 'mean') -> torch.Tensor:
+    r"""Criterion that computes Focal loss.
     See :class:`fastreid.modeling.losses.FocalLoss` for details.
     According to [1], the Focal loss is computed as follows:
     .. math::

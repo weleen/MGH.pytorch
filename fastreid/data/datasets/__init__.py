@@ -29,6 +29,9 @@ from .caviara import CAVIARa
 from .viper import VIPeR
 from .lpw import LPW
 from .shinpuhkan import Shinpuhkan
+from .wildtracker import WildTrackCrop
+from .cuhk_sysu import cuhkSYSU
+
 # Vehicle re-id datasets
 from .veri import VeRi
 from .vehicleid import VehicleID, SmallVehicleID, MediumVehicleID, LargeVehicleID

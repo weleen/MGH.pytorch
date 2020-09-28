@@ -95,8 +95,7 @@ class TripletLoss(object):
         self._hard_mining = cfg.MODEL.LOSSES.TRI.HARD_MINING
 
     def __call__(self, _, embedding, targets):
-        if self._normalize_feature:
-            embedding = F.normalize(embedding, dim=1)
+        if self._normalize_feature: embedding = F.normalize(embedding, dim=1)
 
         # For distributed training, gather all features from different process.
         if comm.get_world_size() > 1:

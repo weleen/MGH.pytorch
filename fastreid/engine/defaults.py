@@ -18,8 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel
 
-from fastreid.data import build_reid_test_loader, build_reid_train_loader, \
-    build_reid_test_loader_new, build_reid_train_loader_new
+from fastreid.data import build_reid_test_loader, build_reid_train_loader
 from fastreid.evaluation import (DatasetEvaluator, ReidEvaluator,
                                  inference_on_dataset, print_csv_format)
 from fastreid.modeling.meta_arch import build_model
@@ -260,9 +259,6 @@ class DefaultTrainer(SimpleTrainer):
         # at the next iteration (or iter zero if there's no checkpoint).
         checkpoint = self.checkpointer.resume_or_load(self.cfg.MODEL.WEIGHTS, resume=resume)
 
-        # Reinitialize dataloader iter because when we update dataset person identity dict
-        # to resume training, DataLoader won't update this dictionary when using multiprocess
-        # because of the function scope.
         if resume and self.checkpointer.has_checkpoint():
             self.start_iter = checkpoint.get("iteration", -1) + 1
             # The checkpoint stores the training iteration that just finished, thus we start
@@ -424,7 +420,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         logger = logging.getLogger(__name__)
         logger.info("Prepare training set")
-        return build_reid_train_loader_new(cfg)
+        return build_reid_train_loader(cfg)
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
@@ -434,7 +430,7 @@ class DefaultTrainer(SimpleTrainer):
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader_new(cfg, dataset_name)
+        return build_reid_test_loader(cfg, dataset_name)
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):

@@ -4,8 +4,6 @@
 @contact: sherlockliao01@gmail.com
 """
 
-import logging
-import os
 import sys
 
 sys.path.append('.')
@@ -15,15 +13,6 @@ from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from fvcore.common.checkpoint import Checkpointer
 from fastreid.utils import comm
-from fastreid.evaluation import ReidEvaluator
-
-
-class Trainer(DefaultTrainer):
-    @classmethod
-    def build_evaluator(cls, cfg, num_query, output_folder=None):
-        if output_folder is None:
-            output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
-        return ReidEvaluator(cfg, num_query)
 
 
 def setup(args):
@@ -43,7 +32,7 @@ def main(args):
     if args.eval_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
-        model = Trainer.build_model(cfg)
+        model = DefaultTrainer.build_model(cfg)
         if comm.get_world_size() > 1:
             ddp_cfg = {
                 'device_ids': [comm.get_local_rank()],
@@ -57,10 +46,10 @@ def main(args):
 
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
 
-        res = Trainer.test(cfg, model)
+        res = DefaultTrainer.test(cfg, model)
         return res
 
-    trainer = Trainer(cfg)
+    trainer = DefaultTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
     return trainer.train()
 

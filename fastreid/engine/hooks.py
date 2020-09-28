@@ -23,7 +23,7 @@ from fastreid.utils.events import EventStorage, EventWriter
 from fvcore.common.file_io import PathManager
 from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
 from fvcore.common.timer import Timer
-from fastreid.data import build_reid_train_loader_new
+from fastreid.data import build_reid_train_loader
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
@@ -520,7 +520,7 @@ class LabelGeneratorHook(HookBase):
         self._step_timer = Timer()
         self._cfg = cfg
         self.model = model
-        self._data_loader_cluster = build_reid_train_loader_new(cfg, is_train=False)
+        self._data_loader_cluster = build_reid_train_loader(cfg, is_train=False)
         self._common_dataset = self._data_loader_cluster.dataset  # save the original dataset
 
         assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
@@ -641,11 +641,11 @@ class LabelGeneratorHook(HookBase):
                     self.model.initialize_centers(centers, center_labels)
 
         # update the dataloader and iter
-        self.trainer.data_loader = build_reid_train_loader_new(self._cfg,
-                                                               datasets=self._common_dataset.datasets,
-                                                               pseudo_labels=all_labels,
-                                                               is_train=True,
-                                                               relabel=False)
+        self.trainer.data_loader = build_reid_train_loader(self._cfg,
+                                                           datasets=self._common_dataset.datasets,
+                                                           pseudo_labels=all_labels,
+                                                           is_train=True,
+                                                           relabel=False)
         self.trainer._data_loader_iter = iter(self.trainer.data_loader)
         # update cfg
         if self._cfg.is_frozen():

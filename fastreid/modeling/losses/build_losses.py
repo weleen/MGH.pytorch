@@ -7,7 +7,7 @@
 from .. import losses as Loss
 
 
-def reid_losses(cfg, pred_class_logits, global_features, gt_classes, prefix='') -> dict:
+def reid_losses(cfg, pred_class_logits, global_features, gt_classes, prefix='', **kwargs) -> dict:
     if cfg.PSEUDO.ENABLED:
         pred_class_logits = pred_class_logits[:, :cfg.MODEL.HEADS.NUM_CLASSES]
     loss_dict = {}
