@@ -1,0 +1,2 @@
+from .compactreid_baseline import CompactBaseline
+from .compactreid_head import CompactHead

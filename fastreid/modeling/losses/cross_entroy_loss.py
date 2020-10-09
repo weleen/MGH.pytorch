@@ -20,7 +20,7 @@ class CrossEntropyLoss(object):
         self._scale = cfg.MODEL.LOSSES.CE.SCALE
 
     @staticmethod
-    def log_accuracy(pred_class_logits, gt_classes, topk=(1,)):
+    def log_accuracy(pred_class_logits, gt_classes, topk=(1,), name='cls_accuracy'):
         """
         Log the accuracy metrics to EventStorage.
         """
@@ -36,7 +36,7 @@ class CrossEntropyLoss(object):
             ret.append(correct_k.mul_(1. / bsz))
 
         storage = get_event_storage()
-        storage.put_scalar("cls_accuracy", ret[0])
+        storage.put_scalar(name, ret[0])
 
     def __call__(self, pred_class_logits, _, gt_classes):
         """

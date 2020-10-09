@@ -1,0 +1,13 @@
+_BASE_: "../../../configs/Base-AGW.yml"
+
+MODEL:
+  META_ARCHITECTURE: "CompactBaseline"
+  HEADS:
+    NAME: "CompactHead"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/CompactReID/market1501/agw_R50"
+

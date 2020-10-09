@@ -450,7 +450,7 @@ class FreezeLayer(HookBase):
     def freeze_specific_layer(self):
         for name, module in self.model.named_modules():
             for layer in self.open_layer_names:
-                if name in layer:
+                if layer in name:
                     module.train()
                     for p in module.parameters():
                         p.requires_grad = True
@@ -463,6 +463,7 @@ class FreezeLayer(HookBase):
             for name, module in self.model.named_modules():
                 if layer in name:
                     self.open_layer_names.remove(layer)
+                    break
         if self.open_layer_names:
             self._logger.info(f'{self.open_layer_names} is not an attribute of the model, will skip this layer')
         # check by run

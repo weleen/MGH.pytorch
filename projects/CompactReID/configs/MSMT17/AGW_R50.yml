@@ -1,0 +1,7 @@
+_BASE_: "../Base-compact.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+OUTPUT_DIR: "logs/CompactReID/msmt17/AGW_R50"

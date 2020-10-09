@@ -225,9 +225,13 @@ class CommonMetricPrinter(EventWriter):
             lr = "N/A"
 
         try:
-            cls_acc = "{:.2}".format(storage.history("cls_accuracy").latest())
+            cls_acc = "  ".join([
+                "{}: {:.2}".format(k, v.latest())
+                for k, v in storage.histories().items()
+                if "accuracy" in k]
+            )
         except KeyError:
-            cls_acc = "N/A"
+            cls_acc = "cls_acc: N/A"
 
         if torch.cuda.is_available():
             max_mem_mb = torch.cuda.max_memory_allocated() / 1024.0 / 1024.0
@@ -247,7 +251,7 @@ class CommonMetricPrinter(EventWriter):
                         if "loss" in k
                     ]
                 ),
-                cls_acc=f"cls_acc: {cls_acc}",
+                cls_acc=f"{cls_acc}",
                 time="time: {:.4f}  ".format(iter_time) if iter_time is not None else "",
                 data_time="data_time: {:.4f}  ".format(data_time) if data_time is not None else "",
                 lr=lr,
