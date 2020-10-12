@@ -43,19 +43,6 @@ class SPCLTrainer(DefaultTrainer):
         logger.info('Prepare training set')
         data_loader = self.construct_unsupervised_dataloader(is_train=False)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
-        # For training, wrap with DP. But don't need this for inference.
-        if comm.get_world_size() > 1:
-            ddp_cfg = {
-                'device_ids': [comm.get_local_rank()],
-                'broadcast_buffers': False,
-                'output_device': comm.get_local_rank(),
-                'find_unused_parameters': True
-            }
-            model = DistributedDataParallel(
-                model, **ddp_cfg
-            )
-        else:
-            model = torch.nn.DataParallel(model)
 
         # create hybrid memory
         self.memory = HybridMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM,

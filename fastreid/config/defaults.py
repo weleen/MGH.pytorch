@@ -114,6 +114,13 @@ _C.MODEL.WEIGHTS = ""
 _C.MODEL.PIXEL_MEAN = [0.485, 0.456, 0.406]
 # Values to be used for image normalization
 _C.MODEL.PIXEL_STD = [0.229, 0.224, 0.225]
+# Domain-Specific batch normalization
+_C.MODEL.DSBN = True
+# Samples for per batch normalization
+_C.MODEL.SAMPLES_PER_BN = 64
+# Mean Teacher Network
+_C.MODEL.MEAN_NET = False
+_C.MODEL.MEAN_NET_ALPHA = 0.999
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -295,6 +302,12 @@ _C.SOLVER.IMS_PER_BATCH = 64
 _C.TEST = CN()
 
 _C.TEST.EVAL_PERIOD = 20
+# Run testing on validation or testing dataset in training stage,
+# False means run testing on query and gallery,
+# True means run on val split from training dataste.
+_C.TEST.DO_VAL = False
+# Metric for presenting best model
+_C.TEST.METRIC_NAMES = ('Rank-1', 'mAP')
 
 # Number of images per batch in one process.
 _C.TEST.IMS_PER_BATCH = 64

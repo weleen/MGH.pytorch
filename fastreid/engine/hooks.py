@@ -302,7 +302,7 @@ class EvalHook(HookBase):
     It is executed every ``eval_period`` iterations and after the last iteration.
     """
 
-    def __init__(self, eval_period, eval_function):
+    def __init__(self, eval_period, eval_function, do_val=False, metric_names=('Rank-1', 'mAP')):
         """
         Args:
             eval_period (int): the period to run `eval_function`.
@@ -315,9 +315,13 @@ class EvalHook(HookBase):
         """
         self._period = eval_period
         self._func = eval_function
+        self.logger = logging.getLogger(__name__)
+        self.best_iteration = 0
+        self.do_val = do_val
+        self.metric_names = metric_names
 
-    def _do_eval(self):
-        results = self._func()
+    def _do_eval(self, val=False):
+        results = self._func(val)
 
         if results:
             assert isinstance(
@@ -335,6 +339,7 @@ class EvalHook(HookBase):
                     )
             self.trainer.storage.put_scalars(**flattened_results, smoothing_hint=False)
 
+
         # Remove extra memory cache of main process due to evaluation
         torch.cuda.empty_cache()
 
@@ -342,12 +347,33 @@ class EvalHook(HookBase):
         next_iter = self.trainer.iter + 1
         is_final = next_iter == self.trainer.max_iter
         if is_final or (self._period > 0 and next_iter % self._period == 0):
-            self._do_eval()
+            self._do_eval(self.do_val)
+
+            if comm.is_main_process():
+                for metric_name in self.metric_names:
+                    best_perf, self.best_iteration = max(self.trainer.storage.history(metric_name).values())
+                    self.logger.info(f'Model on iteration {self.best_iteration} performs with {metric_name} as {best_perf:.4f}')
+            # broadcast value from main process
+            self.best_iteration = int(comm.broadcast_value(self.best_iteration, 0))
+
         # Evaluation may take different time among workers.
         # A barrier make them start the next iteration together.
         comm.synchronize()
 
     def after_train(self):
+        if self.do_val:
+            self.logger.info(f"Run final testing with model in iteration {self.best_iteration}")
+            # resume from the best model, and run the evaluation again
+            if self.best_iteration + 1 == self.trainer.max_iter:
+                weight_path = os.path.join(self.trainer.cfg.OUTPUT_DIR, "model_final.pth")
+            else:
+                weight_path = os.path.join(self.trainer.cfg.OUTPUT_DIR, "model_{:07d}.pth".format(self.best_iteration))
+            if os.path.exists(weight_path):
+                self.trainer.checkpointer.load(weight_path)
+                self._do_eval()
+            else:
+                self.logger.warning("best model {} not exists.".format(weight_path))
+        comm.synchronize()
         # func is likely a closure that holds reference to the trainer
         # therefore we clean it to avoid circular reference in the end
         del self._func

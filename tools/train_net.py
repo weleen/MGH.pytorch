@@ -8,7 +8,6 @@ import sys
 
 sys.path.append('.')
 
-from torch.nn.parallel import DistributedDataParallel
 from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from fvcore.common.checkpoint import Checkpointer
@@ -33,17 +32,6 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = DefaultTrainer.build_model(cfg)
-        if comm.get_world_size() > 1:
-            ddp_cfg = {
-                'device_ids': [comm.get_local_rank()],
-                'broadcast_buffers': False,
-                'output_device': comm.get_local_rank(),
-                'find_unused_parameters': True
-            }
-            model = DistributedDataParallel(
-                model, **ddp_cfg
-            )
-
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
 
         res = DefaultTrainer.test(cfg, model)

@@ -1,0 +1,39 @@
+_BASE_: "../Base-bagtricks.yml"
+
+MODEL:
+  SAMPLES_PER_BN: 16
+  BACKBONE:
+    WITH_NL: False
+
+  HEADS:
+    NECK_FEAT: "after"
+    NUM_CLASSES: 0
+
+  LOSSES:
+    NAME: ("ContrastiveLoss", )
+
+DATALOADER:
+  SAMPLER_NAME: "BalancedIdentitySampler"
+
+PSEUDO:
+  ENABLED: True
+  CLUSTER_ITER: 2
+  USE_OUTLIERS: True
+
+SOLVER:
+  OPT: "Adam"
+  MAX_ITER: 160
+  BASE_LR: 0.00035
+  IMS_PER_BATCH: 64
+
+  STEPS: [40, 80, 120]
+  WARMUP_ITERS: 0
+
+  LOG_PERIOD: 200
+  CHECKPOINT_PERIOD: 5
+
+TEST:
+  EVAL_PERIOD: 5
+  IMS_PER_BATCH: 256
+
+CUDNN_BENCHMARK: True

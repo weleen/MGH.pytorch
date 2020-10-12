@@ -561,7 +561,7 @@ def build_regnet_backbone(cfg):
         '6400y': 'fastreid/modeling/backbones/regnet/regnety/RegNetY-6.4GF_dds_8gpu.yaml',
     }[depth]
 
-    cfg.merge_from_file(cfg_files)
+    regnet_cfg.merge_from_file(cfg_files)
     model = RegNet(last_stride, bn_norm)
 
     if pretrain:

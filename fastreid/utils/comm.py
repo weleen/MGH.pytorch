@@ -90,6 +90,21 @@ def _get_global_gloo_group():
         return dist.group.WORLD
 
 
+def simple_group_split(world_size, rank, num_groups):
+    groups = []
+    rank_list = np.split(np.arange(world_size), num_groups)
+    rank_list = [list(map(int, x)) for x in rank_list]
+    for i in range(num_groups):
+        groups.append(dist.new_group(rank_list[i]))
+    group_size = world_size // num_groups
+    print(
+        "Rank no.{} start sync BN on the process group of {}".format(
+            rank, rank_list[rank // group_size]
+        )
+    )
+    return groups[rank // group_size]
+
+
 def _serialize_to_tensor(data, group):
     backend = dist.get_backend(group)
     assert backend in ["gloo", "nccl"]
@@ -116,7 +131,7 @@ def _pad_to_largest_tensor(tensor, group):
     """
     world_size = dist.get_world_size(group=group)
     assert (
-            world_size >= 1
+        world_size >= 1
     ), "comm.gather/all_gather must be called from ranks within the given group!"
     local_size = torch.tensor([tensor.numel()], dtype=torch.int64, device=tensor.device)
     size_list = [
@@ -281,7 +296,8 @@ class GatherLayer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
-        output = [torch.zeros_like(input) for _ in range(dist.get_world_size())]
+        output = [torch.zeros_like(input)
+                  for _ in range(dist.get_world_size())]
         dist.all_gather(output, input)
         return tuple(output)
 
@@ -291,6 +307,7 @@ class GatherLayer(torch.autograd.Function):
         grad_out = torch.zeros_like(input)
         grad_out[:] = grads[dist.get_rank()]
         return grad_out
+
 
 @torch.no_grad()
 def broadcast_tensor(x, src, gpu=None):

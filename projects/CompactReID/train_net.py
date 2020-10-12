@@ -1,3 +1,11 @@
+'''
+Author: your name
+Date: 2020-10-10 22:24:22
+LastEditTime: 2020-10-12 17:28:32
+LastEditors: your name
+Description: In User Settings Edit
+FilePath: /git/fast-reid/projects/CompactReID/train_net.py
+'''
 # encoding: utf-8
 """
 @author:  wuyiming
@@ -34,17 +42,6 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = CompactTrainer.build_model(cfg)
-        if comm.get_world_size() > 1:
-            ddp_cfg = {
-                'device_ids': [comm.get_local_rank()],
-                'broadcast_buffers': False,
-                'output_device': comm.get_local_rank(),
-                'find_unused_parameters': True
-            }
-            model = DistributedDataParallel(
-                model, **ddp_cfg
-            )
-
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
 
         res = CompactTrainer.test(cfg, model)

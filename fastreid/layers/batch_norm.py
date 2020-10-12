@@ -16,7 +16,10 @@ __all__ = [
     "GhostBatchNorm",
     "FrozenBatchNorm",
     "SyncBatchNorm",
+    "DSBatchNorm",
     "get_norm",
+    "convert_dsbn",
+    "convert_sync_bn"
 ]
 
 
@@ -184,6 +187,52 @@ class FrozenBatchNorm(BatchNorm):
         return res
 
 
+class DSBatchNorm(nn.Module):
+    def __init__(
+        self,
+        num_features,
+        num_domains,
+        batchnorm_layer=nn.BatchNorm2d,
+        eps=1e-5,
+        momentum=0.1,
+        target_bn_idx=-1,
+        weight_requires_grad=True,
+        bias_requires_grad=True,
+    ):
+        super(DSBatchNorm, self).__init__()
+        self.num_features = num_features
+        self.num_domains = num_domains
+        self.target_bn_idx = target_bn_idx
+        self.batchnorm_layer = batchnorm_layer
+
+        dsbn = [batchnorm_layer(num_features, eps=eps, momentum=momentum) 
+                    for _ in range(num_domains)]
+        for idx in range(num_domains):
+            dsbn[idx].weight.requires_grad_(weight_requires_grad)
+            dsbn[idx].bias.requires_grad_(bias_requires_grad)
+        self.dsbn = nn.ModuleList(dsbn)
+
+    def forward(self, x):
+        if self.training:
+            return self._forward_train(x)
+        else:
+            return self._forward_test(x)
+
+    def _forward_train(self, x):
+        bs = x.size(0)
+        assert bs % self.num_domains == 0, "the batch size should be times of BN groups"
+
+        split = torch.split(x, int(bs // self.num_domains), 0)
+        out = []
+        for idx, subx in enumerate(split):
+            out.append(self.dsbn[idx](subx.contiguous()))
+        return torch.cat(out, 0)
+
+    def _forward_test(self, x):
+        # Default: the last BN is adopted for target domain
+        return self.dsbn[self.target_bn_idx](x)
+
+
 def get_norm(norm, out_channels, **kwargs):
     """
     Args:
@@ -206,3 +255,46 @@ def get_norm(norm, out_channels, **kwargs):
             "syncBN": SyncBatchNorm,
         }[norm]
     return norm(out_channels, **kwargs)
+
+
+def convert_dsbn(model, num_domains=2, target_bn_idx=-1):
+    """
+    convert all bn layers in the model to domain-specific bn layers
+    """
+    for _, (child_name, child) in enumerate(model.named_children()):
+        if isinstance(child, [nn.BatchNorm2d, nn.BatchNorm1d]):
+            class_type = type(child)
+            # BN 1/2d -> DSBN 1/2d
+            m = DSBatchNorm(
+                child.num_features,
+                num_domains,
+                class_type,
+                child.eps,
+                child.momentum,
+                target_bn_idx,
+                child.weight.requires_grad,
+                child.bias.requires_grad,
+            )
+            m.to(next(child.parameters()).device)
+
+            for idx in range(num_domains):
+                m.dsbn[idx].load_state_dict(child.state_dict())
+
+            setattr(model, child_name, m)
+        else:
+            # recursive searching
+            convert_dsbn(child, num_domains=num_domains, target_bn_idx=target_bn_idx)
+
+
+def convert_sync_bn(model, process_group=None):
+    for _, (child_name, child) in enumerate(model.named_children()):
+        if isinstance(child, nn.modules.batchnorm._BatchNorm):
+            if isinstance(child, nn.modules.instancenorm._InstanceNorm):
+                continue
+            m = nn.SyncBatchNorm.convert_sync_batchnorm(child, process_group)
+            m.weight.requires_grad_(child.weight.requires_grad)
+            m.bias.requires_grad_(child.bias.requires_grad)
+            m.to(next(child.parameters()).device)
+            setattr(model, child_name, m)
+        else:
+            convert_sync_bn(child, process_group)

@@ -92,4 +92,6 @@ class EmbeddingHead(nn.Module):
             "cls_outputs": cls_outputs,
             "pred_class_logits": pred_class_logits,
             "features": feat,
+            "global_feat": global_feat[..., 0, 0], 
+            "bn_feat": bn_feat
         }

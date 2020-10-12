@@ -63,8 +63,13 @@ class Market1501(ImageDataset):
         self.check_before_run(required_files)
 
         train = self.process_dir(self.train_dir)
-        query = self.process_dir(self.query_dir, is_train=False)
-        gallery = self.process_dir(self.gallery_dir, is_train=False)
+        if kwargs.get('val'):
+            query = self.process_val(self.train_dir)
+            gallery = self.process_val(self.train_dir)
+        else:
+            query = self.process_dir(self.query_dir, is_train=False)
+            gallery = self.process_dir(self.gallery_dir, is_train=False)
+
         if self.market1501_500k:
             gallery += self.process_dir(self.extra_gallery_dir, is_train=False)
 
@@ -85,6 +90,34 @@ class Market1501(ImageDataset):
             if is_train:
                 pid = self.dataset_name + "_" + str(pid)
                 camid = self.dataset_name + "_" + str(camid)
+            data.append((img_path, pid, camid))
+
+        return data
+
+    def process_val(self, dir_path, val_split=0.2):
+        """Process the dataset for validation
+        """
+        img_paths = glob.glob(osp.join(dir_path, '*.jpg'))
+        pattern = re.compile(r'([-\d]+)_c(\d)')
+
+        # select a range of identities (for splitting train and val)
+        pid_container = set()
+        for img_path in img_paths:
+            pid, _ = map(int, pattern.search(img_path).groups())
+            if pid == -1:
+                continue  # junk images are just ignored
+            pid_container.add(pid)
+        end_id = int(round(len(pid_container) * val_split))
+        pid_container = sorted(pid_container)[:end_id]
+
+        data = []
+        for img_path in img_paths:
+            pid, camid = map(int, pattern.search(img_path).groups())
+            if (pid not in pid_container) or (pid == -1):
+                continue
+            assert 0 <= pid <= 1501  # pid == 0 means background
+            assert 1 <= camid <= 6
+            camid -= 1  # index starts from 0
             data.append((img_path, pid, camid))
 
         return data

@@ -207,23 +207,7 @@ class DefaultTrainer(SimpleTrainer):
         data_loader = self.build_train_loader(cfg)
         cfg = self.auto_scale_hyperparams(cfg, data_loader, is_start=True)
         model = self.build_model(cfg)
-        optimizer = self.build_optimizer(cfg, model)
-
-        # For training, wrap with DDP. But don't need this for inference.
-        if comm.get_world_size() > 1:
-            # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
-            # for part of the parameters is not updated.
-            ddp_cfg = {
-                'device_ids': [comm.get_local_rank()],
-                'broadcast_buffers': False,
-                'output_device': comm.get_local_rank(),
-                'find_unused_parameters': True
-            }
-            model = DistributedDataParallel(
-                model, **ddp_cfg
-            )
-        else:
-            model = torch.nn.DataParallel(model)
+        optimizer = self.build_optimizer(cfg, model.module)
 
         super().__init__(model, data_loader, optimizer, cfg.SOLVER.AMP_ENABLED)
 
@@ -326,13 +310,13 @@ class DefaultTrainer(SimpleTrainer):
         if comm.is_main_process():
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
 
-        def test_and_save_results():
-            self._last_eval_results = self.test(self.cfg, self.model)
+        def test_and_save_results(val=False):
+            self._last_eval_results = self.test(self.cfg, self.model, val=val)
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
         # we can use the saved checkpoint to debug.
-        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
+        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results, do_val=self.cfg.TEST.DO_VAL, metric_names=self.cfg.TEST.METRIC_NAMES))
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
@@ -390,6 +374,23 @@ class DefaultTrainer(SimpleTrainer):
         model = build_model(cfg)
         logger = logging.getLogger(__name__)
         logger.info("Model:\n{}".format(model))
+
+        # For training, wrap with DDP. But don't need this for inference.
+        if comm.get_world_size() > 1:
+            # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
+            # for part of the parameters is not updated.
+            ddp_cfg = {
+                'device_ids': [comm.get_local_rank()],
+                'broadcast_buffers': False,
+                'output_device': comm.get_local_rank(),
+                'find_unused_parameters': True
+            }
+            model = DistributedDataParallel(
+                model, **ddp_cfg
+            )
+        else:
+            model = torch.nn.DataParallel(model)
+        
         return model
 
     @classmethod
@@ -423,21 +424,21 @@ class DefaultTrainer(SimpleTrainer):
         return build_reid_train_loader(cfg)
 
     @classmethod
-    def build_test_loader(cls, cfg, dataset_name):
+    def build_test_loader(cls, cfg, dataset_name, val=False):
         """
         Returns:
             iterable
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader(cfg, dataset_name)
+        return build_reid_test_loader(cfg, dataset_name, val)
 
     @classmethod
     def build_evaluator(cls, cfg, num_query, output_dir=None):
         return ReidEvaluator(cfg, num_query, output_dir)
 
     @classmethod
-    def test(cls, cfg, model, evaluators=None):
+    def test(cls, cfg, model, evaluators=None, val=False):
         """
         Args:
             cfg (CfgNode):
@@ -445,6 +446,7 @@ class DefaultTrainer(SimpleTrainer):
             evaluators (list[DatasetEvaluator] or None): if None, will call
                 :meth:`build_evaluator`. Otherwise, must have the same length as
                 `cfg.DATASETS.TESTS`.
+            val (bool): if True, perform validation on val split. Otherwise, test on query and gallery split.
         Returns:
             dict: a dict of result metrics
         """
@@ -460,7 +462,7 @@ class DefaultTrainer(SimpleTrainer):
         results = OrderedDict()
         for idx, dataset_name in enumerate(cfg.DATASETS.TESTS):
             logger.info("Prepare testing set")
-            data_loader, num_query = cls.build_test_loader(cfg, dataset_name)
+            data_loader, num_query = cls.build_test_loader(cfg, dataset_name, val)
             # When evaluators are passed in as arguments,
             # implicitly assume that evaluators can be created before data_loader.
             if evaluators is not None:

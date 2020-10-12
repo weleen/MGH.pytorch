@@ -73,8 +73,12 @@ class MSMT17(ImageDataset):
 
         train = self.process_dir(self.train_dir, self.list_train_path)
         val = self.process_dir(self.train_dir, self.list_val_path)
-        query = self.process_dir(self.test_dir, self.list_query_path, is_train=False)
-        gallery = self.process_dir(self.test_dir, self.list_gallery_path, is_train=False)
+        if kwargs.get('val'):
+            query = self.process_dir(self.train_dir, self.list_val_path, is_train=False)
+            gallery = self.process_dir(self.train_dir, self.list_val_path, is_train=False)
+        else:
+            query = self.process_dir(self.test_dir, self.list_query_path, is_train=False)
+            gallery = self.process_dir(self.test_dir, self.list_gallery_path, is_train=False)
 
         num_train_pids = self.get_num_pids(train)
         query_tmp = []

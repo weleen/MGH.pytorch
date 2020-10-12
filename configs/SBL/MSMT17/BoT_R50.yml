@@ -1,0 +1,7 @@
+_BASE_: "../Base-sbl-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+OUTPUT_DIR: "logs/SBL/msmt17/BoT_R50"

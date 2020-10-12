@@ -39,7 +39,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     dataset_names = cfg.DATASETS.NAMES
 
     if datasets is None:
-        # generally for the first epoch
+        # Generally for the first epoch, the datasets have not been built.
         if is_train:
             if not cfg.PSEUDO.ENABLED:
                 logger.info(
@@ -57,6 +57,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
             )
 
         datasets = list()
+        # Build all datasets with groundtruth labels.
         for d in cfg.DATASETS.NAMES:
             dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
             datasets.append(dataset)
@@ -86,7 +87,8 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     else:
         data_sampler = samplers.InferenceSampler(len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, drop_last=is_train)
-
+    
+    # This is a joint data loader
     train_loader = torch.utils.data.DataLoader(
         train_set,
         num_workers=num_workers,
@@ -97,11 +99,16 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     return train_loader
 
 
-def build_reid_test_loader(cfg, dataset_name):
+def build_reid_test_loader(cfg, dataset_name, val=False):
+    """
+    cfg (cfgNode): configs.
+    dataset_name (str): name of the dataset.
+    val (bool): run validation or testing.
+    """
     cfg = cfg.clone()
     cfg.defrost()
 
-    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root)
+    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root, val=val)
     if comm.is_main_process():
         dataset.show_test()
     dataset.data = dataset.query + dataset.gallery

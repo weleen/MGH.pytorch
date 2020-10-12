@@ -35,20 +35,6 @@ class SSCTrainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
 
-        # For training, wrap with DDP. But don't need this for inference.
-        if comm.get_world_size() > 1:
-            # ref to https://github.com/pytorch/pytorch/issues/22049 to set `find_unused_parameters=True`
-            # for part of the parameters is not updated.
-            ddp_cfg = {
-                'device_ids': [comm.get_local_rank()],
-                'broadcast_buffers': False,
-                'output_device': comm.get_local_rank(),
-                'find_unused_parameters': True
-            }
-            model = DistributedDataParallel(
-                model, **ddp_cfg
-            )
-
         super(DefaultTrainer, self).__init__(model, data_loader, optimizer)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
