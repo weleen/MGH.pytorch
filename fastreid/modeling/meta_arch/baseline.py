@@ -65,20 +65,12 @@ class Baseline(nn.Module):
 
         return images
 
-    def losses(self, outs):
+    def losses(self, outs, **kwargs):
         r"""
         Compute loss from modeling's outputs, the loss function input arguments
         must be the same as the outputs of the model forwarding.
         """
-        # fmt: off
-        outputs           = outs["outputs"]
-        gt_labels         = outs["targets"]
-        # model predictions
-        pred_class_logits = outputs['pred_class_logits'].detach()
-        cls_outputs       = outputs['cls_outputs']
-        pred_features     = outputs['features']
-        # fmt: on
-        return reid_losses(self._cfg, cls_outputs, pred_features, gt_labels)
+        return reid_losses(self._cfg, outs, **kwargs)
 
     @torch.no_grad()
     def initialize_centers(self, centers, labels):

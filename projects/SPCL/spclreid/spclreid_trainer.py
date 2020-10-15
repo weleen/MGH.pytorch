@@ -33,13 +33,13 @@ __all__ = ["SPCLTrainer"]
 
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg: CfgNode) -> None:
-        self.cfg = cfg
         logger = logging.getLogger('fastreid.' + __name__)
         if not logger.isEnabledFor(logging.INFO):
             setup_logger()
+
         # build model
         model = self.build_model(cfg)
-        optimizer = self.build_optimizer(cfg, model)
+        optimizer = self.build_optimizer(cfg, model.module)
         logger.info('Prepare training set')
         data_loader = self.construct_unsupervised_dataloader(is_train=False)
         cfg = self.auto_scale_hyperparams(cfg, data_loader)

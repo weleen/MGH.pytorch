@@ -29,10 +29,10 @@ class Dataset(object):
     _junk_pids = []  # contains useless person IDs, e.g. background, false detections
 
     def __init__(self, train, query, gallery, transform=None, mode='train',
-                 combineall=False, verbose=True, **kwargs):
-        self.train = train
-        self.query = query
-        self.gallery = gallery
+                 combineall=False, verbose=True, sort=True, **kwargs):
+        self.train = sorted(train) if sort else train
+        self.query = sorted(query) if sort else query
+        self.gallery = sorted(gallery) if sort else gallery
         self.transform = transform
         self.mode = mode
         self.combineall = combineall
@@ -169,15 +169,18 @@ class ImageDataset(Dataset):
         )
         logger.info(f"=> Loaded {self.__class__.__name__} in csv format: \n" + colored(table, "cyan"))
 
-    def renew_labels(self, pseudo_labels):
+    def renew_labels(self, pseudo_labels, cam_labels=None):
         assert isinstance(pseudo_labels, list), 'pseudo labels is not list'
         assert len(pseudo_labels) == len(
             self.data
         ), "the number of pseudo labels {} should be the same as that of data {}"\
             .format(len(pseudo_labels), len(self.data))
 
+        if cam_labels is None:
+            cam_labels = [camid for _, _, camid in self.data]
+
         data = []
-        for label, (img_path, _, camid) in zip(pseudo_labels, self.data):
+        for label, camid, (img_path, _, _) in zip(pseudo_labels, cam_labels, self.data):
             if label != -1:
                 data.append((img_path, label, camid))
         self.data = data

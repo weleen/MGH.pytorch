@@ -21,15 +21,17 @@ from .transforms import build_transforms
 _root = os.getenv("FASTREID_DATASETS", "datasets")
 
 
-def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None,
-                            is_train=True, relabel=True, **kwargs) -> DataLoader:
+def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None, cam_labels: list = None,
+                            is_train=True, relabel=True, for_clustering=False, **kwargs) -> DataLoader:
     """
     build dataloader for training and clustering.
-    :param cfg: CfgNode
-    :param datasets: list(ImageDataset)
-    :param pseudo_labels:
-    :param is_train: bool, True for training, False for clustering or validation.
-    :param relabel: relabel or not
+    :param cfg(CfgNode): config
+    :param datasets(list(ImageDataset)): dataset information, include img_path, pid, camid.
+    :param pseudo_labels(list): generated pseudo labels for un/semi-supervised learning.
+    :param cam_labels(list): camera id for all datasets.
+    :param is_train(bool): True for training, the sampler and transformer are TrainSampler and train_transformer. False for clustering, the sampler and transformer are InferenceSampler and test_transformer.
+    :param relabel(bool): relabel or not.
+    :param for_clustering(bool): True means building dataloader for clustering, the labeled dataset is ignored.
     :param kwargs:
     :return: DataLoader
     """
@@ -37,6 +39,8 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     cfg.defrost()
     logger = logging.getLogger(__name__)
     dataset_names = cfg.DATASETS.NAMES
+    if for_clustering:
+        dataset_names = [dataset_names[idx] for idx in cfg.PSEUDO.UNSUP]
 
     if datasets is None:
         # Generally for the first epoch, the datasets have not been built.
@@ -53,22 +57,30 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
                 )
         else:
             logger.info(
-                f"Build the dataset {dataset_names} for validation or testing, where the sampler is InferenceSampler."
+                f"Build the dataset {dataset_names} for extracting features, where the sampler is InferenceSampler."
             )
 
         datasets = list()
         # Build all datasets with groundtruth labels.
-        for d in cfg.DATASETS.NAMES:
+        for d in dataset_names:
             dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
             datasets.append(dataset)
     else:
-        # update the datasets with given pseudo labels
-        assert pseudo_labels is not None, "Please give pseudo_labels for the datasets"
+        # update unlabeled datasets with given pseudo labels, 
+        # update labeled datasets if label is string with dataset_name and relabel should be False.
+        assert pseudo_labels is not None, "Please give pseudo_labels for the datasets."
+        assert relabel is False, "Please set relabel to False when using pseudo labels."
         datasets = copy.deepcopy(datasets)
-        for idx in cfg.PSEUDO.UNSUP:
-            logger.info(f"Replace the label in dataset {dataset_names[idx]}.")
-            datasets[idx].renew_labels(pseudo_labels[idx])
-
+        for idx, dataset in enumerate(datasets):
+            if idx in cfg.PSEUDO.UNSUP:
+                logger.info(f"Replace the unlabeled label in dataset {dataset_names[idx]} with pseudo labels.")
+                datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
+            else:
+                if isinstance(dataset.data[0][1], str):
+                    logger.warning(f"Replace the string label in labeled dataset {dataset_names[idx]} with int label. Only on the first iteration")
+                    datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
+    # TODO: multiple datasets training in unsupervised domain adaptation is not supported now.
+    # Please refer to implementation of OpenUnReID.
     train_transforms = build_transforms(cfg, is_train=is_train)
     train_set = CommDataset(datasets, train_transforms, relabel=relabel)
 
@@ -82,13 +94,11 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
         data_sampler = samplers.SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.img_items,
                                                                                   batch_size=cfg.SOLVER.IMS_PER_BATCH,
                                                                                   num_instances=num_instance,
-                                                                                  size=len(train_set),
-                                                                                  is_train=is_train)
+                                                                                  size=len(train_set))
     else:
         data_sampler = samplers.InferenceSampler(len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, drop_last=is_train)
-    
-    # This is a joint data loader
+
     train_loader = torch.utils.data.DataLoader(
         train_set,
         num_workers=num_workers,
@@ -101,7 +111,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
 
 def build_reid_test_loader(cfg, dataset_name, val=False):
     """
-    cfg (cfgNode): configs.
+    cfg (CfgNode): configs.
     dataset_name (str): name of the dataset.
     val (bool): run validation or testing.
     """

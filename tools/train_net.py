@@ -11,7 +11,6 @@ sys.path.append('.')
 from fastreid.config import cfg
 from fastreid.engine import DefaultTrainer, default_argument_parser, default_setup, launch
 from fvcore.common.checkpoint import Checkpointer
-from fastreid.utils import comm
 
 
 def setup(args):

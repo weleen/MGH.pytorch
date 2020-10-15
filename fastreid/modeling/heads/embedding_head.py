@@ -19,7 +19,7 @@ class EmbeddingHead(nn.Module):
         # fmt: off
         feat_dim      = cfg.MODEL.BACKBONE.FEAT_DIM
         embedding_dim = cfg.MODEL.HEADS.EMBEDDING_DIM
-        num_classes   = cfg.MODEL.HEADS.NUM_CLASSES
+        num_classes   = cfg.MODEL.HEADS.NUM_CLASSES if (cfg.PSEUDO.ENABLED and cfg.PSEUDO.WITH_CLASSIFIER) else 0
         neck_feat     = cfg.MODEL.HEADS.NECK_FEAT
         pool_type     = cfg.MODEL.HEADS.POOL_LAYER
         cls_type      = cfg.MODEL.HEADS.CLS_LAYER
@@ -47,18 +47,18 @@ class EmbeddingHead(nn.Module):
 
         if with_bnneck:
             self.bottleneck.add_module('bnneck', get_norm(norm_type, feat_dim, bias_freeze=True))
+        self.bottleneck.apply(weights_init_kaiming)
 
         # identity classification layer
-        # fmt: off
-        if cls_type == 'linear':          self.classifier = nn.Linear(feat_dim, num_classes, bias=False)
-        elif cls_type == 'arcSoftmax':    self.classifier = ArcSoftmax(cfg, feat_dim, num_classes)
-        elif cls_type == 'circleSoftmax': self.classifier = CircleSoftmax(cfg, feat_dim, num_classes)
-        elif cls_type == 'amSoftmax':     self.classifier = AMSoftmax(cfg, feat_dim, num_classes)
-        else:                             raise KeyError(f"{cls_type} is not supported!")
-        # fmt: on
-
-        self.bottleneck.apply(weights_init_kaiming)
-        self.classifier.apply(weights_init_classifier)
+        if num_classes > 0:
+            # fmt: off
+            if cls_type == 'linear':          self.classifier = nn.Linear(feat_dim, num_classes, bias=False)
+            elif cls_type == 'arcSoftmax':    self.classifier = ArcSoftmax(cfg, feat_dim, num_classes)
+            elif cls_type == 'circleSoftmax': self.classifier = CircleSoftmax(cfg, feat_dim, num_classes)
+            elif cls_type == 'amSoftmax':     self.classifier = AMSoftmax(cfg, feat_dim, num_classes)
+            else:                             raise KeyError(f"{cls_type} is not supported!")
+            # fmt: on
+            self.classifier.apply(weights_init_classifier)
 
     def forward(self, features, targets=None):
         """
@@ -73,25 +73,26 @@ class EmbeddingHead(nn.Module):
         if not self.training: return bn_feat
         # fmt: on
 
-        # Training
-        if self.classifier.__class__.__name__ == 'Linear':
-            cls_outputs = self.classifier(bn_feat)
-            pred_class_logits = F.linear(bn_feat, self.classifier.weight)
-        else:
-            cls_outputs = self.classifier(bn_feat, targets)
-            pred_class_logits = self.classifier.s * F.linear(F.normalize(bn_feat),
-                                                             F.normalize(self.classifier.weight))
-
         # fmt: off
         if self.neck_feat == "before":  feat = global_feat[..., 0, 0]
         elif self.neck_feat == "after": feat = bn_feat
         else:                           raise KeyError(f"{self.neck_feat} is invalid for MODEL.HEADS.NECK_FEAT")
         # fmt: on
 
-        return {
-            "cls_outputs": cls_outputs,
-            "pred_class_logits": pred_class_logits,
-            "features": feat,
-            "global_feat": global_feat[..., 0, 0], 
-            "bn_feat": bn_feat
-        }
+        outputs = {"features": feat}
+        # Training
+        if hasattr(self, "classifier"):
+            if self.classifier.__class__.__name__ == 'Linear':
+                cls_outputs = self.classifier(bn_feat)
+                pred_class_logits = F.linear(bn_feat, self.classifier.weight)
+            else:
+                cls_outputs = self.classifier(bn_feat, targets)
+                pred_class_logits = self.classifier.s * F.linear(F.normalize(bn_feat),
+                                                                F.normalize(self.classifier.weight))
+            outputs.update(
+                {
+                    "cls_outputs": cls_outputs,
+                    "pred_class_logits": pred_class_logits,
+                }
+            )
+        return outputs

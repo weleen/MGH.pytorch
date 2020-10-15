@@ -49,33 +49,15 @@ class DukeMTMC(ImageDataset):
 
         train = self.process_dir(self.train_dir)
         if kwargs.get('val'):
-            query = self.process_val(self.train_dir)
-            gallery = self.process_val(self.train_dir)
+            query = self.process_dir(self.train_dir, is_train=False, data_range=(0.8, 1.0))
+            gallery = self.process_dir(self.train_dir, is_train=False, data_range=(0.8, 1.0))
         else:
             query = self.process_dir(self.query_dir, is_train=False)
             gallery = self.process_dir(self.gallery_dir, is_train=False)
 
         super(DukeMTMC, self).__init__(train, query, gallery, **kwargs)
 
-    def process_dir(self, dir_path, is_train=True):
-        img_paths = glob.glob(osp.join(dir_path, '*.jpg'))
-        pattern = re.compile(r'([-\d]+)_c(\d)')
-
-        data = []
-        for img_path in img_paths:
-            pid, camid = map(int, pattern.search(img_path).groups())
-            assert 1 <= camid <= 8
-            camid -= 1  # index starts from 0
-            if is_train:
-                pid = self.dataset_name + "_" + str(pid)
-                camid = self.dataset_name + "_" + str(camid)
-            data.append((img_path, pid, camid))
-
-        return data
-
-    def process_val(self, dir_path, val_split=0.2):
-        """Process the dataset for validation
-        """
+    def process_dir(self, dir_path, is_train=True, data_range=(0.0, 1.0)):
         img_paths = glob.glob(osp.join(dir_path, '*.jpg'))
         pattern = re.compile(r'([-\d]+)_c(\d)')
 
@@ -83,19 +65,22 @@ class DukeMTMC(ImageDataset):
         pid_container = set()
         for img_path in img_paths:
             pid, _ = map(int, pattern.search(img_path).groups())
-            if pid == -1:
-                continue  # junk images are just ignored
             pid_container.add(pid)
-        end_id = int(round(len(pid_container) * val_split))
-        pid_container = sorted(pid_container)[:end_id]
+        start_id = int(round(len(pid_container) * data_range[0]))
+        end_id = int(round(len(pid_container) * data_range[1]))
+        pid_container = sorted(pid_container)[start_id:end_id]
+        assert len(pid_container) > 0
 
         data = []
         for img_path in img_paths:
             pid, camid = map(int, pattern.search(img_path).groups())
-            if (pid not in pid_container) or (pid == -1):
+            if pid not in pid_container:
                 continue
             assert 1 <= camid <= 8
             camid -= 1  # index starts from 0
+            if is_train:
+                pid = self.dataset_name + "_" + str(pid)
+                camid = self.dataset_name + "_" + str(camid)
             data.append((img_path, pid, camid))
 
         return data

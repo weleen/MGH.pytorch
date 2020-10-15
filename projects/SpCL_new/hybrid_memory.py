@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn, autograd
-from fastreid.utils.comm import all_gather
+from fastreid.utils.comm import all_gather_tensor, all_gather
 
 
 class HM(autograd.Function):
@@ -11,8 +11,8 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = all_gather(inputs)
-        all_indexes = all_gather(indexes)
+        all_inputs = all_gather_tensor(inputs) # torch.cat(all_gather(inputs), 0)
+        all_indexes = all_gather_tensor(indexes) # torch.cat(all_gather(indexes), 0)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 
@@ -36,20 +36,16 @@ def hm(inputs, indexes, features, momentum=0.5):
 
 
 class HybridMemory(nn.Module):
-    def __init__(self, num_features, num_samples, temp=0.05, momentum=0.2):
+    def __init__(self, num_features, num_memory, temp=0.05, momentum=0.2):
         super(HybridMemory, self).__init__()
         self.num_features = num_features
-        self.num_samples = num_samples
+        self.num_memory = num_memory
 
         self.momentum = momentum
         self.temp = temp
 
-        self.register_buffer('features', torch.zeros(num_samples, num_features))
-        self.register_buffer('labels', torch.zeros(num_samples).long())
-
-    @property
-    def device(self):
-        return self.features.device
+        self.register_buffer("features", torch.zeros(num_memory, num_features))
+        self.register_buffer("labels", torch.zeros(num_memory).long())
 
     @torch.no_grad()
     def _update_feature(self, features):
@@ -62,6 +58,7 @@ class HybridMemory(nn.Module):
 
     def forward(self, inputs, indexes):
         inputs = F.normalize(inputs, p=2, dim=1)
+        indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
         inputs = hm(inputs, indexes, self.features, self.momentum)
         inputs /= self.temp
@@ -71,15 +68,15 @@ class HybridMemory(nn.Module):
             exps = torch.exp(vec)
             masked_exps = exps * mask.float().clone()
             masked_sums = masked_exps.sum(dim, keepdim=True) + epsilon
-            return (masked_exps / masked_sums)
+            return masked_exps / masked_sums
 
         targets = self.labels[indexes].clone()
         labels = self.labels.clone()
 
-        sim = torch.zeros(labels.max() + 1, B).float().to(self.device)
+        sim = torch.zeros(labels.max() + 1, B).float().cuda()
         sim.index_add_(0, labels, inputs.t().contiguous())
-        nums = torch.zeros(labels.max() + 1, 1).float().to(self.device)
-        nums.index_add_(0, labels, torch.ones(self.num_samples, 1).float().to(self.device))
+        nums = torch.zeros(labels.max() + 1, 1).float().cuda()
+        nums.index_add_(0, labels, torch.ones(self.num_memory, 1).float().cuda())
         mask = (nums > 0).float()
         sim /= (mask * nums + (1 - mask)).clone().expand_as(sim)
         mask = mask.expand_as(sim)

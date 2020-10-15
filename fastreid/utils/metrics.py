@@ -229,6 +229,26 @@ def cluster_accuracy(output, target):
     return sum([w[i, j] for i, j in zip(row_ind, col_ind)]) * 1.0 / output.size
 
 
+def purity(output, target, min_samples=2):
+    """Computes custom clustering metric, for each cluster, if all instances in this cluster has  the same ground truth label, correct_cnt add 1, ignore outlier with label=-1. When the number of samples in a cluster is lower than min_samples, these samples are ignored in calculation.
+    :param output: (numpy.array): predicted matrix with shape (batch_size,)
+    :param target: (numpy.array): ground truth with shape (batch_size,)
+    """
+    correct_cnt = 0
+    all_cnt = 0
+    pid_set = np.unique(output).tolist()
+    if -1 in pid_set:
+        pid_set.remove(-1)
+    for pid in pid_set:
+        cluster_index = np.where(output == pid)[0]
+        selected_gt_label = target[cluster_index]
+        if len(selected_gt_label) < min_samples:
+            continue
+        if len(np.unique(selected_gt_label)) == 1:
+            correct_cnt += 1
+        all_cnt += 1
+    return correct_cnt / all_cnt
+
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     """
     Calculate clustering accuracy, nmi and ari
@@ -239,5 +259,6 @@ def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     assert label_true.dtype == label_pred.dtype == np.int64, "dtype error."
     nmi_score = normalized_mutual_info_score(label_true, label_pred)
     ari_score = adjusted_rand_score(label_true, label_pred)
-    acc_score = cluster_accuracy(label_pred, label_true)
-    return acc_score, nmi_score, ari_score
+    # acc_score = cluster_accuracy(label_pred, label_true)
+    purity_score = purity(label_pred, label_true)
+    return nmi_score, ari_score, purity_score #, acc_score

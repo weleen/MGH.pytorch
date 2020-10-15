@@ -1,6 +1,7 @@
 _BASE_: "../Base-AGW.yml"
 
 MODEL:
+  SAMPLES_PER_BN: 16
   BACKBONE:
     WITH_NL: False
 
@@ -19,7 +20,7 @@ DATALOADER:
 
 PSEUDO:
   ENABLED: True
-  CLUSTER_ITER: 2
+  CLUSTER_ITER: 400
   RESET_OPT: True
 
 SOLVER:

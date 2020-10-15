@@ -122,6 +122,7 @@ _C.MODEL.SAMPLES_PER_BN = 64
 _C.MODEL.MEAN_NET = False
 _C.MODEL.MEAN_NET_ALPHA = 0.999
 
+
 # -----------------------------------------------------------------------------
 # INPUT
 # -----------------------------------------------------------------------------
@@ -140,7 +141,7 @@ _C.INPUT.DO_PAD = True
 _C.INPUT.PADDING_MODE = 'constant'
 _C.INPUT.PADDING = 10
 # Gaussian blur
-_C.INPUT.DO_BLUR = True
+_C.INPUT.DO_BLUR = False
 _C.INPUT.BLUR_PROB = 0.5
 # Random color jitter
 _C.INPUT.CJ = CN()
@@ -198,11 +199,6 @@ _C.DATASETS.MARKET1501.ENABLE_500K = False
 # DataLoader
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
-# TODO: deprecate PK_SAMPLER and NAIVE_WAY, replace these with SAMPLER_NAME
-# P/K Sampler for data loading
-_C.DATALOADER.PK_SAMPLER = True
-# Naive sampler which don't consider balanced identity sampling
-_C.DATALOADER.NAIVE_WAY = False
 # Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler
 _C.DATALOADER.SAMPLER_NAME = "BalancedIdentitySampler"
 # Number of instance for each person
@@ -218,16 +214,17 @@ _C.PSEUDO = CN()
 _C.PSEUDO.ENABLED = False
 _C.PSEUDO.NAME = 'dbscan'  # 'kmeans'
 _C.PSEUDO.UNSUP = (0,)  # unsupervised index for training datasets, support MMT.
-_C.PSEUDO.CLUSTER_ITER = 1
-_C.PSEUDO.USE_OUTLIERS = False
+_C.PSEUDO.CLUSTER_ITER = 400
+_C.PSEUDO.USE_OUTLIERS = False  # True for SpCL
 _C.PSEUDO.NORM_FEAT = True
 _C.PSEUDO.NORM_CENTER = True
 _C.PSEUDO.SEARCH_TYPE = 0
 _C.PSEUDO.NUM_CLUSTER = [500, ]
 _C.PSEUDO.RESET_OPT = False
+_C.PSEUDO.WITH_CLASSIFIER = True # False for SpCL
 
 _C.PSEUDO.DBSCAN = CN()
-_C.PSEUDO.DBSCAN.EPS = [0.6, ]
+_C.PSEUDO.DBSCAN.EPS = [0.6, ]  # [0.58, 0.6, 0.62] for SpCL
 _C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
 _C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
 _C.PSEUDO.DBSCAN.K1 = 30
@@ -352,4 +349,4 @@ _C.DETERMINISTIC = True
 _C.SAVE_PROJECT = True
 
 # random seed
-_C.SEED = -1
+_C.SEED = 1

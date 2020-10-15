@@ -338,3 +338,34 @@ def broadcast_value(x, src, gpu=None):
         container.data.copy_(tensor_x)
     dist.broadcast(container, src)
     return container.cpu()[0].item()
+
+
+@torch.no_grad()
+def all_gather_tensor(x, gpu=None, save_memory=False):
+    rank, world_size = get_rank(), get_world_size()
+    is_dist = world_size > 1
+
+    if not is_dist:
+        return x
+
+    if not save_memory:
+        # all gather features in parallel
+        # cost more GPU memory but less time
+        # x = x.cuda(gpu)
+        x_gather = [torch.empty_like(x) for _ in range(world_size)]
+        dist.all_gather(x_gather, x, async_op=False)
+        x_gather = torch.cat(x_gather, dim=0)
+    else:
+        # broadcast features in sequence
+        # cost more time but less GPU memory
+        container = torch.empty_like(x).cuda(gpu)
+        x_gather = []
+        for k in range(world_size):
+            container.data.copy_(x)
+            print("gathering features from rank no.{}".format(k))
+            dist.broadcast(container, k)
+            x_gather.append(container.cpu())
+        x_gather = torch.cat(x_gather, dim=0)
+        # return cpu tensor
+
+    return x_gather

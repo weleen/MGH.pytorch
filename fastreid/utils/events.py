@@ -196,20 +196,24 @@ class CommonMetricPrinter(EventWriter):
         epoch = iteration // self.iters_per_epoch
 
         try:
-            data_time = storage.history("data_time").avg(20)
+            data_time = storage.history("data_time").latest()
+            avg_data_time = storage.history("data_time").avg(20)
         except KeyError:
             # they may not exist in the first few iterations (due to warmup)
             # or when SimpleTrainer is not used
             data_time = None
+            avg_data_time = None
 
         eta_string = None
         try:
-            iter_time = storage.history("time").global_avg()
+            iter_time = storage.history("time").latest()
+            avg_iter_time = storage.history("time").global_avg()
             eta_seconds = storage.history("time").median(1000) * (self._max_iter - iteration)
             storage.put_scalar("eta_seconds", eta_seconds, smoothing_hint=False)
             eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
         except KeyError:
             iter_time = None
+            avg_iter_time = None
             # estimate eta on our own - more noisy
             if self._last_write is not None:
                 estimate_iter_time = (time.perf_counter() - self._last_write[1]) / (
@@ -252,8 +256,8 @@ class CommonMetricPrinter(EventWriter):
                     ]
                 ),
                 cls_acc=f"{cls_acc}",
-                time="time: {:.4f}  ".format(iter_time) if iter_time is not None else "",
-                data_time="data_time: {:.4f}  ".format(data_time) if data_time is not None else "",
+                time="time: {:.4f}({:.4f})  ".format(iter_time, avg_iter_time) if iter_time is not None else "",
+                data_time="data_time: {:.4f}({:.4f})  ".format(data_time, avg_data_time) if data_time is not None else "",
                 lr=lr,
                 memory="max_mem: {:.0f}M".format(max_mem_mb) if max_mem_mb is not None else "",
             )

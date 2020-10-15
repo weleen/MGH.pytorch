@@ -42,8 +42,6 @@ INPUT:
   DO_PAD: True
 
 DATALOADER:
-  PK_SAMPLER: True
-  NAIVE_WAY: True
   SAMPLER_NAME: "NaiveIdentitySampler"
   NUM_INSTANCE: 4
   NUM_WORKERS: 8

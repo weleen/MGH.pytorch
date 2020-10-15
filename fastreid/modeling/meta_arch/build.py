@@ -34,6 +34,9 @@ def build_model(cfg):
 
     # convert domain-specific batch normalization
     num_domains = len(cfg.DATASETS.NAMES)
+    if num_domains > 1:
+        # TODO: multiple datasets are not supported in un/semi-supervised learning.
+        assert not cfg.PSEUDO.ENABLED, "multiple datasets are not supported in un/semi-supervised learning."
     if num_domains > 1 and cfg.MODEL.DSBN:
         # TODO: set the first test dataset as the target dataset.
         target_dataset = cfg.DATASETS.TESTS[0]

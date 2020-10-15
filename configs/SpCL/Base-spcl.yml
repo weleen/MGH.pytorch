@@ -1,6 +1,7 @@
 _BASE_: "../Base-AGW.yml"
 
 MODEL:
+  SAMPLES_PER_BN: 16
   BACKBONE:
     WITH_NL: False
 
@@ -13,12 +14,15 @@ MODEL:
     NAME: ("ContrastiveLoss", )
 
 DATALOADER:
-  SAMPLER_NAME: "BalancedIdentitySampler"
+  SAMPLER_NAME: "RandomMultipleGallerySampler"
 
 PSEUDO:
   ENABLED: True
-  CLUSTER_ITER: 2
+  CLUSTER_ITER: 400
   USE_OUTLIERS: True
+  WITH_CLASSIFIER: False
+  DBSCAN:
+    EPS: [0.58, 0.6, 0.62]
 
 SOLVER:
   OPT: "Adam"
@@ -30,10 +34,8 @@ SOLVER:
   WARMUP_ITERS: 0
 
   LOG_PERIOD: 200
-  CHECKPOINT_PERIOD: 5
 
 TEST:
-  EVAL_PERIOD: 5
   IMS_PER_BATCH: 256
 
 CUDNN_BENCHMARK: True

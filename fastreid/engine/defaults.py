@@ -267,6 +267,7 @@ class DefaultTrainer(SimpleTrainer):
         ]
 
         if cfg.PSEUDO.ENABLED:
+            assert len(cfg.PSEUDO.UNSUP) > 0, "there are no dataset for unsupervised learning"
             ret.append(
                 hooks.LabelGeneratorHook(
                     self.cfg,
@@ -511,6 +512,7 @@ class DefaultTrainer(SimpleTrainer):
             cfg.MODEL.HEADS.NUM_CLASSES = len(data_loader.dataset)
         else:
             cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
+        cfg.MODEL.HEADS.NUM_CAMERAS = data_loader.dataset.num_cameras
         cfg.SOLVER.MAX_ITER *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
@@ -519,7 +521,6 @@ class DefaultTrainer(SimpleTrainer):
             cfg.SOLVER.STEPS[i] *= iters_per_epoch
         cfg.SOLVER.SWA.ITER *= iters_per_epoch
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
-        cfg.PSEUDO.CLUSTER_ITER *= iters_per_epoch
 
         ckpt_multiple = cfg.SOLVER.CHECKPOINT_PERIOD / cfg.TEST.EVAL_PERIOD
         # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
@@ -529,18 +530,14 @@ class DefaultTrainer(SimpleTrainer):
         cfg.SOLVER.CHECKPOINT_PERIOD = int(cfg.TEST.EVAL_PERIOD * ckpt_multiple)
 
         logger = logging.getLogger(__name__)
-        logger.info(
-            f"Auto-scaling the config to num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, "
-            f"max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
-            f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
-            f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
-            f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "
-            f"iters_per_epoch={iters_per_epoch}."
-        )
+        info = f"Auto-scaling the config to num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, num_cameras={cfg.MODEL.HEADS.NUM_CAMERAS}, max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, eval_Iter={cfg.TEST.EVAL_PERIOD}, iters_per_epoch={iters_per_epoch}"
+
         if cfg.PSEUDO.ENABLED:
-            logger.info(
-                f"pseudo_cluster_iter={cfg.PSEUDO.CLUSTER_ITER}."
-            )
+            info = info + f", pseudo_cluster_iter={cfg.PSEUDO.CLUSTER_ITER}."
+        else:
+            info = info + f"."
+
+        logger.info(info)
 
         if frozen: cfg.freeze()
 

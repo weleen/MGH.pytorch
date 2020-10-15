@@ -1,11 +1,5 @@
 # encoding: utf-8
-"""
-@author:  wuyiming
-@contact: yimingwu@hotmail.com
-@function: Implementation of Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID
-"""
 
-import logging
 import sys
 
 sys.path.append('.')
@@ -38,7 +32,6 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = SPCLTrainer.build_model(cfg)
-        model = nn.DataParallel(model).to(cfg.MODEL.DEVICE)
         Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
         res = SPCLTrainer.test(cfg, model)
         return res

@@ -262,7 +262,7 @@ def convert_dsbn(model, num_domains=2, target_bn_idx=-1):
     convert all bn layers in the model to domain-specific bn layers
     """
     for _, (child_name, child) in enumerate(model.named_children()):
-        if isinstance(child, [nn.BatchNorm2d, nn.BatchNorm1d]):
+        if isinstance(child, (nn.BatchNorm2d, nn.BatchNorm1d)):
             class_type = type(child)
             # BN 1/2d -> DSBN 1/2d
             m = DSBatchNorm(
