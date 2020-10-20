@@ -32,7 +32,7 @@ def label_generator_kmeans(cfg, features, num_classes=500, cuda=True, **kwargs):
     # k-means does not have outlier points
     assert not (-1 in labels)
 
-    return labels, centers, num_classes, None
+    return labels, centers, num_classes, None, None
 
 
 @torch.no_grad()
@@ -82,7 +82,7 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
     if len(eps) == 1:
         # normal clustering
         labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
-        return labels, centers, num_classes, indep_thres
+        return labels, centers, num_classes, indep_thres, dist
     else:
         assert len(eps) == 3, "three eps values are required for the clustering reliability criterion"
 
@@ -147,4 +147,4 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
         centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
         centers = torch.stack(centers, dim=0)
 
-        return labels_normal, centers, num_classes, indep_thres
+        return labels_normal, centers, num_classes, indep_thres, dist

@@ -1,11 +1,15 @@
 import faiss
 import torch
 import torch.nn.functional as F
+import time
+import logging
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
 
 from .faiss_utils import index_init_cpu, index_init_gpu, search_index_pytorch, search_raw_array_pytorch
+
+logger = logging.getLogger(__name__)
 
 
 def k_reciprocal_neigh(initial_rank, i, k1):
@@ -16,6 +20,7 @@ def k_reciprocal_neigh(initial_rank, i, k1):
 
 
 def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
+    start = time.time()
     ngpus = faiss.get_num_gpus()
     N = features.size(0)
     mat_type = np.float16 if fp16 else np.float32
@@ -64,14 +69,22 @@ def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
 
         k_reciprocal_expansion_index = np.unique(
             k_reciprocal_expansion_index)  # element-wise unique
-        dist = 2 - 2 * torch.mm(features[i].unsqueeze(0).contiguous(),
-                                features[k_reciprocal_expansion_index].t())
+
+        x = features[i].unsqueeze(0).contiguous()
+        y = features[k_reciprocal_expansion_index]
+        m, n = x.size(0), y.size(0)
+        dist = (
+            torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n)
+            + torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+        )
+        dist.addmm_(x, y.t(), beta=1, alpha=-2)
+
         if fp16:
             V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy().astype(mat_type)
         else:
             V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy()
 
-    del nn_k1, nn_k1_half
+    del nn_k1, nn_k1_half, x, y
     features = features.cpu()
 
     if k2 != 1:
@@ -104,6 +117,7 @@ def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
 
     pos_bool = jaccard_dist < 0
     jaccard_dist[pos_bool] = 0.0
+    logger.info("Jaccard distance computing time cost: {}".format(time.time() - start))
 
     return jaccard_dist
 

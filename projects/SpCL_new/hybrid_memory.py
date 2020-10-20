@@ -11,8 +11,8 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = all_gather_tensor(inputs) # torch.cat(all_gather(inputs), 0)
-        all_indexes = all_gather_tensor(indexes) # torch.cat(all_gather(indexes), 0)
+        all_inputs = all_gather_tensor(inputs)
+        all_indexes = all_gather_tensor(inputs)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 

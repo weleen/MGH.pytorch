@@ -13,7 +13,7 @@ MODEL:
     NAME: ("ContrastiveLoss", )
 
 DATALOADER:
-  SAMPLER_NAME: "BalancedIdentitySampler"
+  SAMPLER_NAME: "RandomMultipleGallerySampler"
 
 PSEUDO:
   ENABLED: True

@@ -649,7 +649,7 @@ class LabelGeneratorHook(HookBase):
             if comm.is_main_process():
                 # clustering only on first GPU
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
-                labels, centers, num_classes, indep_thres = self.label_generator(
+                labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
                     self._cfg,
                     all_features[start_id: end_id],
                     num_classes=num_classes,
