@@ -28,6 +28,8 @@ from fastreid.data import build_reid_train_loader
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
+from fastreid.utils.events import get_event_storage
+
 from .train_loop import HookBase
 
 __all__ = [
@@ -747,9 +749,7 @@ class LabelGeneratorHook(HookBase):
     def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
         if cluster_metric:
             nmi_score, ari_score, purity_score = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, "
-                              f"ari_score: {ari_score*100:.2f}%, "
-                              f"purity_score: {purity_score*100:.2f}%")
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%,purity_score: {purity_score*100:.2f}%")
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)
@@ -761,10 +761,12 @@ class LabelGeneratorHook(HookBase):
         unclu_ins_num = (index2label == 1).sum()
 
         if indep_thres is None:
-            self._logger.info(f"Cluster Statistic: "
-                            f"clusters {clu_num}, un-clustered instances {unclu_ins_num}, "
-                            f"unused instances {unused_ins_num}")
+            self._logger.info(f"Cluster Statistic: clusters {clu_num}, un-clustered instances {unclu_ins_num}, unused instances {unused_ins_num}")
         else:
-            self._logger.info(f"Cluster Statistic: "
-                            f"clusters {clu_num}, un-clustered instances {unclu_ins_num}, "
-                            f"unused instances {unused_ins_num}, R_indep threshold is {1 - indep_thres}")
+            self._logger.info(f"Cluster Statistic: clusters {clu_num}, un-clustered instances {unclu_ins_num}, unused instances {unused_ins_num}, R_indep threshold is {1 - indep_thres}")
+
+        self.trainer.storage.put_scalar('num_clusters', clu_num, smoothing_hint=False)
+        self.trainer.storage.put_scalar('num_outliers', unclu_ins_num, smoothing_hint=False)
+        self.trainer.storage.put_scalar('num_unused_instances', unused_ins_num,  smoothing_hint=False)
+
+        return clu_num, unclu_ins_num, unused_ins_num

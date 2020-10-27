@@ -1,4 +1,4 @@
-_BASE_: "../Base-bagtricks.yml"
+_BASE_: "../../../configs/Base-bagtricks.yml"
 
 MODEL:
   SAMPLES_PER_BN: 16
@@ -34,7 +34,10 @@ SOLVER:
 
   LOG_PERIOD: 200
 
+  CHECKPOINT_PERIOD: 5
+
 TEST:
-  IMS_PER_BATCH: 256
+  EVAL_PERIOD: 5
+  IMS_PER_BATCH: 128
 
 CUDNN_BENCHMARK: True

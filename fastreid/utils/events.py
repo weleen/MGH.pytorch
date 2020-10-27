@@ -230,7 +230,7 @@ class CommonMetricPrinter(EventWriter):
 
         try:
             cls_acc = "  ".join([
-                "{}: {:.2}".format(k, v.latest())
+                "{}: {:.2}({:.2})".format(k, v.latest(), v.avg(20))
                 for k, v in storage.histories().items()
                 if "accuracy" in k]
             )
@@ -250,7 +250,7 @@ class CommonMetricPrinter(EventWriter):
                 iter=iteration,
                 losses="  ".join(
                     [
-                        "{}: {:.4g}".format(k, v.median(20))
+                        "{}: {:.4g}({:.4g})".format(k, v.latest(), v.avg(20))
                         for k, v in storage.histories().items()
                         if "loss" in k
                     ]

@@ -48,8 +48,8 @@ class DataloaderHook(HookBase):
         with inference_context(model), torch.no_grad():
             for idx, inputs in enumerate(dataloader):
                 outputs = model(inputs)
-                features.append(outputs[0]) # ouputs->Tuple, len=3, 0->pred_feats, 1->targets, 2->camids
-                targets.append(outputs[1])
+                features.append(outputs)
+                targets.append(inputs['targets'])
             features = torch.cat(features)
             targets = torch.cat(targets)
         return features, targets

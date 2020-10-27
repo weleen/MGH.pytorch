@@ -60,6 +60,8 @@ def get_local_size() -> int:
 
 
 def is_main_process() -> bool:
+    if not dist.is_available():
+        return 1
     return get_rank() == 0
 
 

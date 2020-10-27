@@ -27,12 +27,17 @@ from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
 
 from hybrid_memory import HybridMemory
-from hooks import SpCLLabelGeneratorHook
+from hooks import SALLabelGeneratorHook
+from config import add_activereid_config
+from model import *
 
 
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg):
         super(SPCLTrainer, self).__init__(cfg)
+        # add weight_matrix for loss calculation
+        self.weight_matrix = None
+        self.label_matrix = None
 
     def init_memory(self):
         logger = logging.getLogger('fastreid.' + __name__)
@@ -52,7 +57,8 @@ class SPCLTrainer(DefaultTrainer):
         self.memory = HybridMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM,
                                    num_memory=num_memory,
                                    temp=cfg.PSEUDO.MEMORY.TEMP,
-                                   momentum=cfg.PSEUDO.MEMORY.MOMENTUM).to(cfg.MODEL.DEVICE)
+                                   momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
+                                   weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK).to(cfg.MODEL.DEVICE)
         features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
@@ -97,7 +103,7 @@ class SPCLTrainer(DefaultTrainer):
         if cfg.PSEUDO.ENABLED:
             assert len(cfg.PSEUDO.UNSUP ) > 0, "there are no dataset for unsupervised learning"
             ret.append(
-                SpCLLabelGeneratorHook(
+                SALLabelGeneratorHook(
                     self.cfg,
                     self.model
                 )
@@ -168,9 +174,9 @@ class SPCLTrainer(DefaultTrainer):
 
             # Compute loss
             if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
+                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix, label_matrix=self.label_matrix)
             else:
-                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
+                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix, label_matrix=self.label_matrix)
 
             losses = sum(loss_dict.values())
 
@@ -195,6 +201,7 @@ def setup(args):
     """
     Create configs and perform basic setups.
     """
+    add_activereid_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

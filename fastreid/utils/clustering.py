@@ -69,12 +69,15 @@ def label_generator_dbscan_single(cfg, features, dist, eps, **kwargs):
 def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
     assert cfg.PSEUDO.NAME == "dbscan"
 
-    dist = compute_distance_matrix(features,
-                                   features,
-                                   metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
-                                   k1=cfg.PSEUDO.DBSCAN.K1,
-                                   k2=cfg.PSEUDO.DBSCAN.K2,
-                                   search_type=cfg.PSEUDO.SEARCH_TYPE)
+    if 'dist' in kwargs:
+        dist = kwargs['dist']
+    else:
+        dist = compute_distance_matrix(features,
+                                       features,
+                                       metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
+                                       k1=cfg.PSEUDO.DBSCAN.K1,
+                                       k2=cfg.PSEUDO.DBSCAN.K2,
+                                       search_type=cfg.PSEUDO.SEARCH_TYPE)
     features = features.cpu()
     # clustering
     eps = cfg.PSEUDO.DBSCAN.EPS
@@ -82,7 +85,7 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
     if len(eps) == 1:
         # normal clustering
         labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
-        return labels, centers, num_classes, indep_thres, dist
+        return labels, centers, num_classes, indep_thres, torch.Tensor(dist)
     else:
         assert len(eps) == 3, "three eps values are required for the clustering reliability criterion"
 
@@ -147,4 +150,4 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
         centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
         centers = torch.stack(centers, dim=0)
 
-        return labels_normal, centers, num_classes, indep_thres, dist
+        return labels_normal, centers, num_classes, indep_thres, torch.Tensor(dist)

@@ -85,7 +85,7 @@ def build_model(cfg):
             )
     else:
         logger.warning(
-            "Sync BN is switched off, since the program is running without DDP"
+            "Sync BN is switched off, since the program is running without DDP or sync_bn is not enabled in the network."
         )
     if frozen: cfg.freeze()
     

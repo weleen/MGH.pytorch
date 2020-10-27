@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, autograd
 from fastreid.utils.comm import all_gather_tensor, all_gather
+from fastreid.utils.metrics import compute_distance_matrix
 
 
 class HM(autograd.Function):
@@ -11,8 +12,8 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = all_gather_tensor(inputs)
-        all_indexes = all_gather_tensor(indexes)
+        all_inputs = torch.cat(all_gather(inputs), dim=0)
+        all_indexes = torch.cat(all_gather(indexes), dim=0)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 
@@ -36,13 +37,14 @@ def hm(inputs, indexes, features, momentum=0.5):
 
 
 class HybridMemory(nn.Module):
-    def __init__(self, num_features, num_memory, temp=0.05, momentum=0.2):
+    def __init__(self, num_features, num_memory, temp=0.05, momentum=0.2, weight_mask_topk=3):
         super(HybridMemory, self).__init__()
         self.num_features = num_features
         self.num_memory = num_memory
 
         self.momentum = momentum
         self.temp = temp
+        self.weight_mask_topk = weight_mask_topk
 
         self.register_buffer("features", torch.zeros(num_memory, num_features))
         self.register_buffer("labels", torch.zeros(num_memory).long())
@@ -56,7 +58,7 @@ class HybridMemory(nn.Module):
     def _update_label(self, labels):
         self.labels.data.copy_(labels.long().to(self.labels.device))
 
-    def forward(self, inputs, indexes):
+    def forward(self, inputs, indexes, weight=None, **kwargs):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
@@ -73,12 +75,39 @@ class HybridMemory(nn.Module):
         targets = self.labels[indexes].clone()
         labels = self.labels.clone()
 
-        sim = torch.zeros(labels.max() + 1, B).float().cuda()
-        sim.index_add_(0, labels, inputs.t().contiguous())
-        nums = torch.zeros(labels.max() + 1, 1).float().cuda()
-        nums.index_add_(0, labels, torch.ones(self.num_memory, 1).float().cuda())
+        sim = torch.zeros(B, labels.max() + 1).float().cuda()
+        sim.index_add_(1, labels, inputs)
+        nums = torch.zeros(1, labels.max() + 1).float().cuda()
+        nums.index_add_(1, labels, torch.ones(1, self.num_memory).float().cuda())
         mask = (nums > 0).float()
         sim /= (mask * nums + (1 - mask)).clone().expand_as(sim)
         mask = mask.expand_as(sim)
-        masked_sim = masked_softmax(sim.t().contiguous(), mask.t().contiguous())
-        return F.nll_loss(torch.log(masked_sim + 1e-6), targets)
+        masked_sim = masked_softmax(sim, mask)
+        if weight is None:
+            return F.nll_loss(torch.log(masked_sim + 1e-6), targets)
+        else:
+            weight = weight[indexes].cuda() / self.temp
+            # 1. F.softmax
+            # return -(torch.log(masked_sim + 1e-6) * F.softmax(weight, 1)).mean(0).sum()
+            # 2. use mask
+            # weight_mask = (weight > 0.01 / self.temp).float()
+            # 3. select topk clusters as positive clusters
+            mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
+            weight_mask = torch.zeros_like(weight)
+            weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
+            masked_weight = masked_softmax(weight, weight_mask)
+            loss = -(torch.log(masked_sim + 1e-6) * masked_weight).mean(0).sum()
+            if loss > 1e3 or loss < 1e-3:
+                print('debug')
+            return loss
+
+    def circle_loss(self, sim, label_matrix=None, type='class'):
+        if type =='class':
+            # class-wise label circle loss
+            pass
+        elif type == 'pair':
+            # pair-wise label circle loss
+            assert label_matrix is not None
+            pass
+        else:
+            raise NameError(f'{type} is not supported, please select from class and pair.')
