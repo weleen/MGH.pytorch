@@ -236,6 +236,24 @@ _C.PSEUDO.MEMORY = CN()
 _C.PSEUDO.MEMORY.TEMP = 0.05
 _C.PSEUDO.MEMORY.MOMENTUM = 0.2
 
+# -----------------------------------------------------------------------------
+# Active learning
+# -----------------------------------------------------------------------------
+_C.ACTIVE = CN()
+
+# ACTIVE parameter
+_C.ACTIVE.ENABLED = False
+_C.ACTIVE.INITIAL_RATE = 0.1
+_C.ACTIVE.TRAIN_ITER = 2
+_C.ACTIVE.SAMPLE_K = 3
+_C.ACTIVE.SAMPLE_M = 0.1
+_C.ACTIVE.IMS_PER_BATCH = 63
+_C.ACTIVE.WARMUP_ITER = 10
+
+# ACTIVE sampler
+_C.ACTIVE.SAMPLER = CN()
+_C.ACTIVE.SAMPLER.NAME = 'RandomSampler' # ['RandomSampler', 'UncertaintySampler']
+
 # ---------------------------------------------------------------------------- #
 # Solver
 # ---------------------------------------------------------------------------- #
