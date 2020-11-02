@@ -72,7 +72,7 @@ def to_torch(ndarray):
     return ndarray
 
 
-def tensor2im(input_image, mean=0.5, std=0.5, imtype=np.uint8):
+def tensor2im(input_image, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225), imtype=np.uint8):
     """
     Converts a Tensor array into a numpy image array.
     :param input_image: (tensor or ndarray)
@@ -81,9 +81,9 @@ def tensor2im(input_image, mean=0.5, std=0.5, imtype=np.uint8):
     :param imtype: default is np.uint8
     :return:
     """
-    if isinstance(mean, list):
+    if isinstance(mean, (list, tuple)):
         mean = np.array(mean)
-    if isinstance(std, list):
+    if isinstance(std, (list, tuple)):
         std = np.array(std)
 
     if not isinstance(input_image, np.ndarray):

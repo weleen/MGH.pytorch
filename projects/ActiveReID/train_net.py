@@ -10,6 +10,7 @@ import sys
 
 sys.path.append('.')
 
+import os
 import time
 import itertools
 import collections
@@ -26,24 +27,31 @@ from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
 
+from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
+from fastreid.data.common import CommDataset
+from fastreid.data import samplers
+from fastreid.data.transforms import build_transforms
+
 from hybrid_memory import HybridMemory
 from hooks import SALLabelGeneratorHook
 from config import add_activereid_config
 from model import *
 
+_root = os.getenv("FASTREID_DATASETS", "datasets")
+
 
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg):
         super(SPCLTrainer, self).__init__(cfg)
+        self._logger = logging.getLogger('fastreid.' + __name__)
         # add weight_matrix for loss calculation
         self.weight_matrix = None
         self.label_matrix = None
 
     def init_memory(self):
-        logger = logging.getLogger('fastreid.' + __name__)
-        logger.info("Initialize instance features in the hybrid memory")
+        self._logger.info("Initialize instance features in the hybrid memory")
         # initialize memory features
-        logger.info("Build dataloader for initializing memory features")
+        self._logger.info("Build dataloader for initializing memory features")
         data_loader = build_reid_train_loader(self.cfg, is_train=False)
         common_dataset = data_loader.dataset
 
@@ -82,6 +90,38 @@ class SPCLTrainer(DefaultTrainer):
         self.memory._update_feature(torch.cat(memory_features))
         del data_loader, common_dataset, features
 
+    def init_active(self):
+        self.data_loader_active = None
+        self._data_loader_iter_active = None
+
+    def build_active_dataloader(self, pair_sets=None, is_train=False):
+        transforms = build_transforms(self.cfg, is_train=is_train)
+        img_items = list()
+        for d in self.cfg.DATASETS.NAMES:
+            dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=self.cfg.DATASETS.COMBINEALL)
+            dataset.show_train()
+            dataset.data.sort()
+            img_items.append(dataset)
+
+        data_set = CommDataset(img_items, transforms, relabel=True)
+
+        num_workers = self.cfg.DATALOADER.NUM_WORKERS
+        batch_size = self.cfg.ACTIVE.IMS_PER_BATCH
+
+        self._logger.info('Length of the triplet set: %d' % len(pair_sets))
+        data_sampler = samplers.ActiveTripletSampler(pair_sets)
+
+        batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, batch_size, drop_last=True)
+
+        data_loader = torch.utils.data.DataLoader(
+            data_set,
+            num_workers=num_workers,
+            batch_sampler=batch_sampler,
+            collate_fn=fast_batch_collator,
+        )
+        
+        return data_loader
+
     def build_hooks(self):
         """
         Build a list of default hooks, including timing, evaluation,
@@ -89,7 +129,6 @@ class SPCLTrainer(DefaultTrainer):
         Returns:
             list[HookBase]:
         """
-        logger = logging.getLogger('fastreid.' + __name__)
         cfg = self.cfg.clone()
         cfg.defrost()
         cfg.DATALOADER.NUM_WORKERS = 0  # save some memory and time for PreciseBN
@@ -121,7 +160,7 @@ class SPCLTrainer(DefaultTrainer):
             )
 
         if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(self.model):
-            logger.info("Prepare precise BN dataset")
+            self._logger.info("Prepare precise BN dataset")
             ret.append(hooks.PreciseBN(
                 # Run at the same freq as (but before) evaluation.
                 self.model,
@@ -132,7 +171,7 @@ class SPCLTrainer(DefaultTrainer):
 
         if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
             open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
-            logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
+            self._logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
             ret.append(hooks.FreezeLayer(
                 self.model,
                 cfg.MODEL.OPEN_LAYERS,
@@ -177,6 +216,12 @@ class SPCLTrainer(DefaultTrainer):
                 loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix, label_matrix=self.label_matrix)
             else:
                 loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix, label_matrix=self.label_matrix)
+
+            if self.cfg.ACTIVE.BUILD_DATALOADER and self.iter >= self._cfg.ACTIVE.START_ITER:
+                data_active = next(self._data_loader_active_iter)
+                outs_a = self.model(data_active)
+                active_loss = ActiveTripletLoss(self.cfg)
+                loss_dict.update({'active_loss': active_loss(outs_a)})
 
             losses = sum(loss_dict.values())
 

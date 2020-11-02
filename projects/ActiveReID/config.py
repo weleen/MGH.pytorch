@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-27 10:18:25
-LastEditTime: 2020-10-28 00:06:51
+LastEditTime: 2020-10-28 15:58:34
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ActiveReID/config.py
@@ -22,7 +22,7 @@ def add_activereid_config(cfg):
     _C.ACTIVE = CN()
 
     # ACTIVE parameter
-    _C.ACTIVE.START_ITER = 20
+    _C.ACTIVE.START_ITER = 0
     _C.ACTIVE.INITIAL_RATE = 0.1
     _C.ACTIVE.TRAIN_ITER = 2
 
@@ -38,7 +38,7 @@ def add_activereid_config(cfg):
 
     # Two separate tasks
     _C.ACTIVE.RECTIFY = True
-    _C.ACTIVE.BUILD_DATALOADER = True
+    _C.ACTIVE.BUILD_DATALOADER = False
 
     # Pseudo label
     _C.PSEUDO.MEMORY.WEIGHTED = False

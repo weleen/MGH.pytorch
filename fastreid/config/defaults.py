@@ -167,7 +167,7 @@ _C.INPUT.RPT.PROB = 0.5
 # Mutual tansform
 _C.INPUT.MUTUAL = CN()
 _C.INPUT.MUTUAL.ENABLED = False
-_C.INPUT.MUTUAL.TIMES = 2
+_C.INPUT.MUTUAL.TIMES = 4
 
 # -----------------------------------------------------------------------------
 # Dataset

@@ -58,7 +58,7 @@ class HybridMemory(nn.Module):
     def _update_label(self, labels):
         self.labels.data.copy_(labels.long().to(self.labels.device))
 
-    def forward(self, inputs, indexes, weight=None, **kwargs):
+    def forward(self, inputs, indexes, weight=None, eps=1e-6, **kwargs):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
@@ -84,21 +84,20 @@ class HybridMemory(nn.Module):
         mask = mask.expand_as(sim)
         masked_sim = masked_softmax(sim, mask)
         if weight is None:
-            return F.nll_loss(torch.log(masked_sim + 1e-6), targets)
+            return F.nll_loss(torch.log(masked_sim + eps), targets)
         else:
+
             weight = weight[indexes].cuda() / self.temp
             # 1. F.softmax
-            # return -(torch.log(masked_sim + 1e-6) * F.softmax(weight, 1)).mean(0).sum()
+            loss = -(torch.log(masked_sim + eps) * F.softmax(weight, 1)).mean(0).sum()
             # 2. use mask
             # weight_mask = (weight > 0.01 / self.temp).float()
             # 3. select topk clusters as positive clusters
-            mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
-            weight_mask = torch.zeros_like(weight)
-            weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
-            masked_weight = masked_softmax(weight, weight_mask)
-            loss = -(torch.log(masked_sim + 1e-6) * masked_weight).mean(0).sum()
-            if loss > 1e3 or loss < 1e-3:
-                print('debug')
+            # mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
+            # weight_mask = torch.zeros_like(weight)
+            # weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
+            # masked_weight = masked_softmax(weight, weight_mask)
+            # loss = -(torch.log(masked_sim + eps) * masked_weight).mean(0).sum()
             return loss
 
     def circle_loss(self, sim, label_matrix=None, type='class'):

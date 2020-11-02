@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-12 21:22:11
-LastEditTime: 2020-10-27 10:50:25
+LastEditTime: 2020-10-30 09:44:23
 LastEditors: Please set LastEditors
 Description: Hooks for SpCL
 FilePath: /fast-reid/projects/SpCL_new/hooks.py
@@ -76,6 +76,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
     def before_step(self):
         if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 \
+                or self.trainer.iter % self._cfg.ACTIVE.TRAIN_ITER == 0 \
                 or self.trainer.iter == self.trainer.start_iter:
             self._step_timer.reset()
 
@@ -151,7 +152,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                 index = torch.where(labels == i)[0].tolist()
                 dist_ = dist_mat[:, index].mean(1)
                 weight_matrix.append(dist_)
-            weight_matrix = (1 - torch.stack(weight_matrix).t())
+            weight_matrix = 1 - torch.stack(weight_matrix).t()
             # select the score calculated with clustered instances
             # 2. calculate cosine similarity, cosine similarity is more closer than jaccard distance
             # weight_matrix = (features.matmul(centers.t()) + 1) / 2
@@ -236,15 +237,18 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
             new_weight_matrix = []
             for i in range(new_num_classes):
-                index = torch.where(labels == i)[0].tolist()
+                index = torch.where(new_labels == i)[0].tolist()
                 dist_ = dist_mat[:, index].mean(1)
                 new_weight_matrix.append(dist_)
-            new_weight_matrix = (1 - torch.stack(new_weight_matrix).t())
+            new_weight_matrix = 1 - torch.stack(new_weight_matrix).t()
 
         elif rectify_method == 'diffusion':
             raise NotImplemented('Please implement diffusion method.')
         else:
             raise NotImplemented(f'{rectify_method} is not supported in rectifying pseudo labels.')
+        
+        if not torch.isfinite(new_weight_matrix).all():
+            print('Error')
         return new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat, new_weight_matrix
 
 
@@ -340,7 +344,7 @@ class Sampler:
         targets_matrix = (targets.view(-1, 1) == targets.view(1, -1))
         pred_selected = np.array([pred_matrix[tuple(i)].item() for i in selected_pairs])
         gt_selected = np.array([targets_matrix[tuple(i)].item() for i in selected_pairs])
-        tn, fp, fn, tp = confusion_matrix(gt_selected, pred_selected).ravel()
+        tn, fp, fn, tp = confusion_matrix(gt_selected, pred_selected, labels=[0,1]).ravel()  # labels=[0,1] to force output 4 values
         self._logger.info('Active selector summary: ')
         self._logger.info('            |       |     Prediction     |')
         self._logger.info('------------------------------------------')
