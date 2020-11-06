@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-27 10:18:25
-LastEditTime: 2020-10-28 15:58:34
+LastEditTime: 2020-11-05 13:53:42
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ActiveReID/config.py
@@ -39,7 +39,3 @@ def add_activereid_config(cfg):
     # Two separate tasks
     _C.ACTIVE.RECTIFY = True
     _C.ACTIVE.BUILD_DATALOADER = False
-
-    # Pseudo label
-    _C.PSEUDO.MEMORY.WEIGHTED = False
-    _C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = 5

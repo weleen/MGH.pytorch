@@ -261,7 +261,7 @@ def purity(output, target, min_samples=2):
         if len(np.unique(selected_gt_label)) == 1:
             correct_cnt += 1
         all_cnt += 1
-    return correct_cnt / all_cnt
+    return correct_cnt / (all_cnt + 1e-6)
 
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     """

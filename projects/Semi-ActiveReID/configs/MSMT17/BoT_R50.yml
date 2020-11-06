@@ -1,0 +1,10 @@
+_BASE_: "../Base-spcl-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+PSEUDO:
+  CLUSTER_ITER: 800
+
+OUTPUT_DIR: "logs/SpCL/msmt17/BoT_R50"

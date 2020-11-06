@@ -235,6 +235,8 @@ _C.PSEUDO.DBSCAN.K2 = 6
 _C.PSEUDO.MEMORY = CN()
 _C.PSEUDO.MEMORY.TEMP = 0.05
 _C.PSEUDO.MEMORY.MOMENTUM = 0.2
+_C.PSEUDO.MEMORY.WEIGHTED = False
+_C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = 5
 
 # -----------------------------------------------------------------------------
 # Active learning

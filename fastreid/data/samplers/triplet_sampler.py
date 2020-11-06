@@ -183,6 +183,7 @@ class RandomMultipleGallerySampler(Sampler):
         self.pid_index = defaultdict(list)
 
         for index, (_, pid, cam) in enumerate(data_source):
+            if pid == -1: continue  # ignore unused instances
             self.index_pid[index] = pid
             self.pid_cam[pid].append(cam)
             self.pid_index[pid].append(index)
