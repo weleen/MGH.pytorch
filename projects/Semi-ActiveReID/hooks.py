@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-12 21:22:11
-LastEditTime: 2020-11-06 15:36:37
+LastEditTime: 2020-11-06 17:28:48
 LastEditors: Please set LastEditors
 Description: Hooks for SpCL
 FilePath: /fast-reid/projects/SpCL_new/hooks.py
@@ -143,7 +143,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
         # node label propagation
         if self._cfg.ACTIVE.NODE_PROP and len(self.sampler.query_set) > 0:
-            active_labels = self.label_propagate(features.cpu().numpy(), gt_labels)
+            active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
         else:
             labeled_index = list(self.sampler.query_set)
             gt_query = gt_labels[labeled_index].tolist()
@@ -185,9 +185,9 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
     def rectify(self, features, labels, num_classes, indep_thres, dist_mat, gt_labels):
         if self._cfg.ACTIVE.EDGE_PROP:
-            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_iter=0, alpha=0.5)
+            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_iter=50)
         else:
-            new_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+            new_dist_mat, _, _ = set_labeled_instances(self.sampler, dist_mat, gt_labels)
 
         new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat = self.label_generator(
                     self._cfg,
@@ -235,36 +235,41 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         else:
             self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
 
-    def edge_label_propagation(self, dist_mat, gt_labels, max_iter=1, alpha=0.5):
+    def edge_label_propagation(self, dist_mat, gt_labels, max_iter=1, alpha=0.99):
         """
         edge label propagation. 
         Ensemble Diffusion for Retrieval, eq(3)
         A(t+1) = αS A(t) S.t() + (1 − α)I, S = D^(−1/2) W D^(−1/2), in our code W = A
         """
+        start_time = time.time()
         # mask for residual regression
-        mask = torch.zeros_like(dist_mat)
-        for i in self.sampler.query_set:
-            for j in self.sampler.query_set:
-                mask[i, j] = 1
-                mask[j, i] = 1
-        dist_mat = dist_mat.cuda()
+        dist_mat = dist_mat.cuda().detach()
+        corrected_dist_mat, mask, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+        ori_error_dist_mat = mask * (corrected_dist_mat - dist_mat)
+        error_dist_mat = ori_error_dist_mat.clone()
+
         adj = 1 - dist_mat
         deg = adj.sum(dim=1)
         deg_inv_sqrt = deg.pow(-0.5)
         # numerical error
         deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
         S = deg_inv_sqrt.view(-1, 1) * adj * deg_inv_sqrt.view(1, -1)
+
+        im_time = time.time()
+        self._logger.info('preprocess cost {} s'.format(im_time - start_time))
         # iterative propagation
-        I = torch.eye(adj.size(0)).cuda()
-        for _ in range(max_iter):
-            adj = alpha * S @ adj @ S.T + (1 - alpha) * I
-            adj = adj.clamp(0, 1)
-        dist_mat = (1 - adj).cpu()
-        return set_labeled_instances(self.sampler, dist_mat, gt_labels)
-        
-    def node_label_propagation(self, dist_mat):
-        pass
-    def label_propagate(self, X, true_labels, k = 50, max_iter = 20) -> list: 
+        for i in range(max_iter):
+            time1 = time.time()
+            error_dist_mat = alpha * S @ error_dist_mat + (1 - alpha) * error_dist_mat
+            error_dist_mat = error_dist_mat * (1 - mask) + mask * ori_error_dist_mat
+            time2 = time.time()
+            self._logger.info('iteration {} cost {} s'.format(i, time2 - time1))
+        new_dist_mat = error_dist_mat + dist_mat
+        new_dist_mat = new_dist_mat.clamp(0, 1)
+        new_dist_mat = new_dist_mat * (1 - mask) + mask * labeled_dist_mat
+        return new_dist_mat.cpu()
+
+    def node_label_propagation(self, X, true_labels, k = 50, max_iter = 20) -> list: 
         self._logger.info('Perform node label propagation')
         alpha = 0.99
         labels = np.asarray(true_labels)
@@ -445,12 +450,20 @@ def dist2classweight(dist_mat, num_classes, labels):
 
 def set_labeled_instances(sampler, dist_mat, gt_labels):
     new_dist_mat = dist_mat.clone()
+    mask = torch.zeros_like(dist_mat)
+    labeled_dist_mat = mask.clone()
     for i in sampler.query_set:
         for j in sampler.query_set:
+            mask[i, j] = 1
+            mask[j, i] = 1
             if gt_labels[i] == gt_labels[j]:
                 new_dist_mat[i, j] = 0
                 new_dist_mat[j, i] = 0
+                labeled_dist_mat[i, j] = 0
+                labeled_dist_mat[j, i] = 0
             else:
                 new_dist_mat[i, j] = 1
                 new_dist_mat[j, i] = 1
-    return new_dist_mat
+                labeled_dist_mat[i, j] = 1
+                labeled_dist_mat[j, i] = 1
+    return new_dist_mat, mask, labeled_dist_mat

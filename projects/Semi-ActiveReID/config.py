@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-27 10:18:25
-LastEditTime: 2020-11-05 22:46:12
+LastEditTime: 2020-11-06 16:41:40
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ActiveReID/config.py

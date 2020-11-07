@@ -185,7 +185,7 @@ class SemiActiveTrainer(DefaultTrainer):
             else:
                 loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
 
-            if self.cfg.ACTIVE.BUILD_DATALOADER and self.iter >= self._cfg.ACTIVE.START_ITER:
+            if self.cfg.ACTIVE.BUILD_DATALOADER and self.iter >= self.cfg.ACTIVE.START_ITER:
                 data_active = next(self._data_loader_active_iter)
                 outs_a = self.model(data_active)
                 active_loss = ActiveTripletLoss(self.cfg)
