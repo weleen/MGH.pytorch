@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-27 10:18:25
-LastEditTime: 2020-11-06 16:41:40
+LastEditTime: 2020-11-17 10:16:19
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ActiveReID/config.py
@@ -37,6 +37,7 @@ def add_activereid_config(cfg):
 
     # rectify task
     _C.ACTIVE.EDGE_PROP = True
+    _C.ACTIVE.EDGE_PROP_MAX_ITER = 10
 
     # build active data loader
     _C.ACTIVE.NODE_PROP = True

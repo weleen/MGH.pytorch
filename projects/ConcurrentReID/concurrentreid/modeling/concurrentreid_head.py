@@ -1,19 +1,23 @@
 # encoding: utf-8
-"""
-@author:  liaoxingyu
-@contact: sherlockliao01@gmail.com
-"""
-
+'''
+Author: WuYiming
+Date: 2020-10-28 00:21:29
+LastEditTime: 2020-11-20 00:31:57
+LastEditors: Please set LastEditors
+Description: In User Settings Edit
+FilePath: /fast-reid/projects/ConcurrentReID/concurrentreid/modeling/concurrentreid_head.py
+'''
+import torch
 import torch.nn.functional as F
 from torch import nn
 
 from fastreid.layers import *
 from fastreid.utils.torch_utils import weights_init_kaiming, weights_init_classifier
-from .build import REID_HEADS_REGISTRY
+from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
 
 
 @REID_HEADS_REGISTRY.register()
-class EmbeddingHead(nn.Module):
+class ConcurrentHead(nn.Module):
     def __init__(self, cfg):
         super().__init__()
         # fmt: off
@@ -79,10 +83,7 @@ class EmbeddingHead(nn.Module):
         else:                           raise KeyError(f"{self.neck_feat} is invalid for MODEL.HEADS.NECK_FEAT")
         # fmt: on
 
-        outputs = {"features": feat,
-                   "cls_outputs": None,
-                   "pred_class_logits": None,
-                   "before_features": global_feat[..., 0, 0]}
+        outputs = {"features": feat}
         # Training
         if hasattr(self, "classifier"):
             if self.classifier.__class__.__name__ == 'Linear':
@@ -96,7 +97,6 @@ class EmbeddingHead(nn.Module):
                 {
                     "cls_outputs": cls_outputs,
                     "pred_class_logits": pred_class_logits,
-                    "before_features": global_feat[..., 0, 0]
                 }
             )
         return outputs

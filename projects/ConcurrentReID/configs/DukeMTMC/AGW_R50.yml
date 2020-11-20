@@ -1,0 +1,7 @@
+_BASE_: "../Base-concurrentreid.yml"
+
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
+
+OUTPUT_DIR: "logs/ConcurrentReID/dukemtmc/AGW_R50"

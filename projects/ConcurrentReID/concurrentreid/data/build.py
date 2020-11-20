@@ -1,22 +1,21 @@
 # encoding: utf-8
 """
-@author:  l1aoxingyu
-@contact: sherlockliao01@gmail.com
+@author:  wuyiming
 """
 
 import os
 import torch
 import copy
-import numpy
 import logging
-from torch._six import container_abcs, string_classes, int_classes
+
 from torch.utils.data import DataLoader
 from fastreid.utils import comm
+from fastreid.data import samplers
+from fastreid.data.datasets import DATASET_REGISTRY
+from fastreid.data.transforms import build_transforms
+from fastreid.data.build import fast_batch_collator
 
-from . import samplers
 from .common import CommDataset
-from .datasets import DATASET_REGISTRY
-from .transforms import build_transforms
 
 _root = os.getenv("FASTREID_DATASETS", "datasets")
 
@@ -110,11 +109,6 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
 
 
 def build_reid_test_loader(cfg, dataset_name, val=False):
-    """
-    cfg (CfgNode): configs.
-    dataset_name (str): name of the dataset.
-    val (bool): run validation or testing.
-    """
     cfg = cfg.clone()
     cfg.defrost()
 
@@ -132,39 +126,8 @@ def build_reid_test_loader(cfg, dataset_name, val=False):
     test_loader = DataLoader(
         test_set,
         batch_sampler=batch_sampler,
-        num_workers=2,  # save some memory
+        num_workers=0,  # save some memory
         collate_fn=fast_batch_collator,
         pin_memory=True,
     )
     return test_loader, len(dataset.query)
-
-
-def trivial_batch_collator(batch):
-    """
-    A batch collator that does nothing.
-    """
-    return batch
-
-
-def fast_batch_collator(batched_inputs):
-    """
-    A simple batch collator for most common reid tasks
-    """
-    elem = batched_inputs[0]
-    if isinstance(elem, torch.Tensor):
-        out = torch.zeros((len(batched_inputs), *elem.size()), dtype=elem.dtype)
-        for i, tensor in enumerate(batched_inputs):
-            out[i] += tensor
-        return out
-
-    elif isinstance(elem, container_abcs.Mapping):
-        return {key: fast_batch_collator([d[key] for d in batched_inputs]) for key in elem}
-
-    elif isinstance(elem, float):
-        return torch.tensor(batched_inputs, dtype=torch.float64)
-    elif isinstance(elem, int_classes):
-        return torch.tensor(batched_inputs)
-    elif isinstance(elem, string_classes):
-        return batched_inputs
-    elif isinstance(elem, numpy.integer):
-        return torch.tensor(batched_inputs)

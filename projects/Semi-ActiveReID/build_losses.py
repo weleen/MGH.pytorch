@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-23 22:55:55
-LastEditTime: 2020-10-26 14:34:41
+LastEditTime: 2020-11-17 10:05:26
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ActiveReID/build_losses.py
@@ -23,7 +23,10 @@ def reid_losses(cfg, outs: dict, inputs: dict, prefix='', **kwargs) -> dict:
                 loss = {"contrastive_loss": kwargs['memory'](pred_features, inputs['index'], **kwargs)}
         else:
             cls_outputs = outputs['cls_outputs']
-            pred_features = outputs['features']
+            if loss_name == 'TripletLoss':
+                pred_features = outputs['before_features']
+            else:
+                pred_features = outputs['features']
             if cfg.PSEUDO.ENABLED and cfg.PSEUDO.WITH_CLASSIFIER:
                 cls_outputs = cls_outputs[:, :cfg.MODEL.HEADS.NUM_CLASSES]
             loss = getattr(Loss, loss_name)(cfg)(cls_outputs, pred_features, gt_classes)

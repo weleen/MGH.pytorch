@@ -500,7 +500,6 @@ class DefaultTrainer(SimpleTrainer):
         because some hyper-param, such as MAX_ITER, means training epochs rather than iters,
         so we need to convert specific hyper-param to training iterations.
         """
-
         cfg = cfg.clone()
         frozen = cfg.is_frozen()
         cfg.defrost()

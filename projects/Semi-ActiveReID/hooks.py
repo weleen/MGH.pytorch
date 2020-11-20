@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-12 21:22:11
-LastEditTime: 2020-11-06 17:28:48
+LastEditTime: 2020-11-18 11:10:20
 LastEditors: Please set LastEditors
 Description: Hooks for SpCL
 FilePath: /fast-reid/projects/SpCL_new/hooks.py
@@ -137,13 +137,15 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         class_weight_matrix = dist2classweight(dist_mat, num_classes, labels)
         cluster_num, _, _ = self.label_summary(labels, gt_labels, indep_thres=indep_thres)
 
-        # active sampling
+        # active sampling 
         if self.could_active_sampling() and self.sampler.could_sample():
-            self.sampler.sample(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num)
+            self.sampler.sample(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
 
         # node label propagation
         if self._cfg.ACTIVE.NODE_PROP and len(self.sampler.query_set) > 0:
             active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
+            classes = list(set(active_labels))
+            active_labels = [classes.index(i) for i in active_labels]
         else:
             labeled_index = list(self.sampler.query_set)
             gt_query = gt_labels[labeled_index].tolist()
@@ -158,7 +160,10 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             # set weight matrix for calculating weighted contrastive loss.
             self.trainer.weight_matrix = class_weight_matrix
 
-        all_labels.append(labels.tolist())
+        if self._cfg.ACTIVE.NODE_PROP and len(self.sampler.query_set) > 0:
+            all_labels.append(active_labels)
+        else:
+            all_labels.append(labels.tolist())
         all_centers.append(centers)
 
         self.indep_thres = indep_thres
@@ -185,9 +190,10 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
     def rectify(self, features, labels, num_classes, indep_thres, dist_mat, gt_labels):
         if self._cfg.ACTIVE.EDGE_PROP:
-            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_iter=50)
+            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_iter=self._cfg.ACTIVE.EDGE_PROP_MAX_ITER)
+            torch.cuda.empty_cache()
         else:
-            new_dist_mat, _, _ = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+            new_dist_mat, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
 
         new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat = self.label_generator(
                     self._cfg,
@@ -235,7 +241,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         else:
             self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
 
-    def edge_label_propagation(self, dist_mat, gt_labels, max_iter=1, alpha=0.99):
+    def edge_label_propagation(self, dist_mat: torch.Tensor, gt_labels, max_iter=50, alpha=0.99, debug=False):
         """
         edge label propagation. 
         Ensemble Diffusion for Retrieval, eq(3)
@@ -243,31 +249,32 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         """
         start_time = time.time()
         # mask for residual regression
-        dist_mat = dist_mat.cuda().detach()
-        corrected_dist_mat, mask, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
-        ori_error_dist_mat = mask * (corrected_dist_mat - dist_mat)
-        error_dist_mat = ori_error_dist_mat.clone()
+        dist_mat = dist_mat.cuda('cuda:1')
+        corrected_dist_mat, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+        mask = (labeled_dist_mat > -1).float()
+        error_dist_mat = corrected_dist_mat - dist_mat
 
-        adj = 1 - dist_mat
-        deg = adj.sum(dim=1)
-        deg_inv_sqrt = deg.pow(-0.5)
-        # numerical error
-        deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
-        S = deg_inv_sqrt.view(-1, 1) * adj * deg_inv_sqrt.view(1, -1)
+        N = dist_mat.size(0)
+        I = torch.eye(N).to(dist_mat.device)
+        adj = 1 - dist_mat - I
+        D = adj.sum(dim=1).pow(-0.5).view(-1, 1)
+        D = D.matmul(D.t())
+        S = adj * D
 
         im_time = time.time()
-        self._logger.info('preprocess cost {} s'.format(im_time - start_time))
+        if debug: self._logger.info('preprocess cost {} s'.format(im_time - start_time))
         # iterative propagation
         for i in range(max_iter):
             time1 = time.time()
-            error_dist_mat = alpha * S @ error_dist_mat + (1 - alpha) * error_dist_mat
-            error_dist_mat = error_dist_mat * (1 - mask) + mask * ori_error_dist_mat
+            error_dist_mat = (1 - mask) * (alpha * (S @ error_dist_mat @ S) + (1 - alpha) * I) + mask * labeled_dist_mat
             time2 = time.time()
-            self._logger.info('iteration {} cost {} s'.format(i, time2 - time1))
-        new_dist_mat = error_dist_mat + dist_mat
-        new_dist_mat = new_dist_mat.clamp(0, 1)
-        new_dist_mat = new_dist_mat * (1 - mask) + mask * labeled_dist_mat
-        return new_dist_mat.cpu()
+            if debug: self._logger.info('iteration {} cost {} s'.format(i, time2 - time1))
+        time3 = time.time()
+        new_dist_mat = (error_dist_mat + dist_mat).clamp(0, 1)
+        new_dist_mat = (1 - mask) * new_dist_mat + mask * labeled_dist_mat
+        del S, adj, D, error_dist_mat, labeled_dist_mat
+        if debug: self._logger.info('residual label propagation cost {} s'.format(time.time() - time3))
+        return new_dist_mat.cpu().data
 
     def node_label_propagation(self, X, true_labels, k = 50, max_iter = 20) -> list: 
         self._logger.info('Perform node label propagation')
@@ -275,7 +282,6 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         labels = np.asarray(true_labels)
         query_set = self.sampler.query_set
         labeled_idx = np.asarray(list(query_set))
-        unlabeled_idx = np.asarray(list(set(range(len(labels))) - query_set))
         gt_set = true_labels[list(query_set)].tolist()
         classes = np.unique(gt_set)
 
@@ -296,6 +302,9 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         elapsed = time.time() - c
         self._logger.info('kNN Search done in %d seconds' % elapsed)
 
+        # only k nearest propagation
+        mask = I[labeled_idx][:, :self._cfg.ACTIVE.NODE_PROP_K + 1].reshape(-1)
+        
         # Create the graph
         D = D[:,1:] ** 3
         I = I[:,1:]
@@ -333,13 +342,23 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         weights = weights / np.max(weights)
         p_labels = np.argmax(probs_l1,1)
 
-        active_labels = p_labels.tolist()
+        masked_labels = p_labels.copy()
+        if self._cfg.ACTIVE.NODE_PROP_K != -1: 
+            masked_labels[list(set(range(N))-set(mask))] = -1
+        active_labels = masked_labels.tolist()
 
         p_labels = np.array([classes[i] for i in p_labels])
         # Compute the accuracy of pseudo labels for statistical purposes
         correct_idx = (p_labels == labels)
         acc = correct_idx.mean()
         self._logger.info(f"label propagation acc: %.2f" % (acc * 100))
+
+        masked_labels = np.array([classes[i] if i != -1 else -1 for i in masked_labels])
+        # Compute the accuracy of pseudo labels for statistical purposes
+        correct_idx = (masked_labels == labels)
+        acc = correct_idx.mean()
+        self._logger.info(f"masked label propagation acc: %.2f" % (acc * 100))
+ 
         return active_labels
 
 class Sampler:
@@ -354,16 +373,16 @@ class Sampler:
         # extra variables
         self.data_size = data_size
 
-    def sample(self, dist_mat, pred_labels, pred_num_classes, targets, cluster_num=None):
+    def sample(self, dist_mat, pred_labels, pred_num_classes, targets, cluster_num=None, features=None, centers=None):
         # get similarity matrix based on clusters
         clu_sim_mat = dist2classweight(dist_mat, pred_num_classes, pred_labels)
         if cluster_num:
             clu_sim_mat = clu_sim_mat[:, :cluster_num]
-        query_index = self.query_sample(clu_sim_mat, dist_mat, pred_labels, cluster_num)
+        query_index = self.query_sample(clu_sim_mat, dist_mat, pred_labels, cluster_num, features=features, centers=centers)
         self.query_set.update(query_index)
         self.query_summary(query_index, pred_labels, targets)
 
-    def query_sample(self, clu_sim_mat, dist_mat, pred_labels, cluster_num, temp=0.05):
+    def query_sample(self, clu_sim_mat, dist_mat, pred_labels, cluster_num, features=None, centers=None, temp=0.05):
         sim_mat = clu_sim_mat / temp
         assert self.query_sample_num != 0
         query_index_list = list()
@@ -381,8 +400,8 @@ class Sampler:
             sim_sorted = sim_mat.sort(descending=True)[0]
             sim_diff = sim_sorted[:, 0] - sim_sorted[:, 1]
             query_index = sim_diff.argsort()
-        elif self.query_fun == 'cluster':
-            query_index = self.cluster_sample(dist_mat, pred_labels, cluster_num)
+        elif self.query_func == 'cluster':
+            query_index = self.cluster_sample(dist_mat, pred_labels, features, centers, cluster_num)
         else:
             raise NotImplemented(f"{self.query_func} is not supported in query selection.")
         
@@ -394,21 +413,22 @@ class Sampler:
 
         return query_index_list
         
-    def cluster_sample(self, dist_mat, pred_labels, cluster_num):
-        pass
-        # center_labels = list(collections.Counter(pred_labels.tolist()).items())
-        # center_labels.sort(key=lambda d:d[1], reverse=True)
+    def cluster_sample(self, dist_mat, pred_labels, features, centers, cluster_num):
+        # pass
+        img_per_cluster = 1
+        center_labels = list(collections.Counter(pred_labels.tolist()).items())
+        center_labels.sort(key=lambda d:d[1], reverse=True)
         
-        # sel_clusters = [d[0] for d in center_labels[:cluster_num]]
+        sel_clusters = [d[0] for d in center_labels[:cluster_num]]
         
-        # dist = compute_distance_matrix(centers[sel_clusters], features)
-        # indexes = dist.sort(dim=1)[1]
+        dist = compute_distance_matrix(centers[sel_clusters], features)
+        indexes = dist.sort(dim=1)[1]
 
-        # labeled_idx = []
-        # for i, cluster in enumerate(sel_clusters):
-        #     labeled_idx.append(indexes[i][:self.img_per_cluster])
-        # labeled_idx = torch.cat(labeled_idx).tolist()
-        # return labeled_idx
+        labeled_idx = []
+        for i, cluster in enumerate(sel_clusters):
+            labeled_idx.append(indexes[i][:img_per_cluster])
+        labeled_idx = torch.cat(labeled_idx)
+        return labeled_idx
 
     def query_summary(self, query_index, pred_labels, targets):
         selected_pairs = [(i, j) for i in query_index for j in query_index if i!=j]
@@ -449,13 +469,10 @@ def dist2classweight(dist_mat, num_classes, labels):
     return weight_matrix
 
 def set_labeled_instances(sampler, dist_mat, gt_labels):
-    new_dist_mat = dist_mat.clone()
-    mask = torch.zeros_like(dist_mat)
-    labeled_dist_mat = mask.clone()
+    new_dist_mat = dist_mat
+    labeled_dist_mat = -torch.ones_like(dist_mat)
     for i in sampler.query_set:
         for j in sampler.query_set:
-            mask[i, j] = 1
-            mask[j, i] = 1
             if gt_labels[i] == gt_labels[j]:
                 new_dist_mat[i, j] = 0
                 new_dist_mat[j, i] = 0
@@ -466,4 +483,21 @@ def set_labeled_instances(sampler, dist_mat, gt_labels):
                 new_dist_mat[j, i] = 1
                 labeled_dist_mat[i, j] = 1
                 labeled_dist_mat[j, i] = 1
-    return new_dist_mat, mask, labeled_dist_mat
+    return new_dist_mat, labeled_dist_mat
+
+def set_labeled_instances_np(sampler, dist_mat, gt_labels):
+    new_dist_mat = dist_mat.copy()
+    labeled_dist_mat = -np.ones_like(dist_mat)
+    for i in sampler.query_set:
+        for j in sampler.query_set:
+            if gt_labels[i] == gt_labels[j]:
+                new_dist_mat[i, j] = 0
+                new_dist_mat[j, i] = 0
+                labeled_dist_mat[i, j] = 0
+                labeled_dist_mat[j, i] = 0
+            else:
+                new_dist_mat[i, j] = 1
+                new_dist_mat[j, i] = 1
+                labeled_dist_mat[i, j] = 1
+                labeled_dist_mat[j, i] = 1
+    return new_dist_mat, labeled_dist_mat

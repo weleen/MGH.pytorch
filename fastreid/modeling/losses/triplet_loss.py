@@ -8,7 +8,6 @@ import torch
 import torch.nn.functional as F
 
 from fastreid.utils import comm
-from fastreid.utils.metrics import compute_distance_matrix
 
 
 def softmax_weights(dist, mask):
@@ -17,6 +16,25 @@ def softmax_weights(dist, mask):
     Z = torch.sum(torch.exp(diff) * mask, dim=1, keepdim=True) + 1e-6  # avoid division by zero
     W = torch.exp(diff) * mask / Z
     return W
+
+
+def euclidean_dist(x, y):
+    m, n = x.size(0), y.size(0)
+    xx = torch.pow(x, 2).sum(1, keepdim=True).expand(m, n)
+    yy = torch.pow(y, 2).sum(1, keepdim=True).expand(n, m).t()
+    dist = xx + yy
+    dist.addmm_(x, y.t(), beta=1, alpha=-2)
+    dist = dist.clamp(min=1e-12).sqrt()  # for numerical stability
+    return dist
+
+
+def cosine_dist(x, y):
+    bs1, bs2 = x.size(0), y.size(0)
+    frac_up = torch.matmul(x, y.transpose(0, 1))
+    frac_down = (torch.sqrt(torch.sum(torch.pow(x, 2), 1))).view(bs1, 1).repeat(1, bs2) * \
+                (torch.sqrt(torch.sum(torch.pow(y, 2), 1))).view(1, bs2).repeat(bs1, 1)
+    cosine = frac_up / frac_down
+    return 1 - cosine
 
 
 def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
@@ -105,11 +123,11 @@ class TripletLoss(object):
             all_embedding = embedding
             all_targets = targets
 
-        dist_mat = compute_distance_matrix(embedding, all_embedding)
+        dist_mat = euclidean_dist(all_embedding, all_embedding)
 
-        N, M = dist_mat.size()
-        is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
-        is_neg = targets.view(N, 1).expand(N, M).ne(all_targets.view(M, 1).expand(M, N).t())
+        N, N = dist_mat.size()
+        is_pos = all_targets.view(N, 1).expand(N, N).eq(all_targets.view(N, 1).expand(N, N).t())
+        is_neg = all_targets.view(N, 1).expand(N, N).ne(all_targets.view(N, 1).expand(N, N).t())
 
         if self._hard_mining:
             dist_ap, dist_an = hard_example_mining(dist_mat, is_pos, is_neg)
@@ -142,7 +160,7 @@ class SoftmaxTripletLoss(TripletLoss):
             all_embedding = embedding
             all_targets = targets
 
-        dist_mat = compute_distance_matrix(embedding, all_embedding)
+        dist_mat = euclidean_dist(all_embedding, all_embedding)
 
         N, M = dist_mat.size()
         is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())

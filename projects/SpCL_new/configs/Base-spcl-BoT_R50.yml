@@ -12,6 +12,11 @@ MODEL:
   LOSSES:
     NAME: ("ContrastiveLoss", )
 
+    TRI:
+      MARGIN: 0.0
+      HARD_MINING: False
+      SCALE: 1.0
+
 DATALOADER:
   SAMPLER_NAME: "RandomMultipleGallerySampler"
 

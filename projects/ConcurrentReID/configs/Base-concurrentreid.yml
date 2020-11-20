@@ -1,0 +1,13 @@
+_BASE_: "../../../configs/Base-AGW.yml"
+
+MODEL:
+  META_ARCHITECTURE: "ConcurrentBaseline"
+  HEADS:
+    NAME: "ConcurrentHead"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/ConcurrentReID/market1501/AGW_R50"
+

@@ -1,0 +1,7 @@
+_BASE_: "../Base-concurrentreid.yml"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/ConcurrentReID/market1501/AGW_R50"
