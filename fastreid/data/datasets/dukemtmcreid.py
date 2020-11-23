@@ -49,8 +49,8 @@ class DukeMTMC(ImageDataset):
 
         train = self.process_dir(self.train_dir)
         if kwargs.get('val'):
-            query = self.process_dir(self.train_dir, is_train=False, data_range=(0.8, 1.0))
-            gallery = self.process_dir(self.train_dir, is_train=False, data_range=(0.8, 1.0))
+            query = self.process_dir(self.train_dir, is_train=False, data_range=(0.6, 1.0))
+            gallery = self.process_dir(self.train_dir, is_train=False, data_range=(0.6, 1.0))
         else:
             query = self.process_dir(self.query_dir, is_train=False)
             gallery = self.process_dir(self.gallery_dir, is_train=False)

@@ -2,7 +2,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-28 00:21:29
-LastEditTime: 2020-11-20 00:31:57
+LastEditTime: 2020-11-21 01:11:39
 LastEditors: Please set LastEditors
 Description: In User Settings Edit
 FilePath: /fast-reid/projects/ConcurrentReID/concurrentreid/modeling/concurrentreid_head.py
@@ -20,6 +20,7 @@ from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
 class ConcurrentHead(nn.Module):
     def __init__(self, cfg):
         super().__init__()
+        self.cfg = cfg
         # fmt: off
         feat_dim      = cfg.MODEL.BACKBONE.FEAT_DIM
         embedding_dim = cfg.MODEL.HEADS.EMBEDDING_DIM
@@ -68,6 +69,12 @@ class ConcurrentHead(nn.Module):
         """
         See :class:`ReIDHeads.forward`.
         """
+        if self.cfg.CONCURRENT.ENABLED and self.training:
+            bs_h, bs_w = self.cfg.CONCURRENT.BLOCK_SIZE
+            b, c, hh, ww = features.size()
+            h, w = hh // bs_h, ww // bs_w
+            features = features.view(b, c, bs_h, h, bs_w, w)
+            features = features.transpose(3, 4).reshape(b, c, bs_h * bs_w, h, w).transpose(1, 2).reshape(b * bs_h * bs_w, c, h, w).contiguous()
         global_feat = self.pool_layer(features)
         bn_feat = self.bottleneck(global_feat)
         bn_feat = bn_feat[..., 0, 0]

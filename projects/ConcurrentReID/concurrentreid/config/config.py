@@ -12,9 +12,8 @@ def add_concurrentreid_config(cfg):
     # Unsupervised
     # ----------------------------------------------------------------------------
     _C.CONCURRENT = CN()
-
-    # _C.CONCURRENT.TIMES = 1
-    # _C.CONCURRENT.LOSS_ENABLE = True
-    # _C.CONCURRENT.LOSS_SCALE = 1.
+    _C.CONCURRENT.ENABLED = True
+    _C.CONCURRENT.BLOCK_SIZE = (2, 2)
+    _C.CONCURRENT.SHUFFLE = True
 
     return _C
