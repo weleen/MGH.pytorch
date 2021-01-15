@@ -1,5 +1,6 @@
 from fvcore.common.config import CfgNode as CN
 
+# NOTE: _EPOCH and _PERIOD means epoch in training, while _ITER and _ITERS means iteration
 # -----------------------------------------------------------------------------
 # Convention about Training / Test specific parameters
 # -----------------------------------------------------------------------------
@@ -21,7 +22,8 @@ _C = CN()
 # -----------------------------------------------------------------------------
 _C.MODEL = CN()
 _C.MODEL.DEVICE = "cuda"
-_C.MODEL.META_ARCHITECTURE = 'Baseline'
+_C.MODEL.META_ARCHITECTURE = "Baseline"
+
 _C.MODEL.OPEN_LAYERS = ['']
 
 # ---------------------------------------------------------------------------- #
@@ -88,6 +90,12 @@ _C.MODEL.LOSSES.CE.EPSILON = 0.0
 _C.MODEL.LOSSES.CE.ALPHA = 0.2
 _C.MODEL.LOSSES.CE.SCALE = 1.0
 
+# Focal Loss options
+_C.MODEL.LOSSES.FL = CN()
+_C.MODEL.LOSSES.FL.ALPHA = 0.25
+_C.MODEL.LOSSES.FL.GAMMA = 2
+_C.MODEL.LOSSES.FL.SCALE = 1.0
+
 # Triplet Loss options
 _C.MODEL.LOSSES.TRI = CN()
 _C.MODEL.LOSSES.TRI.MARGIN = 0.3
@@ -98,14 +106,14 @@ _C.MODEL.LOSSES.TRI.SCALE = 1.0
 # Circle Loss options
 _C.MODEL.LOSSES.CIRCLE = CN()
 _C.MODEL.LOSSES.CIRCLE.MARGIN = 0.25
-_C.MODEL.LOSSES.CIRCLE.ALPHA = 128
+_C.MODEL.LOSSES.CIRCLE.GAMMA = 128
 _C.MODEL.LOSSES.CIRCLE.SCALE = 1.0
 
-# Focal Loss options
-_C.MODEL.LOSSES.FL = CN()
-_C.MODEL.LOSSES.FL.ALPHA = 0.25
-_C.MODEL.LOSSES.FL.GAMMA = 2
-_C.MODEL.LOSSES.FL.SCALE = 1.0
+# Cosface Loss options
+_C.MODEL.LOSSES.COSFACE = CN()
+_C.MODEL.LOSSES.COSFACE.MARGIN = 0.25
+_C.MODEL.LOSSES.COSFACE.GAMMA = 128
+_C.MODEL.LOSSES.COSFACE.SCALE = 1.0
 
 # Path to a checkpoint file to be loaded to the model. You can find available models in the model zoo.
 _C.MODEL.WEIGHTS = ""
@@ -114,14 +122,12 @@ _C.MODEL.WEIGHTS = ""
 _C.MODEL.PIXEL_MEAN = [0.485, 0.456, 0.406]
 # Values to be used for image normalization
 _C.MODEL.PIXEL_STD = [0.229, 0.224, 0.225]
+
 # Domain-Specific batch normalization
 _C.MODEL.DSBN = True
-# Samples for per batch normalization
-_C.MODEL.SAMPLES_PER_BN = 64
 # Mean Teacher Network
 _C.MODEL.MEAN_NET = False
 _C.MODEL.MEAN_NET_ALPHA = 0.999
-
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -140,26 +146,33 @@ _C.INPUT.FLIP_PROB = 0.5
 _C.INPUT.DO_PAD = True
 _C.INPUT.PADDING_MODE = 'constant'
 _C.INPUT.PADDING = 10
+
 # Gaussian blur
 _C.INPUT.DO_BLUR = False
 _C.INPUT.BLUR_PROB = 0.5
+
 # Random color jitter
 _C.INPUT.CJ = CN()
 _C.INPUT.CJ.ENABLED = False
-_C.INPUT.CJ.PROB = 0.8
+_C.INPUT.CJ.PROB = 0.5
 _C.INPUT.CJ.BRIGHTNESS = 0.15
 _C.INPUT.CJ.CONTRAST = 0.15
 _C.INPUT.CJ.SATURATION = 0.1
 _C.INPUT.CJ.HUE = 0.1
+
 # Auto augmentation
 _C.INPUT.DO_AUTOAUG = False
+_C.INPUT.AUTOAUG_PROB = 0.0
+
 # Augmix augmentation
 _C.INPUT.DO_AUGMIX = False
+_C.INPUT.AUGMIX_PROB = 0.0
+
 # Random Erasing
 _C.INPUT.REA = CN()
 _C.INPUT.REA.ENABLED = False
 _C.INPUT.REA.PROB = 0.5
-_C.INPUT.REA.MEAN = [0.485, 0.456, 0.406]
+_C.INPUT.REA.VALUE = [0.485, 0.456, 0.406]
 # Random Patch
 _C.INPUT.RPT = CN()
 _C.INPUT.RPT.ENABLED = False
@@ -204,17 +217,15 @@ _C.DATALOADER.SAMPLER_NAME = "BalancedIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
 _C.DATALOADER.NUM_WORKERS = 8
-# Iters per epoch
-_C.DATALOADER.ITERS_PER_EPOCH = 1
 
 # -----------------------------------------------------------------------------
 # Pseudo label
 # -----------------------------------------------------------------------------
 _C.PSEUDO = CN()
 _C.PSEUDO.ENABLED = False
-_C.PSEUDO.NAME = 'dbscan'  # 'kmeans'
+_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp'
 _C.PSEUDO.UNSUP = (0,)  # unsupervised index for training datasets, support MMT.
-_C.PSEUDO.CLUSTER_ITER = 400
+_C.PSEUDO.CLUSTER_EPOCH = 2
 _C.PSEUDO.USE_OUTLIERS = False  # True for SpCL
 _C.PSEUDO.NORM_FEAT = True
 _C.PSEUDO.NORM_CENTER = True
@@ -229,6 +240,16 @@ _C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
 _C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
 _C.PSEUDO.DBSCAN.K1 = 30
 _C.PSEUDO.DBSCAN.K2 = 6
+
+_C.PSEUDO.CDP = CN()
+_C.PSEUDO.CDP.K = [23, 25, 27]
+_C.PSEUDO.CDP.STRATEGY = 'vote'
+_C.PSEUDO.CDP.VOT = CN()
+_C.PSEUDO.CDP.VOT.THRESHOLD = [0.66, 0.66, 0.66]
+_C.PSEUDO.CDP.PROPAGATION = CN()
+_C.PSEUDO.CDP.PROPAGATION.MAX_SIZE = 600
+_C.PSEUDO.CDP.PROPAGATION.STEP = 0.05
+_C.PSEUDO.CDP.PROPAGATION.MAX_ITER = 100
 
 # Memory related options for Self-paced learning
 # Temperature for scaling contrastive loss
@@ -246,11 +267,11 @@ _C.ACTIVE = CN()
 # ACTIVE parameter
 _C.ACTIVE.ENABLED = False
 _C.ACTIVE.INITIAL_RATE = 0.1
-_C.ACTIVE.TRAIN_ITER = 2
+_C.ACTIVE.TRAIN_EPOCH = 2
 _C.ACTIVE.SAMPLE_K = 3
 _C.ACTIVE.SAMPLE_M = 0.1
 _C.ACTIVE.IMS_PER_BATCH = 63
-_C.ACTIVE.WARMUP_ITER = 10
+_C.ACTIVE.WARMUP_EPOCH = 10
 
 # ACTIVE sampler
 _C.ACTIVE.SAMPLER = CN()
@@ -262,12 +283,12 @@ _C.ACTIVE.SAMPLER.NAME = 'RandomSampler' # ['RandomSampler', 'UncertaintySampler
 _C.SOLVER = CN()
 
 # AUTOMATIC MIXED PRECISION
-_C.SOLVER.AMP_ENABLED = False
+_C.SOLVER.FP16_ENABLED = False
 
 # Optimizer
 _C.SOLVER.OPT = "Adam"
 
-_C.SOLVER.MAX_ITER = 120
+_C.SOLVER.MAX_EPOCH = 120
 
 _C.SOLVER.BASE_LR = 3e-4
 _C.SOLVER.BIAS_LR_FACTOR = 1.
@@ -279,20 +300,26 @@ _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
 
 # Multi-step learning rate options
-_C.SOLVER.SCHED = "WarmupMultiStepLR"
+_C.SOLVER.SCHED = "MultiStepLR"
+
+_C.SOLVER.DELAY_EPOCHS = 0
+
 _C.SOLVER.GAMMA = 0.1
 _C.SOLVER.STEPS = [30, 55]
 
 # Cosine annealing learning rate options
-_C.SOLVER.DELAY_ITERS = 0
-_C.SOLVER.ETA_MIN_LR = 3e-7
+_C.SOLVER.ETA_MIN_LR = 1e-7
 
 # Warmup options
 _C.SOLVER.WARMUP_FACTOR = 0.1
 _C.SOLVER.WARMUP_ITERS = 10
 _C.SOLVER.WARMUP_METHOD = "linear"
 
+# Backbone freeze iters
 _C.SOLVER.FREEZE_ITERS = 0
+
+# FC freeze iters
+_C.SOLVER.FREEZE_FC_ITERS = 0
 
 # SWA options
 _C.SOLVER.SWA = CN()
@@ -305,7 +332,9 @@ _C.SOLVER.SWA.LR_SCHED = False
 
 _C.SOLVER.CHECKPOINT_PERIOD = 20
 
-_C.SOLVER.LOG_PERIOD = 200
+# Logger frequence
+_C.SOLVER.LOG_ITERS = 200
+
 # Number of images per batch across all machines.
 # This is global, so if we have 8 GPUs and IMS_PER_BATCH = 16, each GPU will
 # see 2 images per batch
@@ -319,17 +348,19 @@ _C.SOLVER.IMS_PER_BATCH = 64
 _C.TEST = CN()
 
 _C.TEST.EVAL_PERIOD = 20
+
 # Run testing on validation or testing dataset in training stage,
 # False means run testing on query and gallery,
 # True means run on val split from training dataste.
 _C.TEST.DO_VAL = False
-# Metric for presenting best model
+# Metric for finding the best model
 _C.TEST.METRIC_NAMES = ('Rank-1', 'mAP')
 
 # Number of images per batch in one process.
 _C.TEST.IMS_PER_BATCH = 64
 _C.TEST.METRIC = "cosine"
 _C.TEST.ROC_ENABLED = False
+_C.TEST.FLIP_ENABLED = False
 
 # Average query expansion
 _C.TEST.AQE = CN()

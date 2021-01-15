@@ -60,8 +60,6 @@ def get_local_size() -> int:
 
 
 def is_main_process() -> bool:
-    if not dist.is_available():
-        return 1
     return get_rank() == 0
 
 
@@ -270,19 +268,6 @@ def reduce_dict(input_dict, average=True):
             values /= world_size
         reduced_dict = {k: v for k, v in zip(names, values)}
     return reduced_dict
-
-
-# def concat_all_gather(tensor):
-#     """
-#     Performs all_gather operation on the provided tensors.
-#     *** Warning ***: torch.distributed.all_gather has no gradient.
-#     """
-#     tensors_gather = [torch.ones_like(tensor)
-#                       for _ in range(torch.distributed.get_world_size())]
-#     torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
-#
-#     output = torch.cat(tensors_gather, dim=0)
-#     return output
 
 
 def concat_all_gather(tensor):

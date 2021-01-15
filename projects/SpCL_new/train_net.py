@@ -15,7 +15,6 @@ import itertools
 import collections
 import torch
 import torch.nn.functional as F
-from torch.cuda import amp
 from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
@@ -27,8 +26,14 @@ from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
 
 from hybrid_memory import HybridMemory
-from hooks import SpCLLabelGeneratorHook
 
+try:
+    import apex
+    from apex import amp
+    from apex.parallel import DistributedDataParallel
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example if you want to"
+                      "train with DDP")
 
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg):
@@ -76,120 +81,33 @@ class SPCLTrainer(DefaultTrainer):
         self.memory._update_feature(torch.cat(memory_features))
         del data_loader, common_dataset, features
 
-    def build_hooks(self):
-        """
-        Build a list of default hooks, including timing, evaluation,
-        checkpointing, lr scheduling, precise BN, writing events.
-        Returns:
-            list[HookBase]:
-        """
-        logger = logging.getLogger('fastreid.' + __name__)
-        cfg = self.cfg.clone()
-        cfg.defrost()
-        cfg.DATALOADER.NUM_WORKERS = 0  # save some memory and time for PreciseBN
-        cfg.DATASETS.NAMES = tuple([cfg.TEST.PRECISE_BN.DATASET])  # set dataset name for PreciseBN
-
-        ret = [
-            hooks.IterationTimer(),
-            hooks.LRScheduler(self.optimizer, self.scheduler),
-        ]
-
-        if cfg.PSEUDO.ENABLED:
-            assert len(cfg.PSEUDO.UNSUP ) > 0, "there are no dataset for unsupervised learning"
-            ret.append(
-                SpCLLabelGeneratorHook(
-                    self.cfg,
-                    self.model
-                )
-            )
-
-        if cfg.SOLVER.SWA.ENABLED:
-            ret.append(
-                hooks.SWA(
-                    cfg.SOLVER.MAX_ITER,
-                    cfg.SOLVER.SWA.PERIOD,
-                    cfg.SOLVER.SWA.LR_FACTOR,
-                    cfg.SOLVER.SWA.ETA_MIN_LR,
-                    cfg.SOLVER.SWA.LR_SCHED,
-                )
-            )
-
-        if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(self.model):
-            logger.info("Prepare precise BN dataset")
-            ret.append(hooks.PreciseBN(
-                # Run at the same freq as (but before) evaluation.
-                self.model,
-                # Build a new data loader to not affect training
-                self.build_train_loader(cfg),
-                cfg.TEST.PRECISE_BN.NUM_ITER,
-            ))
-
-        if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
-            open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
-            logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
-            ret.append(hooks.FreezeLayer(
-                self.model,
-                cfg.MODEL.OPEN_LAYERS,
-                cfg.SOLVER.FREEZE_ITERS,
-            ))
-        # Do PreciseBN before checkpointer, because it updates the model and need to
-        # be saved by checkpointer.
-        # This is not always the best: if checkpointing has a different frequency,
-        # some checkpoints may have more precise statistics than others.
-        if comm.is_main_process():
-            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
-
-        def test_and_save_results(val=False):
-            self._last_eval_results = self.test(self.cfg, self.model, val=val)
-            return self._last_eval_results
-
-        # Do evaluation after checkpointer, because then if it fails,
-        # we can use the saved checkpoint to debug.
-        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results, do_val=self.cfg.TEST.DO_VAL, metric_names=self.cfg.TEST.METRIC_NAMES))
-
-        if comm.is_main_process():
-            # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
-
-        return ret
-
     def run_step(self) -> None:
-        """
-        Implement the standard training logic described above.
-        """
-        assert self.model.training, "[SPCLTrainer] model was changed to eval mode!"
+        assert self.model.training, "[SpCLTrainer] model was changed to eval mode!"
         start = time.perf_counter()
 
         data = next(self._data_loader_iter)
         data_time = time.perf_counter() - start
 
-        with amp.autocast(enabled=self.amp_enabled):
-            outs = self.model(data)
+        outs = self.model(data)
 
-            # Compute loss
-            if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
-            else:
-                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
+        # Compute loss
+        if hasattr(self.model, 'module'):
+            loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
+        else:
+            loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
 
-            losses = sum(loss_dict.values())
-
-        with torch.cuda.stream(torch.cuda.Stream()):
-            metrics_dict = loss_dict
-            metrics_dict["data_time"] = data_time
-            self._write_metrics(metrics_dict)
-            self._detect_anomaly(losses, loss_dict)
-
+        losses = sum(loss_dict.values())
+        
         self.optimizer.zero_grad()
-
-        if self.amp_enabled:
-            self.scaler.scale(losses).backward()
-            self.scaler.step(self.optimizer)
-            self.scaler.update()
+        if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
+            with amp.scale_loss(losses, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
         else:
             losses.backward()
-            self.optimizer.step()
 
+        self._write_metrics(loss_dict, data_time)
+
+        self.optimizer.step()
 
 def setup(args):
     """
@@ -209,7 +127,9 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = SPCLTrainer.build_model(cfg)
-        Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
+        Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
+        model = SPCLTrainer.build_parallel_model(cfg, model)  # parallel
+        
         res = SPCLTrainer.test(cfg, model)
         return res
 

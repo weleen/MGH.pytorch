@@ -163,7 +163,7 @@ class SPCLTrainer(DefaultTrainer):
         if cfg.SOLVER.SWA.ENABLED:
             ret.append(
                 hooks.SWA(
-                    cfg.SOLVER.MAX_ITER,
+                    cfg.SOLVER.MAX_EPOCH,
                     cfg.SOLVER.SWA.PERIOD,
                     cfg.SOLVER.SWA.LR_FACTOR,
                     cfg.SOLVER.SWA.ETA_MIN_LR,
@@ -206,7 +206,7 @@ class SPCLTrainer(DefaultTrainer):
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
+            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_ITERS))
 
         return ret
 

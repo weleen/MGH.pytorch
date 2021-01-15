@@ -71,15 +71,23 @@ class MSMT17(ImageDataset):
         ]
         self.check_before_run(required_files)
 
-        train = self.process_dir(self.train_dir, self.list_train_path)
-        val = self.process_dir(self.train_dir, self.list_val_path)
-        if kwargs.get('val'):
+        train = []
+        query = []
+        gallery = []
+        if kwargs.get('mode') == 'train':
+            train = self.process_dir(self.train_dir, self.list_train_path)
+            val = self.process_dir(self.train_dir, self.list_val_path)
+        elif kwargs.get('mode') == 'val':
             query = self.process_dir(self.train_dir, self.list_val_path, is_train=False)
             gallery = self.process_dir(self.train_dir, self.list_val_path, is_train=False)
-        else:
+        elif kwargs.get('mode') == 'test':
             query = self.process_dir(self.test_dir, self.list_query_path, is_train=False)
             gallery = self.process_dir(self.test_dir, self.list_gallery_path, is_train=False)
-
+        elif kwargs.get('mode') == 'query':
+            query = self.process_dir(self.test_dir, self.list_query_path, is_train=False)
+        elif kwargs.get('mode') == 'gallery':
+            gallery = self.process_dir(self.test_dir, self.list_gallery_path, is_train=False)
+    
         num_train_pids = self.get_num_pids(train)
         query_tmp = []
         for img_path, pid, camid in query:

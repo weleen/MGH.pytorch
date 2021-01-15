@@ -50,9 +50,9 @@ class SSCTrainer(DefaultTrainer):
         )
         self.start_iter = 0
         if cfg.SOLVER.SWA.ENABLED:
-            self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
+            self.max_iter = cfg.SOLVER.MAX_EPOCH + cfg.SOLVER.SWA.ITER
         else:
-            self.max_iter = cfg.SOLVER.MAX_ITER
+            self.max_iter = cfg.SOLVER.MAX_EPOCH
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
@@ -113,7 +113,7 @@ class SSCTrainer(DefaultTrainer):
     def auto_scale_hyperparams(cfg, data_loader):
         r"""
         This is used for auto-computation actual training iterations,
-        because some hyper-param, such as MAX_ITER, means training epochs rather than iters,
+        because some hyper-param, such as MAX_EPOCH, means training epochs rather than iters,
         so we need to convert specific hyper-param to training iterations.
         """
 
@@ -124,7 +124,7 @@ class SSCTrainer(DefaultTrainer):
         iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
         cfg.DATALOADER.ITERS_PER_EPOCH = iters_per_epoch
         cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
-        cfg.SOLVER.MAX_ITER *= iters_per_epoch
+        cfg.SOLVER.MAX_EPOCH *= iters_per_epoch
         cfg.SOLVER.WARMUP_ITERS *= iters_per_epoch
         cfg.SOLVER.FREEZE_ITERS *= iters_per_epoch
         cfg.SOLVER.DELAY_ITERS *= iters_per_epoch
@@ -134,17 +134,17 @@ class SSCTrainer(DefaultTrainer):
         cfg.SOLVER.SWA.PERIOD *= iters_per_epoch
         cfg.UNSUPERVISED.RAMPUP_ITER *= iters_per_epoch
 
-        # Evaluation period must be divided by cfg.SOLVER.LOG_PERIOD for writing into tensorboard.
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        # Evaluation period must be divided by cfg.SOLVER.LOG_ITERS for writing into tensorboard.
+        num_mode = cfg.SOLVER.LOG_ITERS - (cfg.TEST.EVAL_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_ITERS
         cfg.TEST.EVAL_PERIOD = cfg.TEST.EVAL_PERIOD * iters_per_epoch + num_mode
 
-        num_mode = cfg.SOLVER.LOG_PERIOD - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_PERIOD
+        num_mode = cfg.SOLVER.LOG_ITERS - (cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch) % cfg.SOLVER.LOG_ITERS
         cfg.SOLVER.CHECKPOINT_PERIOD = cfg.SOLVER.CHECKPOINT_PERIOD * iters_per_epoch + num_mode
 
         logger = logging.getLogger(__name__)
         logger.info(
             f"Auto-scaling the config to num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, "
-            f"max_Iter={cfg.SOLVER.MAX_ITER}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
+            f"max_Iter={cfg.SOLVER.MAX_EPOCH}, wamrup_Iter={cfg.SOLVER.WARMUP_ITERS}, "
             f"freeze_Iter={cfg.SOLVER.FREEZE_ITERS}, delay_Iter={cfg.SOLVER.DELAY_ITERS}, "
             f"step_Iter={cfg.SOLVER.STEPS}, ckpt_Iter={cfg.SOLVER.CHECKPOINT_PERIOD}, "
             f"eval_Iter={cfg.TEST.EVAL_PERIOD}, "

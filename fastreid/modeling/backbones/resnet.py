@@ -3,7 +3,6 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
-
 import logging
 import math
 
@@ -65,6 +64,7 @@ class BasicBlock(nn.Module):
 
         out = self.conv2(out)
         out = self.bn2(out)
+        out = self.se(out)
 
         if self.downsample is not None:
             identity = self.downsample(x)
@@ -132,7 +132,7 @@ class ResNet(nn.Module):
         self.bn1 = get_norm(bn_norm, 64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)
+        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)  # revised model
         self.layer1 = self._make_layer(block, 64, layers[0], 1, bn_norm, with_ibn, with_se)
         self.layer2 = self._make_layer(block, 128, layers[1], 2, bn_norm, with_ibn, with_se)
         self.layer3 = self._make_layer(block, 256, layers[2], 2, bn_norm, with_ibn, with_se)

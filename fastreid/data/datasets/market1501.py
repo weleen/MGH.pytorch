@@ -62,14 +62,21 @@ class Market1501(ImageDataset):
             required_files.append(self.extra_gallery_dir)
         self.check_before_run(required_files)
 
-        train = self.process_dir(self.train_dir)
-        if kwargs.get('val'):
+        train = []
+        query = []
+        gallery = []
+        if kwargs.get('mode') == 'train':
+            train = self.process_dir(self.train_dir)
+        elif kwargs.get('mode') == 'val':
             query = self.process_dir(self.train_dir, is_train=False, data_range=(0.6, 1.0))
             gallery = self.process_dir(self.train_dir, is_train=False, data_range=(0.6, 1.0))
-        else:
+        elif kwargs.get('mode') == 'test':
             query = self.process_dir(self.query_dir, is_train=False)
             gallery = self.process_dir(self.gallery_dir, is_train=False)
-
+        elif kwargs.get('mode') == 'query':
+            query = self.process_dir(self.query_dir, is_train=False)
+        elif kwargs.get('mode') == 'gallery':
+            gallery = self.process_dir(self.gallery_dir, is_train=False)
         if self.market1501_500k:
             gallery += self.process_dir(self.extra_gallery_dir, is_train=False)
 

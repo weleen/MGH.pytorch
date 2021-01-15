@@ -20,10 +20,11 @@ def build_transforms(cfg, is_train=True):
 
         # augmix augmentation
         do_augmix = cfg.INPUT.DO_AUGMIX
+        augmix_prob = cfg.INPUT.AUGMIX_PROB
 
         # auto augmentation
         do_autoaug = cfg.INPUT.DO_AUTOAUG
-        total_iter = cfg.SOLVER.MAX_ITER
+        autoaug_prob = cfg.INPUT.AUTOAUG_PROB
 
         # horizontal filp
         do_flip = cfg.INPUT.DO_FLIP
@@ -49,7 +50,8 @@ def build_transforms(cfg, is_train=True):
         # random erasing
         do_rea = cfg.INPUT.REA.ENABLED
         rea_prob = cfg.INPUT.REA.PROB
-        rea_mean = cfg.INPUT.REA.MEAN
+        rea_value = cfg.INPUT.REA.VALUE
+
         # random patch
         do_rpt = cfg.INPUT.RPT.ENABLED
         rpt_prob = cfg.INPUT.RPT.PROB
@@ -59,23 +61,24 @@ def build_transforms(cfg, is_train=True):
         mutual_times = cfg.INPUT.MUTUAL.TIMES
 
         if do_autoaug:
-            res.append(AutoAugment(total_iter))
+            res.append(T.RandomApply([AutoAugment()], p=autoaug_prob))
+
         res.append(T.Resize(size_train, interpolation=3))
         if do_flip:
             res.append(T.RandomHorizontalFlip(p=flip_prob))
         if do_pad:
-            res.extend([T.Pad(padding, padding_mode=padding_mode),
-                        T.RandomCrop(size_train)])
+            res.extend([T.Pad(padding, padding_mode=padding_mode), T.RandomCrop(size_train)])
         if do_blur:
             res.append(T.RandomApply([GaussianBlur([0.1, 2.0])], p=blur_prob))
         if do_cj:
             res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=cj_prob))
         if do_augmix:
-            res.append(AugMix())
+            res.append(T.RandomApply([AugMix()], p=augmix_prob))
+            
         res.append(T.ToTensor())
         res.append(normalizer)
         if do_rea:
-            res.append(RandomErasing(probability=rea_prob, mean=rea_mean))
+            res.append(T.RandomErasing(p=rea_prob, value=rea_value))
         if do_rpt:
             res.append(RandomPatch(prob_happen=rpt_prob))
         if do_mutual:

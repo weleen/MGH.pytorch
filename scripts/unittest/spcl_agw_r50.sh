@@ -9,8 +9,8 @@
 #!/usr/bin/env bash
 echo "Test SpCL project"
 time=$(date +%F)
-python projects/SpCL_new/train_net.py --config-file configs/SpCL/Market1501/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/market1501
+python projects/SpCL_new/train_net.py --config-file projects/SpCL_new/configs/Market1501/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/market1501
 sleep 10s
-python projects/SpCL_new/train_net.py --config-file configs/SpCL/DukeMTMC/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/dukemtmc
+python projects/SpCL_new/train_net.py --config-file projects/SpCL_new/configs/DukeMTMC/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/dukemtmc
 sleep 10s
-python projects/SpCL_new/train_net.py --config-file configs/SpCL/MSMT17/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/msmt17
+python projects/SpCL_new/train_net.py --config-file projects/SpCL_new/configs/MSMT17/AGW_R50.yml OUTPUT_DIR logs/test/$time/SpCL_new/msmt17

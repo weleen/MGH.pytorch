@@ -11,7 +11,7 @@ MODEL:
 
 SOLVER:
   OPT: "SGD"
-  MAX_ITER: 200
+  MAX_EPOCH: 200
   BASE_LR: 6e-5
 
 HCT:

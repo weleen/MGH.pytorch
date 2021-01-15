@@ -8,10 +8,11 @@ from sklearn.cluster import DBSCAN
 
 from fastreid.utils.torch_utils import to_numpy, to_torch
 from fastreid.utils.metrics import compute_distance_matrix
+from fastreid.utils.graph import graph_propagation
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["label_generator_dbscan_single", "label_generator_dbscan", "label_generator_kmeans"]
+__all__ = ["label_generator_dbscan_single", "label_generator_dbscan", "label_generator_kmeans", "label_generator_cdp"]
 
 
 @torch.no_grad()
@@ -73,11 +74,11 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
         dist = kwargs['dist']
     else:
         dist = compute_distance_matrix(features,
-                                       features,
+                                       None,
                                        metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
                                        k1=cfg.PSEUDO.DBSCAN.K1,
                                        k2=cfg.PSEUDO.DBSCAN.K2,
-                                       search_type=cfg.PSEUDO.SEARCH_TYPE)
+                                       search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
     features = features.cpu()
     # clustering
     eps = cfg.PSEUDO.DBSCAN.EPS
@@ -151,3 +152,138 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
         centers = torch.stack(centers, dim=0)
 
         return labels_normal, centers, num_classes, indep_thres, torch.Tensor(dist)
+
+
+@torch.no_grad()
+def label_generator_cdp(cfg, features, indep_thres=None, **kwargs):
+    k = cfg.PSEUDO.CDP.K
+    th = cfg.PSEUDO.CDP.VOT.THRESHOLD
+    assert cfg.PSEUDO.CDP.STRATEGY == 'vote'
+
+    if len(th) == 1 and len(k) == 1:
+        labels, centers, num_classes = label_generator_cdp_single(cfg, features, k[0], th[0], indep_thres, **kwargs)
+        return labels, centers, num_classes, indep_thres, None
+    else:
+        k = [20, 25, 30][::-1]
+        th = [0.35, 0.4, 0.45][::-1]
+        labels_tight, _, a = label_generator_cdp_single(cfg, features, k[0], th[0], **kwargs)
+        labels_normal, _, num_classes = label_generator_cdp_single(cfg, features, k[1], th[1], **kwargs)
+        labels_loose, _, b = label_generator_cdp_single(cfg, features, k[2], th[2], **kwargs)
+        print(a, num_classes, b)
+        # compute R_indep and R_comp
+        N = labels_normal.size(0)
+        label_sim = labels_normal.expand(N, N).eq(labels_normal.expand(N, N).t()).float()
+        label_sim_tight = labels_tight.expand(N, N).eq(labels_tight.expand(N, N).t()).float()
+        label_sim_loose = labels_loose.expand(N, N).eq(labels_loose.expand(N, N).t()).float()
+
+        R_comp = 1 - torch.min(label_sim, label_sim_tight).sum(-1) / torch.max(label_sim, label_sim_tight).sum(-1)
+        R_indep = 1 - torch.min(label_sim, label_sim_loose).sum(-1) / torch.max(label_sim, label_sim_loose).sum(-1)
+        assert (R_comp.min() >= 0) and (R_comp.max() <= 1)
+        assert (R_indep.min() >= 0) and (R_indep.max() <= 1)
+
+        cluster_R_comp, cluster_R_indep = collections.defaultdict(list), collections.defaultdict(list)
+        cluster_img_num = collections.defaultdict(int)
+        for comp, indep, label in zip(R_comp, R_indep, labels_normal):
+            cluster_R_comp[label.item()].append(comp.item())
+            cluster_R_indep[label.item()].append(indep.item())
+            cluster_img_num[label.item()] += 1
+
+        cluster_R_comp = [min(cluster_R_comp[i]) for i in sorted(cluster_R_comp.keys())]
+        cluster_R_indep = [min(cluster_R_indep[i]) for i in sorted(cluster_R_indep.keys())]
+        cluster_R_indep_noins = [iou for iou, num in zip(cluster_R_indep, sorted(cluster_img_num.keys()))
+                                 if cluster_img_num[num] > 1]
+        if indep_thres is None:
+            indep_thres = np.sort(cluster_R_indep_noins)[
+                min(len(cluster_R_indep_noins) - 1, np.round(len(cluster_R_indep_noins) * 0.9).astype("int"))
+            ]
+
+        labels_num = collections.defaultdict(int)
+        for label in labels_normal:
+            labels_num[label.item()] += 1
+
+        centers = collections.defaultdict(list)
+        outliers = 0
+        for i, label in enumerate(labels_normal):
+            label = label.item()
+            indep_score = cluster_R_indep[label]
+            comp_score = R_comp[i]
+            if label == -1:
+                assert not cfg.PSEUDO.USE_OUTLIERS, "exists a bug"
+                continue
+            if (indep_score > indep_thres) or (comp_score.item() > cluster_R_comp[label]):
+                if labels_num[label] > 1:
+                    labels_normal[i] = num_classes + outliers
+                    outliers += 1
+                    labels_num[label] -= 1
+                    labels_num[labels_normal[i].item()] += 1
+
+            centers[labels_normal[i].item()].append(features[i])
+
+        num_classes += outliers
+        assert len(centers.keys()) == num_classes
+
+        centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
+        centers = torch.stack(centers, dim=0)
+
+        return labels_normal, centers, num_classes, indep_thres, None
+
+@torch.no_grad()
+def label_generator_cdp_single(cfg, features, k, th, **kwargs):
+    # faiss
+    index = faiss.IndexFlatL2(features.size(-1))
+    index.add(features.cpu().numpy())
+    knn_dist, knn = index.search(features.cpu().numpy(), k)
+    knn_dist /= 2  # scale to [0, 1]
+
+    max_sz = cfg.PSEUDO.CDP.PROPAGATION.MAX_SIZE
+    step = cfg.PSEUDO.CDP.PROPAGATION.STEP
+    max_iter = cfg.PSEUDO.CDP.PROPAGATION.MAX_ITER
+    use_outliers = cfg.PSEUDO.USE_OUTLIERS
+
+    # vote to build graph
+    simi = 1.0 - knn_dist
+    anchor = np.tile(np.arange(len(knn)).reshape(len(knn), 1), (1, knn.shape[1]))
+    selidx = np.where((simi > th) & (knn != -1) & (knn != anchor))
+
+    pairs = np.hstack((anchor[selidx].reshape(-1, 1), knn[selidx].reshape(-1, 1)))
+    scores = simi[selidx]
+    pairs = np.sort(pairs, axis=1)
+    pairs, unique_idx = np.unique(pairs, return_index=True, axis=0)
+    scores = scores[unique_idx]
+
+    # propagation
+    components = graph_propagation(pairs, scores, max_sz, step, max_iter)
+
+    # collect results
+    cdp_res = []
+    for c in components:
+        cdp_res.append(sorted([n.name for n in c]))
+    pred = -1 * np.ones(features.size(0), dtype=np.int)
+    for i,c in enumerate(cdp_res):
+        pred[np.array(c)] = i
+
+    valid = np.where(pred != -1)
+    _, unique_idx = np.unique(pred[valid], return_index=True)
+    pred_unique = pred[valid][np.sort(unique_idx)]
+    pred_mapping = dict(zip(list(pred_unique), range(pred_unique.shape[0])))
+    pred_mapping[-1] = -1
+    pred = np.array([pred_mapping[p] for p in pred])
+
+    # get num_cluster and centers
+    num_clusters = len(set(pred)) - (1 if -1 in pred else 0)
+    centers = collections.defaultdict(list)
+    outliers = 0
+    for i, label in enumerate(pred):
+        if label == -1:
+            if not use_outliers:
+                continue
+            pred[i] = num_clusters + outliers
+            outliers += 1
+        centers[pred[i]].append(features[i])
+
+    centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
+    centers = torch.stack(centers, dim=0)
+    labels = to_torch(pred).long()
+    num_clusters += outliers
+
+    return labels, centers, num_clusters

@@ -9,8 +9,8 @@
 #!/bin/env bash
 echo "Test supervised learning BoT_R50"
 time=$(date +%F)
-CUDA_VISIBLE_DEVICES=0 python tools/train_net.py --config-file configs/Market1501/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/market1501 &
+python tools/train_net.py --config-file configs/Market1501/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/market1501
 sleep 10s
-CUDA_VISIBLE_DEVICES=1 python tools/train_net.py --config-file configs/DukeMTMC/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/dukemtmc &
+python tools/train_net.py --config-file configs/DukeMTMC/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/dukemtmc
 sleep 10s
-CUDA_VISIBLE_DEVICES=2 python tools/train_net.py --config-file configs/MSMT17/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/msmt17 TEST.DO_VAL True &
+python tools/train_net.py --config-file configs/MSMT17/bagtricks_R50.yml OUTPUT_DIR logs/test/BoT_R50/msmt17 TEST.DO_VAL True

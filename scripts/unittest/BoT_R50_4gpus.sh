@@ -9,8 +9,8 @@
 #!/bin/env bash
 echo "Test supervised learning BoT_R50"
 time=$(date +%F)
-python tools/train_net.py --config-file configs/Market1501/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN" OUTPUT_DIR logs/test/BoT_R50/market1501-4gpus &
+python tools/train_net.py --config-file configs/Market1501/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN"  OUTPUT_DIR logs/test/$time/BoT_R50/market1501-4gpus
 sleep 10s
-python tools/train_net.py --config-file configs/DukeMTMC/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN"OUTPUT_DIR logs/test/BoT_R50/dukemtmc-4gpus &
+python tools/train_net.py --config-file configs/DukeMTMC/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN"  OUTPUT_DIR logs/test/$time/BoT_R50/dukemtmc-4gpus
 sleep 10s
-python tools/train_net.py --config-file configs/MSMT17/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN"OUTPUT_DIR logs/test/BoT_R50/msmt17-4gpus TEST.DO_VAL True &
+python tools/train_net.py --config-file configs/MSMT17/bagtricks_R50.yml --num-gpus 4 MODEL.BACKBONE.NORM "syncBN" MODEL.HEADS.NORM "syncBN"  OUTPUT_DIR logs/test/$time/BoT_R50/msmt17-4gpus TEST.DO_VAL True

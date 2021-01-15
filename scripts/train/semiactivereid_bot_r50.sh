@@ -68,7 +68,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
 python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveReID/configs/Market1501/BoT_R50.yml \
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.3_queryrandom_rectifytrue_activefalse_edgetrue_nodefalse_k-1 \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
                                              ACTIVE.SAMPLE_ITER 10 \
@@ -83,7 +83,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
 python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveReID/configs/Market1501/BoT_R50.yml \
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/baseline \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
                                              ACTIVE.SAMPLE_ITER 10 \
@@ -92,7 +92,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY False \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP False \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 50 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 50 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 
@@ -100,7 +100,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.3_queryrandom_rectifytrue_activefalse_edgetrue_edgemaxiter10_nodefalse_k-1_twolosses_momentum0.2 \
                                              MODEL.LOSSES.NAME \(\"ContrastiveLoss\",\"TripletLoss\"\) \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              PSEUDO.MEMORY.MOMENTUM 0.2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
@@ -110,7 +110,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY True \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP True \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 10 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 10 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 
@@ -118,7 +118,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.3_queryentropy_rectifytrue_activefalse_edgetrue_edgemaxiter10_nodefalse_k-1_twolosses_momentum0.2 \
                                              MODEL.LOSSES.NAME \(\"ContrastiveLoss\",\"TripletLoss\"\) \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              PSEUDO.MEMORY.MOMENTUM 0.2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
@@ -128,7 +128,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY True \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP True \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 10 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 10 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 ##
@@ -137,7 +137,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.05_queryrandom_rectifytrue_activefalse_edgetrue_edgemaxiter10_nodefalse_k-1_twolosses_momentum0.2 \
                                              MODEL.LOSSES.NAME \(\"ContrastiveLoss\",\"TripletLoss\"\) \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              PSEUDO.MEMORY.MOMENTUM 0.2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
@@ -147,7 +147,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY True \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP True \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 10 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 10 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 
@@ -155,7 +155,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.1_queryrandom_rectifytrue_activefalse_edgetrue_edgemaxiter10_nodefalse_k-1_twolosses_momentum0.2 \
                                              MODEL.LOSSES.NAME \(\"ContrastiveLoss\",\"TripletLoss\"\) \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              PSEUDO.MEMORY.MOMENTUM 0.2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
@@ -165,7 +165,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY True \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP True \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 10 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 10 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 
@@ -173,7 +173,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              OUTPUT_DIR logs/SemiActive_SpCL_Rectify/BoT_R50/market1501/start0_end160_sample10_m0.2_queryrandom_rectifytrue_activefalse_edgetrue_edgemaxiter10_nodefalse_k-1_twolosses_momentum0.2 \
                                              MODEL.LOSSES.NAME \(\"ContrastiveLoss\",\"TripletLoss\"\) \
                                              PSEUDO.MEMORY.WEIGHTED False \
-                                             PSEUDO.CLUSTER_ITER 400 \
+                                             PSEUDO.CLUSTER_EPOCH 2 \
                                              PSEUDO.MEMORY.MOMENTUM 0.2 \
                                              ACTIVE.START_ITER 0 \
                                              ACTIVE.END_ITER 160 \
@@ -183,7 +183,7 @@ python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveR
                                              ACTIVE.RECTIFY True \
                                              ACTIVE.BUILD_DATALOADER False \
                                              ACTIVE.EDGE_PROP True \
-                                             ACTIVE.EDGE_PROP_MAX_ITER 10 \
+                                             ACTIVE.EDGE_PROP_MAX_EPOCH 10 \
                                              ACTIVE.NODE_PROP False \
                                              ACTIVE.NODE_PROP_K -1
 # sleep 10s

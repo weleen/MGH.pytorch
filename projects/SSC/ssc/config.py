@@ -20,7 +20,7 @@ def add_ssc_config(cfg):
     # Temperature for ntxent loss
     _C.UNSUPERVISED.LOSS.TEMP = 0.1
     # Clustering iteration
-    _C.UNSUPERVISED.CLUSTER_ITER = 400
+    _C.UNSUPERVISED.CLUSTER_EPOCH = 2
     # Number of clusters
     _C.UNSUPERVISED.CLUSTER_SIZE = 500
     # Topk for RankStatisticLoss

@@ -3,7 +3,7 @@
 @author:  tianjian
 """
 
-from fastreid.utils.registry import Registry
+from fvcore.common.registry import Registry
 
 ACTIVE_SAMPLERS_REGISTRY = Registry("SAMPLERS")
 ACTIVE_SAMPLERS_REGISTRY.__doc__ = """
@@ -13,9 +13,9 @@ The call is expected to return an :class:`Samplers`.
 """
 
 
-def build_active_samplers(cfg, **kwargs):
+def build_active_samplers(cfg, index_set, **kwargs):
     """
     Build ActiveSamplers defined by `cfg.MODEL.ACTIVE.SAMPLER.NAME`.
     """
     sampler = cfg.ACTIVE.SAMPLER.NAME
-    return ACTIVE_SAMPLERS_REGISTRY.get(sampler)(cfg, **kwargs)
+    return ACTIVE_SAMPLERS_REGISTRY.get(sampler)(cfg, index_set, **kwargs)

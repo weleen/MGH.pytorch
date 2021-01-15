@@ -5,88 +5,67 @@
 """
 
 import os
+
 import torch
-import copy
 import numpy
 import logging
 from torch._six import container_abcs, string_classes, int_classes
 from torch.utils.data import DataLoader
-from fastreid.utils import comm
 
+from fastreid.utils import comm
 from . import samplers
 from .common import CommDataset
 from .datasets import DATASET_REGISTRY
 from .transforms import build_transforms
 
 _root = os.getenv("FASTREID_DATASETS", "datasets")
+logger = logging.getLogger(__name__)
 
 
 def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None, cam_labels: list = None,
                             is_train=True, relabel=True, for_clustering=False, **kwargs) -> DataLoader:
-    """
-    build dataloader for training and clustering.
-    :param cfg(CfgNode): config
-    :param datasets(list(ImageDataset)): dataset information, include img_path, pid, camid.
-    :param pseudo_labels(list): generated pseudo labels for un/semi-supervised learning.
-    :param cam_labels(list): camera id for all datasets.
-    :param is_train(bool): True for training, the sampler and transformer are TrainSampler and train_transformer. False for clustering, the sampler and transformer are InferenceSampler and test_transformer.
-    :param relabel(bool): relabel or not.
-    :param for_clustering(bool): True means building dataloader for clustering, the labeled dataset is ignored.
-    :param kwargs:
-    :return: DataLoader
-    """
     cfg = cfg.clone()
-    cfg.defrost()
-    logger = logging.getLogger(__name__)
     dataset_names = cfg.DATASETS.NAMES
     if for_clustering:
+        assert is_train is False, "is_train should be False for clustering."
         dataset_names = [dataset_names[idx] for idx in cfg.PSEUDO.UNSUP]
 
     if datasets is None:
         # Generally for the first epoch, the datasets have not been built.
         if is_train:
             if not cfg.PSEUDO.ENABLED:
-                logger.info(
-                    f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})"
-                )
+                logger.info(f"The training is in a fully-supervised manner with {len(dataset_names)} dataset(s) ({dataset_names})")
             else:
                 no_label_datasets = [dataset_names[i] for i in cfg.PSEUDO.UNSUP]
-                logger.info(
-                    f"The training is in a un/semi-supervised manner with "
-                    f"{len(dataset_names)} dataset(s) {dataset_names}, where {no_label_datasets} have no labels."
-                )
+                logger.info(f"The training is in a un/semi-supervised manner with {len(dataset_names)} dataset(s) {dataset_names}, where {no_label_datasets} have no labels.")
         else:
-            logger.info(
-                f"Build the dataset {dataset_names} for extracting features, where the sampler is InferenceSampler."
-            )
+            logger.info(f"Build the dataset {dataset_names} for extracting features, where the sampler is InferenceSampler.")
 
         datasets = list()
         # Build all datasets with groundtruth labels.
         for d in dataset_names:
-            dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL)
+            dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=cfg.DATASETS.COMBINEALL, mode='train', **kwargs)
+            if comm.is_main_process():
+                dataset.show_train()
             datasets.append(dataset)
     else:
+        # TODO: multiple datasets training in unsupervised domain adaptation is not supported now. Please refer to implementation of OpenUnReID.
         # update unlabeled datasets with given pseudo labels, 
         # update labeled datasets if label is string with dataset_name and relabel should be False.
         assert pseudo_labels is not None, "Please give pseudo_labels for the datasets."
         assert relabel is False, "Please set relabel to False when using pseudo labels."
-        datasets = copy.deepcopy(datasets)
         for idx, dataset in enumerate(datasets):
             if idx in cfg.PSEUDO.UNSUP:
                 logger.info(f"Replace the unlabeled label in dataset {dataset_names[idx]} with pseudo labels.")
                 datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
             else:
                 if isinstance(dataset.data[0][1], str):
-                    logger.warning(f"Replace the string label in labeled dataset {dataset_names[idx]} with int label. Only on the first iteration")
+                    logger.warning(f"Replace the string label in labeled dataset {dataset_names[idx]} with int label. Only on the first iteration.")
                     datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
-    # TODO: multiple datasets training in unsupervised domain adaptation is not supported now.
-    # Please refer to implementation of OpenUnReID.
-    train_transforms = build_transforms(cfg, is_train=is_train)
-    train_set = CommDataset(datasets, train_transforms, relabel=relabel)
+    transforms = build_transforms(cfg, is_train=is_train)
+    train_set = CommDataset(datasets, transforms, relabel=relabel)
 
-    iters_per_epoch = len(train_set) // cfg.SOLVER.IMS_PER_BATCH
-    cfg.SOLVER.MAX_ITER *= iters_per_epoch
-    num_workers = cfg.DATALOADER.NUM_WORKERS
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()
 
@@ -109,30 +88,24 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     return train_loader
 
 
-def build_reid_test_loader(cfg, dataset_name, val=False):
-    """
-    cfg (CfgNode): configs.
-    dataset_name (str): name of the dataset.
-    val (bool): run validation or testing.
-    """
+def build_reid_test_loader(cfg, dataset_name, mode='test', **kwargs):
     cfg = cfg.clone()
-    cfg.defrost()
 
-    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root, val=val)
+    dataset = DATASET_REGISTRY.get(dataset_name)(root=_root, mode=mode, **kwargs)
     if comm.is_main_process():
         dataset.show_test()
-    dataset.data = dataset.query + dataset.gallery
 
     test_transforms = build_transforms(cfg, is_train=False)
     test_set = CommDataset(dataset, test_transforms, relabel=False)
 
     mini_batch_size = cfg.TEST.IMS_PER_BATCH // comm.get_world_size()
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     data_sampler = samplers.InferenceSampler(len(test_set))
     batch_sampler = torch.utils.data.BatchSampler(data_sampler, mini_batch_size, False)
     test_loader = DataLoader(
         test_set,
         batch_sampler=batch_sampler,
-        num_workers=2,  # save some memory
+        num_workers=num_workers,  # save some memory
         collate_fn=fast_batch_collator,
         pin_memory=True,
     )

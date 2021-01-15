@@ -47,8 +47,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         self._common_dataset = self._data_loader_cluster.dataset
 
         assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
-        assert cfg.PSEUDO.NAME in self.__factory.keys(), \
-            f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
+        assert cfg.PSEUDO.NAME in self.__factory.keys(), f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
         self.label_generator = self.__factory[cfg.PSEUDO.NAME]
 
         self.num_classes = []
@@ -56,27 +55,18 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         if cfg.PSEUDO.NAME == 'kmeans':
             self.num_classes = cfg.PSEUDO.NUM_CLUSTER
 
-        # auto-scale for active learning parameters
-        if cfg.is_frozen():
-            cfg.defrost()
-            cfg.ACTIVE.START_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.TRAIN_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.freeze()
-        else:
-            cfg.ACTIVE.START_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.TRAIN_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-
         # Added for active learning
         data_size = self._common_dataset.datasets_size[0]
 
+        iters_per_epoch = len(self._common_dataset.img_items) // cfg.SOLVER.IMS_PER_BATCH
         # Sampler initialization
         self.sampler = Sampler(cfg)
-        self.sampler.query_sample_num = int(cfg.ACTIVE.SAMPLE_M * data_size * cfg.PSEUDO.CLUSTER_ITER// (cfg.SOLVER.MAX_ITER - cfg.ACTIVE.START_ITER))
+        self.sampler.query_sample_num = int(cfg.ACTIVE.SAMPLE_M * data_size * cfg.PSEUDO.CLUSTER_EPOCH // (cfg.SOLVER.MAX_EPOCH - cfg.ACTIVE.START_EPOCH) // iters_per_epoch)
         self.sampler.data_size = data_size
 
-    def before_step(self):
-        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 \
-                or self.trainer.iter % self._cfg.ACTIVE.TRAIN_ITER == 0 \
+    def before_epoch(self):
+        if self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
+                or self.trainer.epoch % self._cfg.ACTIVE.TRAIN_EPOCH == 0 \
                 or self.trainer.iter == self.trainer.start_iter:
             self._step_timer.reset()
 
@@ -86,7 +76,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             # generate pseudo labels and centers
             all_labels, all_centers = self.update_labels()
 
-            # update train loader with pseudo labels
+            # update train loader
             self.update_train_loader(all_labels)
 
             # update memory labels
@@ -161,7 +151,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                 clu_num, _, _ = self.label_summary(labels, gt_labels, indep_thres=indep_thres)
                 # rectify labels with active learning
                 if self._cfg.ACTIVE.RECTIFY:
-                    if self.trainer.iter >= self._cfg.ACTIVE.START_ITER and self.sampler.could_sample():
+                    if self.trainer.iter >= self._cfg.ACTIVE.START_EPOCH and self.sampler.could_sample():
                         clu_sim_mat = weight_matrix[:, :clu_num].clone()
                         self.sampler.sample(clu_sim_mat, dist_mat, labels, gt_labels)
                         labels, centers, num_classes, indep_thres, dist_mat, weight_matrix = self.rectify(features, labels, num_classes, indep_thres, dist_mat)

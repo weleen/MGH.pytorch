@@ -26,7 +26,7 @@ import random
 class SpCLLabelGeneratorHook(LabelGeneratorHook):
 
     def before_step(self):
-        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 \
+        if self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
                 or self.trainer.iter == self.trainer.start_iter:
             self._step_timer.reset()
 

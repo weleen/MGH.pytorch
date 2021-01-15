@@ -20,15 +20,14 @@ from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.solver import optim
 from fastreid.utils import comm
 from fvcore.common.checkpoint import PeriodicCheckpointer as _PeriodicCheckpointer
-from fastreid.utils.events import EventStorage, EventWriter
+from fastreid.utils.events import EventStorage, EventWriter, get_event_storage
 from fvcore.common.file_io import PathManager
-from fvcore.nn.precise_bn import get_bn_modules, update_bn_stats
+from fvcore.nn.precise_bn import update_bn_stats, get_bn_modules
 from fvcore.common.timer import Timer
 from fastreid.data import build_reid_train_loader
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans, label_generator_cdp
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
-from fastreid.utils.events import get_event_storage
 
 from .train_loop import HookBase
 
@@ -55,13 +54,16 @@ class CallbackHook(HookBase):
     Create a hook using callback functions provided by the user.
     """
 
-    def __init__(self, *, before_train=None, after_train=None, before_step=None, after_step=None):
+    def __init__(self, *, before_train=None, after_train=None, before_epoch=None, after_epoch=None,
+                 before_step=None, after_step=None):
         """
         Each argument is a function that takes one argument: the trainer.
         """
         self._before_train = before_train
+        self._before_epoch = before_epoch
         self._before_step = before_step
         self._after_step = after_step
+        self._after_epoch = after_epoch
         self._after_train = after_train
 
     def before_train(self):
@@ -75,6 +77,14 @@ class CallbackHook(HookBase):
         # Therefore, delete them to avoid circular reference.
         del self._before_train, self._after_train
         del self._before_step, self._after_step
+
+    def before_epoch(self):
+        if self._before_epoch:
+            self._before_epoch(self.trainer)
+
+    def after_epoch(self):
+        if self._after_epoch:
+            self._after_epoch(self.trainer)
 
     def before_step(self):
         if self._before_step:
@@ -177,6 +187,10 @@ class PeriodicWriter(HookBase):
             for writer in self._writers:
                 writer.write()
 
+    def after_epoch(self):
+        for writer in self._writers:
+            writer.write()
+
     def after_train(self):
         for writer in self._writers:
             writer.close()
@@ -192,11 +206,22 @@ class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):
     """
 
     def before_train(self):
-        self.max_iter = self.trainer.max_iter
+        self.max_epoch = self.trainer.max_epoch
+        if len(self.trainer.cfg.DATASETS.TESTS) == 1:
+            self.metric_name = self.trainer.cfg.TEST.METRIC_NAMES
+        else:
+            self.metric_name = tuple([self.trainer.cfg.DATASETS.TESTS[0] + "/{}".format(metric) for metric in tuple(self.trainer.cfg.TEST.METRIC_NAMES)])
 
-    def after_step(self):
+    def after_epoch(self):
         # No way to use **kwargs
-        self.step(self.trainer.iter)
+        storage = get_event_storage()
+        metric_dict = dict()
+        for metric in self.metric_name:
+            metric_dict.update({
+                metric: storage.latest()[metric][0] if metric in storage.latest() else -1
+            })
+        metric_dict.update({'epoch': self.trainer.epoch})
+        self.step(self.trainer.iter - 1, **metric_dict)
 
 
 class LRScheduler(HookBase):
@@ -236,7 +261,16 @@ class LRScheduler(HookBase):
     def after_step(self):
         lr = self._optimizer.param_groups[self._best_param_group_id]["lr"]
         self.trainer.storage.put_scalar("lr", lr, smoothing_hint=False)
-        self._scheduler.step()
+
+        next_iter = self.trainer.iter + 1
+        if next_iter < self.trainer.warmup_iters:
+            self._scheduler["warmup_sched"].step()
+
+    def after_epoch(self):
+        next_iter = self.trainer.iter
+        next_epoch = self.trainer.epoch + 1
+        if next_iter >= self.trainer.warmup_iters and next_epoch >= self.trainer.delay_epochs:
+            self._scheduler["lr_sched"].step()
 
 
 class AutogradProfiler(HookBase):
@@ -324,7 +358,10 @@ class EvalHook(HookBase):
         self.metric_names = metric_names
 
     def _do_eval(self, val=False):
-        results = self._func(val)
+        if val:
+            results = self._func(mode='val')
+        else:
+            results = self._func(mode='test')
 
         if results:
             assert isinstance(
@@ -345,10 +382,10 @@ class EvalHook(HookBase):
         # Remove extra memory cache of main process due to evaluation
         torch.cuda.empty_cache()
 
-    def after_step(self):
-        next_iter = self.trainer.iter + 1
-        is_final = next_iter == self.trainer.max_iter
-        if is_final or (self._period > 0 and next_iter % self._period == 0):
+    def after_epoch(self):
+        next_epoch = self.trainer.epoch + 1
+        is_final = next_epoch == self.trainer.max_epoch
+        if is_final or (self._period > 0 and next_epoch % self._period == 0):
             self._do_eval(self.do_val)
 
             if comm.is_main_process():
@@ -416,9 +453,9 @@ class PreciseBN(HookBase):
 
         self._data_iter = None
 
-    def after_step(self):
-        next_iter = self.trainer.iter + 1
-        is_final = next_iter == self.trainer.max_iter
+    def after_epoch(self):
+        next_epoch = self.trainer.epoch + 1
+        is_final = next_epoch == self.trainer.max_epoch
         if is_final:
             self.update_stats()
 
@@ -450,15 +487,18 @@ class PreciseBN(HookBase):
 
 
 class FreezeLayer(HookBase):
-    def __init__(self, model, open_layer_names, freeze_iters):
+    def __init__(self, model, open_layer_names, freeze_iters, fc_freeze_iters):
         self._logger = logging.getLogger(__name__)
         if hasattr(model, 'module'):
             model = model.module
         self.model = model
 
-        self.freeze_iters = freeze_iters
-
         self.open_layer_names = open_layer_names
+        self.freeze_iters = freeze_iters
+        self.fc_freeze_iters = fc_freeze_iters
+
+        self.is_frozen = False
+        self.fc_frozen = False
 
         # previous requires grad status
         param_grad = {}
@@ -468,40 +508,60 @@ class FreezeLayer(HookBase):
 
     def before_step(self):
         # Freeze specific layers
-        if self.trainer.iter < self.freeze_iters:
+        if self.trainer.iter < self.freeze_iters and not self.is_frozen:
             self.freeze_specific_layer()
 
         # Recover original layers status
-        elif self.trainer.iter == self.freeze_iters:
+        if self.trainer.iter >= self.freeze_iters and self.is_frozen:
             self.open_all_layer()
 
+        if self.trainer.max_iter - self.trainer.iter <= self.fc_freeze_iters \
+                and not self.fc_frozen:
+            self.freeze_classifier()
+
+    def freeze_classifier(self):
+        for p in self.model.heads.classifier.parameters():
+            p.requires_grad_(False)
+
+        self.fc_frozen = True
+        self._logger.info("Freeze classifier training for "
+                          "last {} iterations".format(self.fc_freeze_iters))
+                          
     def freeze_specific_layer(self):
+        open_layer_names = copy.deepcopy(self.open_layer_names)
         for name, module in self.model.named_modules():
-            for layer in self.open_layer_names:
+            for layer in open_layer_names:
                 if layer in name:
                     module.train()
                     for p in module.parameters():
-                        p.requires_grad = True
+                        p.requires_grad_(True)
                 else:
                     module.eval()
                     for p in module.parameters():
-                        p.requires_grad = False
+                        p.requires_grad_(False)
 
-        for layer in self.open_layer_names:
+        self.is_frozen = True
+        for layer in open_layer_names:
             for name, module in self.model.named_modules():
                 if layer in name:
-                    self.open_layer_names.remove(layer)
+                    open_layer_names.remove(layer)
                     break
-        if self.open_layer_names:
-            self._logger.info(f'{self.open_layer_names} is not an attribute of the model, will skip this layer')
+        if open_layer_names:
+            self._logger.info(f'{open_layer_names} is not an attribute of the model, will skip this layer')
         # check by run
-        # for name, param in self.model.named_parameters():
-        #     print(name, param.requires_grad)
+        self._logger.info('Print the parameters would be updated：')
+        for name, param in self.model.named_parameters():
+            if param.requires_grad:
+                self._logger.info(name)
 
     def open_all_layer(self):
         self.model.train()
         for name, param in self.model.named_parameters():
             param.requires_grad = self.param_grad[name]
+
+        self.is_frozen = False
+
+        self._logger.info(f'Open all layers for training')
 
 
 class SWA(HookBase):
@@ -539,9 +599,12 @@ class SWA(HookBase):
 
 
 class LabelGeneratorHook(HookBase):
+    """Generate pseudo labels 
+    """
     __factory = {
         'dbscan': label_generator_dbscan,
-        'kmeans': label_generator_kmeans
+        'kmeans': label_generator_kmeans,
+        'cdp': label_generator_cdp
     }
 
     def __init__(self, cfg, model):
@@ -570,9 +633,9 @@ class LabelGeneratorHook(HookBase):
         self._logger.info("Copy the dataloader from original dataloader with all groundtruth information.")
         self._data_loader_sup = copy.deepcopy(self.trainer.data_loader)
 
-    def before_step(self):
-        if self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 \
-                or self.trainer.iter == self.trainer.start_iter:
+    def before_epoch(self):
+        if self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
+                or self.trainer.epoch == self.trainer.start_epoch:
             self._step_timer.reset()
 
             # get memory features
@@ -589,8 +652,12 @@ class LabelGeneratorHook(HookBase):
                 self._logger.info(f"Reset optimizer")
                 self.trainer.optimizer.state = collections.defaultdict(dict)
 
-            # update classifier centers
-            self.update_classifier_centers(all_centers)
+            if hasattr(self.trainer, 'memory'):
+                # update memory labels, memory based methods such as SpCL
+                self.update_memory_labels(all_labels)
+            else:
+                # update classifier centers, methods such as SBL
+                self.update_classifier_centers(all_centers)
 
             comm.synchronize()
 
@@ -615,8 +682,25 @@ class LabelGeneratorHook(HookBase):
         else:
             self.memory_features = None
 
+    def update_memory_labels(self, all_labels):
+        sup_commdataset = self._data_loader_sup.dataset
+        sup_datasets = sup_commdataset.datasets
+        memory_labels = []
+        start_pid = 0
+        for idx, dataset in enumerate(sup_datasets):
+            if idx in self._cfg.PSEUDO.UNSUP:
+                labels = all_labels[self._cfg.PSEUDO.UNSUP.index(idx)]
+                memory_labels.append(torch.LongTensor(labels) + start_pid)
+                start_pid += max(labels) + 1
+            else:
+                num_pids = dataset.num_train_pids
+                memory_labels.append(torch.arange(start_pid, start_pid + num_pids))
+                start_pid += num_pids
+        memory_labels = torch.cat(memory_labels).view(-1)
+        self.trainer.memory._update_label(memory_labels)
+
     def update_labels(self):
-        self._logger.info(f"Start updating pseudo labels on iteration {self.trainer.iter}")
+        self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
             all_features = []
@@ -721,7 +805,7 @@ class LabelGeneratorHook(HookBase):
             cam_labels.append(cam_lbls)
 
         self.trainer.data_loader = build_reid_train_loader(self._cfg,
-                                                           datasets=sup_datasets,
+                                                           datasets=copy.deepcopy(sup_datasets),  # copy the sup_datasets
                                                            pseudo_labels=pid_labels,
                                                            cam_labels=cam_labels,
                                                            is_train=True,
@@ -749,7 +833,10 @@ class LabelGeneratorHook(HookBase):
     def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
         if cluster_metric:
             nmi_score, ari_score, purity_score = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%,purity_score: {purity_score*100:.2f}%")
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%")
+            self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
+            self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
+            self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)
@@ -767,6 +854,6 @@ class LabelGeneratorHook(HookBase):
 
         self.trainer.storage.put_scalar('num_clusters', clu_num, smoothing_hint=False)
         self.trainer.storage.put_scalar('num_outliers', unclu_ins_num, smoothing_hint=False)
-        self.trainer.storage.put_scalar('num_unused_instances', unused_ins_num,  smoothing_hint=False)
+        self.trainer.storage.put_scalar('num_unused_instances', unused_ins_num, smoothing_hint=False)
 
         return clu_num, unclu_ins_num, unused_ins_num

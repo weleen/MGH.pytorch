@@ -1,4 +1,4 @@
-_BASE_: "../Base-Strongerbaseline.yml"
+_BASE_: "../Base-SBS.yml"
 
 INPUT:
   SIZE_TRAIN: [256, 256]
@@ -14,8 +14,8 @@ SOLVER:
   ETA_MIN_LR: 7.7e-5
 
   IMS_PER_BATCH: 64
-  MAX_ITER: 60
-  DELAY_ITERS: 30
+  MAX_EPOCH: 60
+  DELAY_EPOCHS: 30
   WARMUP_ITERS: 10
   FREEZE_ITERS: 10
 

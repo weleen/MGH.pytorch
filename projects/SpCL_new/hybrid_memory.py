@@ -11,8 +11,8 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = torch.cat(all_gather(inputs), dim=0)
-        all_indexes = torch.cat(all_gather(indexes), dim=0)
+        all_inputs = all_gather_tensor(inputs)
+        all_indexes = all_gather_tensor(indexes)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 
@@ -62,6 +62,7 @@ class HybridMemory(nn.Module):
         # inputs: B*2048, features: L*2048
         inputs = hm(inputs, indexes, self.features, self.momentum)
         inputs /= self.temp
+        inputs = inputs.to(dtype=torch.float32) # convert the dtype to torch.float32
         B = inputs.size(0)
 
         def masked_softmax(vec, mask, dim=1, epsilon=1e-6):

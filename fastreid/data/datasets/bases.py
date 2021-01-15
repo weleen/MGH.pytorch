@@ -50,9 +50,11 @@ class Dataset(object):
             self.data = self.query
         elif self.mode == 'gallery':
             self.data = self.gallery
+        elif self.mode in ['val', 'test']:
+            self.data = self.query + self.gallery
         else:
             raise ValueError('Invalid mode. Got {}, but expected to be '
-                             'one of [train | query | gallery]'.format(self.mode))
+                             'one of [train | query | gallery | val | test]'.format(self.mode))
 
     def __getitem__(self, index):
         raise NotImplementedError
@@ -75,9 +77,9 @@ class Dataset(object):
         """
         pids = set()
         cams = set()
-        for _, pid, camid in data:
-            pids.add(pid)
-            cams.add(camid)
+        for info in data:
+            pids.add(info[1])
+            cams.add(info[2])
         return len(pids), len(cams)
 
     def get_num_pids(self, data):

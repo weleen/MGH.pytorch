@@ -4,3 +4,4 @@
 @contact: sherlockliao01@gmail.com
 """
 
+from .metrics import euclidean_dist, cosine_dist

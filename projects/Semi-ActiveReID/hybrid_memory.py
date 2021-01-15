@@ -12,8 +12,8 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = torch.cat(all_gather(inputs), dim=0)
-        all_indexes = torch.cat(all_gather(indexes), dim=0)
+        all_inputs = all_gather_tensor(inputs)
+        all_indexes = all_gather_tensor(indexes)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 
@@ -58,6 +58,19 @@ class HybridMemory(nn.Module):
     def _update_label(self, labels):
         self.labels.data.copy_(labels.long().to(self.labels.device))
 
+    @torch.no_grad()
+    def _weight_matrix(self, indexes):
+        B = indexes.size(0)
+        dist_mat = compute_distance_matrix(self.features[indexes].detach(), self.features.detach(), metric='cosine').cuda()
+
+        num_classes = self.labels.max() + 1
+        weight_matrix = torch.zeros(B, num_classes).float().cuda()
+        weight_matrix.index_add_(1, self.labels, dist_mat)
+        nums = torch.zeros(1, self.labels.max() + 1).float().cuda()
+        nums.index_add_(1, self.labels, torch.ones(1, self.num_memory).float().cuda())
+        weight_matrix = 1 - weight_matrix / nums
+        return weight_matrix
+
     def forward(self, inputs, indexes, weight=None, eps=1e-6, **kwargs):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
@@ -93,20 +106,11 @@ class HybridMemory(nn.Module):
             # 2. use mask
             # weight_mask = (weight > 0.01 / self.temp).float()
             # 3. select topk clusters as positive clusters
+            # weight_ori = weight.clone()
+            # weight = self._weight_matrix(indexes) / self.temp
             # mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
             # weight_mask = torch.zeros_like(weight)
             # weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
             # masked_weight = masked_softmax(weight, weight_mask)
             # loss = -(torch.log(masked_sim + eps) * masked_weight).mean(0).sum()
             return loss
-
-    def circle_loss(self, sim, label_matrix=None, type='class'):
-        if type =='class':
-            # class-wise label circle loss
-            pass
-        elif type == 'pair':
-            # pair-wise label circle loss
-            assert label_matrix is not None
-            pass
-        else:
-            raise NameError(f'{type} is not supported, please select from class and pair.')

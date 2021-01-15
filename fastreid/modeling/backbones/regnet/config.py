@@ -347,7 +347,7 @@ _C.RNG_SEED = 1
 _C.LOG_DEST = "stdout"
 
 # Log period in iters
-_C.LOG_PERIOD = 10
+_C.LOG_ITERS = 200
 
 # Distributed backend
 _C.DIST_BACKEND = "nccl"

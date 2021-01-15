@@ -16,11 +16,9 @@ def reid_losses(cfg, outs: dict, inputs: dict, prefix='', **kwargs) -> dict:
     loss_dict = {}
     for loss_name in cfg.MODEL.LOSSES.NAME:
         if loss_name == 'ContrastiveLoss':
+            assert 'memory' in kwargs, 'memory is not in kwargs.'
             pred_features = outputs['features']
-            if 'contrastive_loss_weight' in kwargs:
-                loss = {"contrastive_loss": kwargs['contrastive_loss_weight'] * kwargs['memory'](pred_features, inputs['index'], **kwargs)}
-            else:
-                loss = {"contrastive_loss": kwargs['memory'](pred_features, inputs['index'], **kwargs)}
+            loss = {"contrastive_loss": kwargs['memory'](pred_features, inputs['index'], **kwargs)}
         else:
             cls_outputs = outputs['cls_outputs']
             if loss_name == 'TripletLoss':

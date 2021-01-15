@@ -55,7 +55,7 @@ class SPCLTrainer(DefaultTrainer):
         features = torch.cat([features[f].unsqueeze(0) for f, _, _ in sorted(data_loader.dataset.img_items)], 0)
         self.memory.features = F.normalize(features, dim=1).to(cfg.MODEL.DEVICE)
 
-        super(DefaultTrainer, self).__init__(model, data_loader, optimizer, cfg.SOLVER.AMP_ENABLED)
+        super(DefaultTrainer, self).__init__(model, data_loader, optimizer, cfg.SOLVER.FP16_ENABLED)
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
         # Assume no other objects need to be checkpointed.
@@ -69,9 +69,9 @@ class SPCLTrainer(DefaultTrainer):
         )
         self.start_iter = 0
         if cfg.SOLVER.SWA.ENABLED:
-            self.max_iter = cfg.SOLVER.MAX_ITER + cfg.SOLVER.SWA.ITER
+            self.max_iter = cfg.SOLVER.MAX_EPOCH + cfg.SOLVER.SWA.ITER
         else:
-            self.max_iter = cfg.SOLVER.MAX_ITER
+            self.max_iter = cfg.SOLVER.MAX_EPOCH
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
@@ -204,7 +204,7 @@ class SPCLTrainer(DefaultTrainer):
             hooks.ClusterHook(
                 cfg.UNSUPERVISED.EPS,
                 cfg.UNSUPERVISED.EPS_GAP,
-                cfg.UNSUPERVISED.CLUSTER_ITER,
+                cfg.UNSUPERVISED.CLUSTER_EPOCH,
                 reset_opt=cfg.UNSUPERVISED.RESET_OPT
             )
         )
@@ -212,7 +212,7 @@ class SPCLTrainer(DefaultTrainer):
         if cfg.SOLVER.SWA.ENABLED:
             ret.append(
                 hooks.SWA(
-                    cfg.SOLVER.MAX_ITER,
+                    cfg.SOLVER.MAX_EPOCH,
                     cfg.SOLVER.SWA.PERIOD,
                     cfg.SOLVER.SWA.LR_FACTOR,
                     cfg.SOLVER.SWA.ETA_MIN_LR,
@@ -254,7 +254,7 @@ class SPCLTrainer(DefaultTrainer):
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
 
         # run writers in the end, so that evaluation metrics are written
-        ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
+        ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_ITERS))
 
         return ret
 

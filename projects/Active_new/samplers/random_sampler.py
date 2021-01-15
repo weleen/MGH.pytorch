@@ -9,8 +9,9 @@ from .build import ACTIVE_SAMPLERS_REGISTRY
 
 @ACTIVE_SAMPLERS_REGISTRY.register()
 class RandomSampler:
-    def __init__(self, cfg):
+    def __init__(self, cfg, index_set):
         self.triplet_set = set()
+        self.index_set = index_set
         self.K = cfg.ACTIVE.SAMPLE_K
         self.count = 0
 
@@ -23,7 +24,7 @@ class RandomSampler:
             mask = np.random.permutation(len(sim_mat[i]))
             for index2 in sim_mat[i][mask][:self.K]:
             # for index2 in sim_mat[i][:self.K]:
-                index2 = index2.item()
+                index2 = self.index_set[index2.item()]
                 if targets[index2] == targets[index1]:
                     pos_set.append(index2)
                 else:

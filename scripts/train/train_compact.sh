@@ -28,7 +28,7 @@ python projects/CompactReID/train_net.py --config-file projects/CompactReID/conf
                                          OUTPUT_DIR logs/CompactReID/market1501/AGW_R50/finetune \
                                          MODEL.LOSSES.NAME "('CrossEntropyLoss', 'TripletLoss')" \
                                          SOLVER.FREEZE_ITERS 60 \
-                                         SOLVER.MAX_ITER 60 \
+                                         SOLVER.MAX_EPOCH 60 \
                                          SOLVER.STEPS "[30, 50]" \
                                          COMPACT.LOSS_SCALE 0.
 
@@ -52,6 +52,6 @@ python projects/CompactReID/train_net.py --config-file projects/CompactReID/conf
                                          OUTPUT_DIR logs/CompactReID/dukemtmc/AGW_R50/finetune \
                                          MODEL.LOSSES.NAME "('CrossEntropyLoss', 'TripletLoss')" \
                                          SOLVER.FREEZE_ITERS 60 \
-                                         SOLVER.MAX_ITER 60 \
+                                         SOLVER.MAX_EPOCH 60 \
                                          SOLVER.STEPS "[30, 50]" \
                                          COMPACT.LOSS_SCALE 0.

@@ -9,8 +9,8 @@
 #!/usr/bin/env bash
 echo "Test SBL project"
 time=$(date +%F)
-python tools/train_net.py --config-file configs/SBL/Market1501/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/market1501
+python tools/train_net.py --config-file configs/SBL/Market1501/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/market1501 SOLVER.FP16_ENABLED True
 sleep 10s
-python tools/train_net.py --config-file configs/SBL/DukeMTMC/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/dukemtmc
+python tools/train_net.py --config-file configs/SBL/DukeMTMC/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/dukemtmc SOLVER.FP16_ENABLED True
 sleep 10s
-python tools/train_net.py --config-file configs/SBL/MSMT17/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/msmt17 TEST.DO_VAL True
+python tools/train_net.py --config-file configs/SBL/MSMT17/BoT_R50.yml --num-gpus 4 OUTPUT_DIR logs/test/$time/SBL/msmt17 TEST.DO_VAL True SOLVER.FP16_ENABLED True

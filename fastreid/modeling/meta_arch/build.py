@@ -59,34 +59,6 @@ def build_model(cfg):
     if cfg.MODEL.MEAN_NET:
         model = TeacherStudentNetwork(model, cfg.MODEL.MEAN_NET_ALPHA)
 
-    # convert to sync bn (optional)
-    rank, world_size = comm.get_rank(), comm.get_world_size()
-    sync_bn = (cfg.MODEL.BACKBONE.NORM == cfg.MODEL.HEADS.NORM == 'syncBN')
-    samples_per_gpu = cfg.SOLVER.IMS_PER_BATCH // world_size
-    if sync_bn and world_size > 1:
-        if samples_per_gpu < cfg.MODEL.SAMPLES_PER_BN:
-            total_batch_size = cfg.SOLVER.IMS_PER_BATCH
-            if total_batch_size > cfg.MODEL.SAMPLES_PER_BN:
-                assert total_batch_size % cfg.MODEL.SAMPLES_PER_BN == 0, "Samples for sync_bn cannot be evenly divided."
-                group_num = int(total_batch_size // cfg.MODEL.SAMPLES_PER_BN)
-                dist_groups = comm.simple_group_split(world_size, rank, group_num)
-            else:
-                dist_groups = None
-                logger.warning(
-                    f"'Dist_group' is switched off, since samples_per_bn "
-                    f"({cfg.MODEL.SAMPLES_PER_BN}) is larger than or equal to "
-                    f"total_batch_size ({total_batch_size})."
-                )
-            convert_sync_bn(model, dist_groups)
-        else:
-            logger.warning(
-                f"Sync BN is switched off, since samples ({cfg.MODEL.SAMPLES_PER_BN})"
-                f" per BN are fewer than or same as samples {samples_per_gpu}) per GPU."
-            )
-    else:
-        logger.warning(
-            "Sync BN is switched off, since the program is running without DDP or sync_bn is not enabled in the network."
-        )
     if frozen: cfg.freeze()
     
     return model

@@ -22,9 +22,9 @@ def add_activereid_config(cfg):
     _C.ACTIVE = CN()
 
     # ACTIVE parameter
-    _C.ACTIVE.START_ITER = 0
+    _C.ACTIVE.START_EPOCH = 0
     _C.ACTIVE.INITIAL_RATE = 0.1
-    _C.ACTIVE.TRAIN_ITER = 2
+    _C.ACTIVE.TRAIN_EPOCH = 2
 
     # Limitation
     _C.ACTIVE.SAMPLE_K = 5

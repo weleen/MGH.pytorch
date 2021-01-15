@@ -7,10 +7,66 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
 
-from .faiss_utils import index_init_cpu, index_init_gpu, search_index_pytorch, search_raw_array_pytorch
+from .faiss_utils import (
+    index_init_cpu,
+    index_init_gpu,
+    search_index_pytorch,
+    search_raw_array_pytorch,
+)
 
 logger = logging.getLogger(__name__)
 
+def compute_distance_matrix(input1, input2, metric='euclidean', **kwargs) -> torch.Tensor:
+    """A wrapper function for computing distance matrix.
+
+    Args:
+        input1 (torch.Tensor): 2-D feature matrix.
+        input2 (torch.Tensor): 2-D feature matrix.
+        metric (str, optional): "euclidean", "cosine", "jaccard" or "hamming".
+            Default is "euclidean".
+
+    Returns:
+        torch.Tensor: distance matrix.
+
+    Examples::
+       >>> from utils import metrics
+       >>> input1 = torch.rand(10, 2048)
+       >>> input2 = torch.rand(100, 2048)
+       >>> distmat = metrics.compute_distance_matrix(input1, input2)
+       >>> distmat.size() # (10, 100)
+    """
+    # check input
+    assert isinstance(input1, torch.Tensor)
+    assert input1.dim() == 2, 'Expected 2-D tensor, but got {}-D'.format(
+        input1.dim()
+    )
+    if input2 is not None: 
+        assert isinstance(input2, torch.Tensor)
+        assert input2.dim() == 2, 'Expected 2-D tensor, but got {}-D'.format(
+            input2.dim()
+        )
+        assert input1.size(1) == input2.size(1)
+
+    if metric == 'euclidean':
+        distmat = euclidean_dist(input1, input2)
+    elif metric == 'cosine':
+        distmat = cosine_dist(input1, input2)
+    elif metric == 'hamming':
+        distmat = hamming_distance(input1, input2)
+    elif metric == 'jaccard':
+        if input2 is not None:
+            feat = torch.cat((input1, input2), dim=0)
+            distmat = jaccard_dist(feat, **kwargs)
+            distmat = distmat[:input1.size(0), input1.size(0):]
+        else:
+            distmat = jaccard_dist(input1, **kwargs)
+    else:
+        raise ValueError('Unknown distance metric: {}. '
+                         'Please choose metric from [euclidean | cosine | hamming | jaccard'.format(metric)
+        )
+        
+
+    return distmat
 
 def k_reciprocal_neigh(initial_rank, i, k1):
     forward_k_neigh_index = initial_rank[i, :k1 + 1]
@@ -104,7 +160,6 @@ def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
     for i in range(N):
         temp_min = np.zeros((1, N), dtype=mat_type)
         indNonZero = np.where(V[i, :] != 0)[0]
-        indImages = []
         indImages = [invIndex[ind] for ind in indNonZero]
         for j in range(len(indNonZero)):
             temp_min[0, indImages[j]] = temp_min[0, indImages[j]] + np.minimum(
@@ -119,7 +174,7 @@ def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
     jaccard_dist[pos_bool] = 0.0
     logger.info("Jaccard distance computing time cost: {}".format(time.time() - start))
 
-    return jaccard_dist
+    return torch.Tensor(jaccard_dist)
 
 
 @torch.no_grad()
@@ -177,53 +232,6 @@ def hamming_distance(input1, input2):
     c1 = input1.matmul(input2_m1.T)
     c2 = input1_m1.matmul(input2.T)
     return torch.abs(c1 + c2)
-
-
-def compute_distance_matrix(input1, input2, metric='euclidean', **kwargs):
-    """A wrapper function for computing distance matrix.
-
-    Args:
-        input1 (torch.Tensor): 2-D feature matrix.
-        input2 (torch.Tensor): 2-D feature matrix.
-        metric (str, optional): "euclidean", "cosine", "jaccard" or "hamming".
-            Default is "euclidean".
-
-    Returns:
-        torch.Tensor: distance matrix.
-
-    Examples::
-       >>> from utils import metrics
-       >>> input1 = torch.rand(10, 2048)
-       >>> input2 = torch.rand(100, 2048)
-       >>> distmat = metrics.compute_distance_matrix(input1, input2)
-       >>> distmat.size() # (10, 100)
-    """
-    # check input
-    assert isinstance(input1, torch.Tensor)
-    assert isinstance(input2, torch.Tensor)
-    assert input1.dim() == 2, 'Expected 2-D tensor, but got {}-D'.format(
-        input1.dim()
-    )
-    assert input2.dim() == 2, 'Expected 2-D tensor, but got {}-D'.format(
-        input2.dim()
-    )
-    assert input1.size(1) == input2.size(1)
-
-    if metric == 'euclidean':
-        distmat = euclidean_dist(input1, input2)
-    elif metric == 'cosine':
-        distmat = cosine_dist(input1, input2)
-    elif metric == 'hamming':
-        distmat = hamming_distance(input1, input2)
-    elif metric == 'jaccard':
-        distmat = jaccard_dist(input1, **kwargs)
-    else:
-        raise ValueError(
-            'Unknown distance metric: {}. '
-            'Please choose either "euclidean" or "cosine"'.format(metric)
-        )
-
-    return distmat
 
 
 def cluster_accuracy(output, target):

@@ -10,8 +10,6 @@ FilePath: /fast-reid/projects/SpCL_new/hooks.py
 import time
 import datetime
 import collections
-from fastreid.utils.metrics import compute_distance_matrix
-from fastreid.engine.train_loop import HookBase
 import itertools
 import logging
 from sklearn.metrics import confusion_matrix
@@ -20,13 +18,15 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import scipy
+
+from fastreid.utils.metrics import compute_distance_matrix
 from fastreid.utils import comm
 from fastreid.engine.hooks import *
 from fvcore.common.timer import Timer
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans
-from fastreid.utils.events import get_event_storage
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans, label_generator_cdp
+from sampling_method.sampler import dist2classweight, set_labeled_instances, InstaceSampler, PairedSampler, TripletSampler
 
 
 class SALLabelGeneratorHook(LabelGeneratorHook):
@@ -34,9 +34,9 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
     """
     __factory = {
         'dbscan': label_generator_dbscan,
-        'kmeans': label_generator_kmeans
+        'kmeans': label_generator_kmeans,
+        'cdp': label_generator_cdp
     }
-
     def __init__(self, cfg, model):
         self._logger = logging.getLogger('fastreid.' + __name__)
         self._step_timer = Timer()
@@ -47,11 +47,10 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         self._data_loader_cluster = build_reid_train_loader(cfg, is_train=False, for_clustering=True)
         # save the original unlabeled dataset info
         self._common_dataset = self._data_loader_cluster.dataset
-        assert len(self._common_dataset.datasets) == 1, "Support only single dataset."
-        # unsupervised learning
+        assert len(self._common_dataset.datasets) == 1, "Only support single dataset."
+
         assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
-        assert cfg.PSEUDO.NAME in self.__factory.keys(), \
-            f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
+        assert cfg.PSEUDO.NAME in self.__factory.keys(), f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
         self.label_generator = self.__factory[cfg.PSEUDO.NAME]
 
         self.num_classes = None
@@ -59,29 +58,27 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         if cfg.PSEUDO.NAME == 'kmeans':
             self.num_classes = cfg.PSEUDO.NUM_CLUSTER
 
-        # active learning
-        if cfg.is_frozen():
-            cfg.defrost()
-            cfg.ACTIVE.START_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.END_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.SAMPLE_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.freeze()
+        if cfg.ACTIVE.SAMPLING_METHOD == 'instance':
+            self.sampler = InstaceSampler(cfg, dataset=self._common_dataset.img_items)
+        elif cfg.ACTIVE.SAMPLING_METHOD == 'pair':
+            self.sampler = PairedSampler(cfg, dataset=self._common_dataset.img_items)
+        elif cfg.ACTIVE.SAMPLING_METHOD == 'triplet':
+            self.sampler = TripletSampler(cfg, dataset=self._common_dataset.img_items)
         else:
-            cfg.ACTIVE.START_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.END_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-            cfg.ACTIVE.SAMPLE_ITER *= cfg.DATALOADER.ITERS_PER_EPOCH
-
-        self.sampler = Sampler(cfg, data_size=len(self._common_dataset.img_items))
+            raise ValueError("Only support sampling method from [instance | pair | triplet], {} is not recognized.".format(cfg.ACTIVE.SAMPLING_METHOD))
 
     def could_active_sampling(self):
-        return self.trainer.iter % self._cfg.ACTIVE.SAMPLE_ITER == 0 \
-                and self.trainer.iter >= self._cfg.ACTIVE.START_ITER \
-                and self.trainer.iter < self._cfg.ACTIVE.END_ITER
+        return self.trainer.epoch % self._cfg.ACTIVE.SAMPLE_EPOCH == 0 \
+                and self.trainer.epoch >= self._cfg.ACTIVE.START_EPOCH \
+                and self.trainer.epoch < self._cfg.ACTIVE.END_EPOCH \
+                and (self._cfg.ACTIVE.RECTIFY or self._cfg.ACTIVE.BUILD_DATALOADER)
+
     def could_pseudo_labeling(self):
-        return self.trainer.iter % self._cfg.PSEUDO.CLUSTER_ITER == 0 or self.trainer.iter == self.trainer.start_iter
-    def before_step(self):
-        if self.could_pseudo_labeling() or (self.trainer.iter % self._cfg.ACTIVE.SAMPLE_ITER == 0 \
-                and self.trainer.iter >= self._cfg.ACTIVE.START_ITER):
+        return self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
+            or self.trainer.iter == self.trainer.start_iter
+
+    def before_epoch(self):
+        if self.could_pseudo_labeling() or self.could_active_sampling():
             self._step_timer.reset()
 
             # get memory features
@@ -90,22 +87,22 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             # generate pseudo labels and centers
             all_labels, all_centers, active_labels = self.update_labels()
 
-            if self.could_pseudo_labeling():
-                self._logger.info(f"Update unsupervised data loader.")
-                self.update_train_loader(all_labels)
-                # update memory labels
-                self.update_memory_labels(all_labels)
+            self._logger.info(f"Update unsupervised data loader.")
+            self.update_train_loader(all_labels)
+            # update memory labels
+            self.update_memory_labels(all_labels)
 
-            if self.trainer.iter % self._cfg.ACTIVE.SAMPLE_ITER == 0:
-                if self._cfg.ACTIVE.BUILD_DATALOADER:
-                    self._logger.info(f"Update active data loader.")
-                    self.update_active_loader(active_labels)
+            if self.could_active_sampling() and self._cfg.ACTIVE.BUILD_DATALOADER:
+                self._logger.info(f"Update active data loader.")
+                self.update_active_loader(active_labels)
+
+            comm.synchronize()
 
             sec = self._step_timer.seconds()
             self._logger.info(f"Finished updating label in {str(datetime.timedelta(seconds=int(sec)))}")
 
     def update_labels(self):
-        self._logger.info(f"Start updating labels on iteration {self.trainer.iter}")
+        self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
             features, gt_labels = extract_features(self.model,
@@ -132,6 +129,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         )
         if self._cfg.PSEUDO.NORM_CENTER:
             centers = F.normalize(centers, p=2, dim=1)
+        comm.synchronize()
 
         # calculate class-wise weight matrix
         class_weight_matrix = dist2classweight(dist_mat, num_classes, labels)
@@ -139,10 +137,10 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
         # active sampling 
         if self.could_active_sampling() and self.sampler.could_sample():
-            self.sampler.sample(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
+            self.sampler.query_sample(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
 
         # node label propagation
-        if self._cfg.ACTIVE.NODE_PROP and len(self.sampler.query_set) > 0:
+        if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
             active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
             classes = list(set(active_labels))
             active_labels = [classes.index(i) for i in active_labels]
@@ -153,14 +151,14 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             active_labels = [classes.index(gt_query[labeled_index.index(i)]) if i in labeled_index else -1 for i in range(len(labels))]
 
         # edge label propagation and rectification
-        if self._cfg.ACTIVE.RECTIFY and len(self.sampler.query_set) > 0:
+        if self._cfg.ACTIVE.RECTIFY and self.sampler.index_label.sum() > 0:
             labels, centers, num_classes, indep_thres, dist_mat, class_weight_matrix = self.rectify(features, labels, num_classes, indep_thres, dist_mat, gt_labels)
         
         if self._cfg.PSEUDO.MEMORY.WEIGHTED:
             # set weight matrix for calculating weighted contrastive loss.
             self.trainer.weight_matrix = class_weight_matrix
 
-        if self._cfg.ACTIVE.NODE_PROP and len(self.sampler.query_set) > 0:
+        if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
             all_labels.append(active_labels)
         else:
             all_labels.append(labels.tolist())
@@ -171,26 +169,9 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
         return all_labels, all_centers, active_labels
 
-    def update_memory_labels(self, all_labels):
-        sup_commdataset = self._data_loader_sup.dataset
-        sup_datasets = sup_commdataset.datasets
-        memory_labels = []
-        start_pid = 0
-        for idx, dataset in enumerate(sup_datasets):
-            if idx in self._cfg.PSEUDO.UNSUP:
-                labels = all_labels[self._cfg.PSEUDO.UNSUP.index(idx)]
-                memory_labels.append(torch.LongTensor(labels) + start_pid)
-                start_pid += max(labels) + 1
-            else:
-                num_pids = dataset.num_train_pids
-                memory_labels.append(torch.arange(start_pid, start_pid + num_pids))
-                start_pid += num_pids
-        memory_labels = torch.cat(memory_labels).view(-1)
-        self.trainer.memory._update_label(memory_labels)
-
     def rectify(self, features, labels, num_classes, indep_thres, dist_mat, gt_labels):
         if self._cfg.ACTIVE.EDGE_PROP:
-            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_iter=self._cfg.ACTIVE.EDGE_PROP_MAX_ITER)
+            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_step=self._cfg.ACTIVE.EDGE_PROP_STEP)
             torch.cuda.empty_cache()
         else:
             new_dist_mat, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
@@ -208,6 +189,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         new_weight_matrix = dist2classweight(new_dist_mat, new_num_classes, new_labels)
         _, _, _ = self.label_summary(new_labels, gt_labels, indep_thres=new_indep_thres)
         return new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat, new_weight_matrix
+
     def update_active_loader(self, pseudo_labels, **kwargs):
         self._logger.info('Build active dataloader.')
 
@@ -232,7 +214,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                                                         cam_labels=[cam_labels],
                                                         is_train=True,
                                                         relabel=False)
-        self.trainer._data_loader_iter_active = iter(self.trainer.data_loader_active)
+        self.trainer._data_loader_active_iter = iter(self.trainer.data_loader_active)
         # update cfg
         if self._cfg.is_frozen():
             self._cfg.defrost()
@@ -241,7 +223,8 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         else:
             self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
 
-    def edge_label_propagation(self, dist_mat: torch.Tensor, gt_labels, max_iter=50, alpha=0.99, debug=False):
+    def edge_label_propagation(self, dist_mat: torch.Tensor, gt_labels, step=50, alpha=0.99, debug=False):
+        # TODO: try cdp graph propagation
         """
         edge label propagation. 
         Ensemble Diffusion for Retrieval, eq(3)
@@ -264,7 +247,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         im_time = time.time()
         if debug: self._logger.info('preprocess cost {} s'.format(im_time - start_time))
         # iterative propagation
-        for i in range(max_iter):
+        for i in range(step):
             time1 = time.time()
             error_dist_mat = (1 - mask) * (alpha * (S @ error_dist_mat @ S) + (1 - alpha) * I) + mask * labeled_dist_mat
             time2 = time.time()
@@ -276,7 +259,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         if debug: self._logger.info('residual label propagation cost {} s'.format(time.time() - time3))
         return new_dist_mat.cpu().data
 
-    def node_label_propagation(self, X, true_labels, k = 50, max_iter = 20) -> list: 
+    def node_label_propagation(self, X, true_labels, k = 50, max_step = 20) -> list: 
         self._logger.info('Perform node label propagation')
         alpha = 0.99
         labels = np.asarray(true_labels)
@@ -303,7 +286,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         self._logger.info('kNN Search done in %d seconds' % elapsed)
 
         # only k nearest propagation
-        mask = I[labeled_idx][:, :self._cfg.ACTIVE.NODE_PROP_K + 1].reshape(-1)
+        mask = I[labeled_idx][:, :self._cfg.ACTIVE.NODE_PROP_STEP + 1].reshape(-1)
         
         # Create the graph
         D = D[:,1:] ** 3
@@ -328,7 +311,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             cur_idx = labeled_idx[np.where(labels[labeled_idx] == classes[i])]
             y = np.zeros((N,))
             y[cur_idx] = 1.0 / cur_idx.shape[0]
-            f, _ = scipy.sparse.linalg.cg(A, y, tol=1e-6, maxiter=max_iter)
+            f, _ = scipy.sparse.linalg.cg(A, y, tol=1e-6, maxiter=max_step)
             Z[:,i] = f
 
         # Handle numberical errors
@@ -343,7 +326,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         p_labels = np.argmax(probs_l1,1)
 
         masked_labels = p_labels.copy()
-        if self._cfg.ACTIVE.NODE_PROP_K != -1: 
+        if self._cfg.ACTIVE.NODE_PROP_STEP != -1: 
             masked_labels[list(set(range(N))-set(mask))] = -1
         active_labels = masked_labels.tolist()
 
@@ -361,143 +344,3 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
  
         return active_labels
 
-class Sampler:
-    def __init__(self, cfg, data_size):
-        self._logger = logging.getLogger('fastreid.' + __name__)
-        self.query_set = set()
-        # sampling limitation
-        self.M = int(cfg.ACTIVE.SAMPLE_M * data_size)
-        self.query_sample_num = int(self.M * cfg.ACTIVE.SAMPLE_ITER // (cfg.ACTIVE.END_ITER - cfg.ACTIVE.START_ITER))
-        # sampling method
-        self.query_func = cfg.ACTIVE.SAMPLER.QUERY_FUNC
-        # extra variables
-        self.data_size = data_size
-
-    def sample(self, dist_mat, pred_labels, pred_num_classes, targets, cluster_num=None, features=None, centers=None):
-        # get similarity matrix based on clusters
-        clu_sim_mat = dist2classweight(dist_mat, pred_num_classes, pred_labels)
-        if cluster_num:
-            clu_sim_mat = clu_sim_mat[:, :cluster_num]
-        query_index = self.query_sample(clu_sim_mat, dist_mat, pred_labels, cluster_num, features=features, centers=centers)
-        self.query_set.update(query_index)
-        self.query_summary(query_index, pred_labels, targets)
-
-    def query_sample(self, clu_sim_mat, dist_mat, pred_labels, cluster_num, features=None, centers=None, temp=0.05):
-        sim_mat = clu_sim_mat / temp
-        assert self.query_sample_num != 0
-        query_index_list = list()
-
-        if self.query_func == 'random':
-            query_index = torch.randperm(self.data_size)
-        elif self.query_func == 'entropy':
-            sim_prob = sim_mat.softmax(dim=1)
-            sim_entropy = (-sim_prob * (sim_prob + 1e-6).log()).sum(dim=1)
-            query_index = sim_entropy.argsort(descending=True)
-        elif self.query_func == 'confidence':
-            sim_max_prob = sim_mat.max(dim=1)[0]
-            query_index = sim_max_prob.argsort()
-        elif self.query_func == 'diff':
-            sim_sorted = sim_mat.sort(descending=True)[0]
-            sim_diff = sim_sorted[:, 0] - sim_sorted[:, 1]
-            query_index = sim_diff.argsort()
-        elif self.query_func == 'cluster':
-            query_index = self.cluster_sample(dist_mat, pred_labels, features, centers, cluster_num)
-        else:
-            raise NotImplemented(f"{self.query_func} is not supported in query selection.")
-        
-        for idx in query_index:
-            if len(query_index_list) >= self.query_sample_num:
-                break
-            if idx not in self.query_set:
-                query_index_list.append(idx.item())               
-
-        return query_index_list
-        
-    def cluster_sample(self, dist_mat, pred_labels, features, centers, cluster_num):
-        # pass
-        img_per_cluster = 1
-        center_labels = list(collections.Counter(pred_labels.tolist()).items())
-        center_labels.sort(key=lambda d:d[1], reverse=True)
-        
-        sel_clusters = [d[0] for d in center_labels[:cluster_num]]
-        
-        dist = compute_distance_matrix(centers[sel_clusters], features)
-        indexes = dist.sort(dim=1)[1]
-
-        labeled_idx = []
-        for i, cluster in enumerate(sel_clusters):
-            labeled_idx.append(indexes[i][:img_per_cluster])
-        labeled_idx = torch.cat(labeled_idx)
-        return labeled_idx
-
-    def query_summary(self, query_index, pred_labels, targets):
-        selected_pairs = [(i, j) for i in query_index for j in query_index if i!=j]
-        pred_matrix = (pred_labels.view(-1, 1) == pred_labels.view(1, -1))
-        targets_matrix = (targets.view(-1, 1) == targets.view(1, -1))
-        pred_selected = np.array([pred_matrix[tuple(i)].item() for i in selected_pairs])
-        gt_selected = np.array([targets_matrix[tuple(i)].item() for i in selected_pairs])
-        tn, fp, fn, tp = confusion_matrix(gt_selected, pred_selected, labels=[0,1]).ravel()  # labels=[0,1] to force output 4 values
-        self._logger.info('Active selector summary: ')
-        self._logger.info('            |       |     Prediction     |')
-        self._logger.info('------------------------------------------')
-        self._logger.info('            |       |  True    |  False  |')
-        self._logger.info('------------------------------------------')
-        self._logger.info('GroundTruth | True  |   {:5d}  |  {:5d}  |'.format(tp, fn))
-        self._logger.info('            | False |   {:5d}  |  {:5d}  |'.format(fp, tn))
-        self._logger.info(f'size of query_set is {len(self.query_set)}')
-        # storage summary into tensorboard
-        storage = get_event_storage()
-        storage.put_scalar("tn", tn)
-        storage.put_scalar("fp", fp)
-        storage.put_scalar("fn", fn)
-        storage.put_scalar("tp", tp)
-
-    def could_sample(self):
-        return len(self.query_set) < self.M
-
-
-def dist2classweight(dist_mat, num_classes, labels):
-    """
-    calculate class-wise weight matrix from dist matrix.
-    """
-    weight_matrix = []
-    for i in range(num_classes):
-        index = torch.where(labels == i)[0].tolist()
-        dist_ = dist_mat[:, index].mean(1)
-        weight_matrix.append(dist_)
-    weight_matrix = 1 - torch.stack(weight_matrix).t()
-    return weight_matrix
-
-def set_labeled_instances(sampler, dist_mat, gt_labels):
-    new_dist_mat = dist_mat
-    labeled_dist_mat = -torch.ones_like(dist_mat)
-    for i in sampler.query_set:
-        for j in sampler.query_set:
-            if gt_labels[i] == gt_labels[j]:
-                new_dist_mat[i, j] = 0
-                new_dist_mat[j, i] = 0
-                labeled_dist_mat[i, j] = 0
-                labeled_dist_mat[j, i] = 0
-            else:
-                new_dist_mat[i, j] = 1
-                new_dist_mat[j, i] = 1
-                labeled_dist_mat[i, j] = 1
-                labeled_dist_mat[j, i] = 1
-    return new_dist_mat, labeled_dist_mat
-
-def set_labeled_instances_np(sampler, dist_mat, gt_labels):
-    new_dist_mat = dist_mat.copy()
-    labeled_dist_mat = -np.ones_like(dist_mat)
-    for i in sampler.query_set:
-        for j in sampler.query_set:
-            if gt_labels[i] == gt_labels[j]:
-                new_dist_mat[i, j] = 0
-                new_dist_mat[j, i] = 0
-                labeled_dist_mat[i, j] = 0
-                labeled_dist_mat[j, i] = 0
-            else:
-                new_dist_mat[i, j] = 1
-                new_dist_mat[j, i] = 1
-                labeled_dist_mat[i, j] = 1
-                labeled_dist_mat[j, i] = 1
-    return new_dist_mat, labeled_dist_mat
