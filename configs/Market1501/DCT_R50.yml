@@ -1,0 +1,7 @@
+_BASE_: "../Base-DCT.yml"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/DCT_R50/market1501"

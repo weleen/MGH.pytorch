@@ -1,0 +1,7 @@
+_BASE_: "../Base-DCT.yml"
+
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
+
+OUTPUT_DIR: "logs/DCT_R50/dukemtmc"
