@@ -84,7 +84,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     train_set = CommDataset(datasets, train_transforms, relabel=relabel)
 
     iters_per_epoch = len(train_set) // cfg.SOLVER.IMS_PER_BATCH
-    cfg.SOLVER.MAX_ITER *= iters_per_epoch
+    cfg.SOLVER.MAX_EPOCH *= iters_per_epoch
     num_workers = cfg.DATALOADER.NUM_WORKERS
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()

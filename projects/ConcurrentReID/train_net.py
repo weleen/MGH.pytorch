@@ -1,7 +1,7 @@
 '''
 Author: WuYiming
 Date: 2020-10-28 00:11:23
-LastEditTime: 2020-11-22 00:06:45
+LastEditTime: 2020-12-02 22:23:25
 LastEditors: Please set LastEditors
 Description: ConcurrentReID
 FilePath: /fast-reid/projects/ConcurrentReID/train_net.py
@@ -39,14 +39,14 @@ class ConcurrentTrainer(DefaultTrainer):
         return build_reid_train_loader(cfg)
 
     @classmethod
-    def build_test_loader(cls, cfg, dataset_name, val=False):
+    def build_test_loader(cls, cfg, dataset_name, mode='test'):
         """
         Returns:
             iterable
         It now calls :func:`fastreid.data.build_detection_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
-        return build_reid_test_loader(cfg, dataset_name, val)
+        return build_reid_test_loader(cfg, dataset_name, mode=mode)
 
     def run_step(self):
         """
@@ -66,10 +66,7 @@ class ConcurrentTrainer(DefaultTrainer):
 
         with amp.autocast(enabled=self.amp_enabled):
             # manipulate inputs
-            data = manipulate_data(data, times=self.cfg.INPUT.MUTUAL.TIMES, 
-                                    concurrent=self.cfg.CONCURRENT.ENABLED, 
-                                    block_size=self.cfg.CONCURRENT.BLOCK_SIZE,
-                                    shuffle=self.cfg.CONCURRENT.SHUFFLE)
+            data = manipulate_data(data, cfg)
             outs = self.model(data)
             # Compute loss
             if hasattr(self.model, 'module'):
@@ -103,12 +100,19 @@ class ConcurrentTrainer(DefaultTrainer):
             """
             self.optimizer.step()
 
-def manipulate_data(data: dict, times:int, concurrent=False, block_size=(2, 2), shuffle=False) -> dict:
+def manipulate_data(data: dict, cfg) -> dict:
     """
     flatten input images
     """
-    if not concurrent:
+    mutual = cfg.INPUT.MUTUAL.ENABLED
+    times = cfg.INPUT.MUTUAL.TIMES
+    concurrent = cfg.CONCURRENT.ENABLED
+    block_size = cfg.CONCURRENT.BLOCK_SIZE
+    shuffle = cfg.CONCURRENT.SHUFFLE
+
+    if not mutual:
         return data
+
     new_data = copy.deepcopy(data)
     # unpack all inputs
     images = data['images']
@@ -116,31 +120,38 @@ def manipulate_data(data: dict, times:int, concurrent=False, block_size=(2, 2), 
     camids = data['camids']
     img_paths = data['img_paths']
     index = data['index']
-    
     assert images.size(1) == times
-    bs_h, bs_w = block_size
-    assert bs_h * bs_w == times
-    b, _, c, h, w = images.size()
-    # reshape input data
-    targets = targets.view(-1, 1).repeat(1, times).view(-1)
-    camids = camids.view(-1, 1).repeat(1, times).view(-1)
-    img_paths = np.array(img_paths).reshape(-1, 1).repeat(times, axis=1).reshape(-1).tolist()
-    index = index.view(-1, 1).repeat(1, times).view(-1)
-    images = images.view(-1, *images.size()[2:])
-    # permutate data
-    if shuffle:
-        seed = comm.shared_random_seed()
-        np.random.seed(seed)
-        permute_index = np.random.permutation(range(images.size(0))).tolist()
+    if concurrent:
+        bs_h, bs_w = block_size
+        assert bs_h * bs_w == times
+        b, _, c, h, w = images.size()
+        # reshape input data
+        targets = targets.view(-1, 1).repeat(1, times).view(-1)
+        camids = camids.view(-1, 1).repeat(1, times).view(-1)
+        img_paths = np.array(img_paths).reshape(-1, 1).repeat(times, axis=1).reshape(-1).tolist()
+        index = index.view(-1, 1).repeat(1, times).view(-1)
+        images = images.view(-1, *images.size()[2:])
+        # permutate data
+        if shuffle:
+            seed = comm.shared_random_seed()
+            np.random.seed(seed)
+            permute_index = np.random.permutation(range(images.size(0))).tolist()
+        else:
+            permute_index = np.arange(images.size(0)).tolist()
+        targets = targets[permute_index]
+        camids = camids[permute_index]
+        img_paths = [img_paths[i] for i in permute_index]
+        index = index[permute_index]
+        images = images[permute_index].view(b, times, *images.size()[1:])
+        # reshape
+        images = images.transpose(1, 2).reshape(b, c, bs_h, bs_w, h, w).transpose(3, 4).reshape(b, c, bs_h * h, bs_w * w).contiguous()
     else:
-        permute_index = np.arange(images.size(0)).tolist()
-    targets = targets[permute_index]
-    camids = camids[permute_index]
-    img_paths = [img_paths[i] for i in permute_index]
-    index = index[permute_index]
-    images = images[permute_index].view(b, times, *images.size()[1:])
-    # reshape
-    images = images.transpose(1, 2).reshape(b, c, bs_h, bs_w, h, w).transpose(3, 4).reshape(b, c, bs_h * h, bs_w * w).contiguous()
+        b, _, c, h, w = images.size()
+        images = images.view(-1, c, h, w)
+        targets = targets.view(-1, 1).repeat(1, times).view(-1)
+        camids = camids.view(-1, 1).repeat(1, times).view(-1)
+        img_paths = np.array(img_paths).reshape(-1, 1).repeat(times, axis=1).reshape(-1).tolist()
+        index = index.view(-1, 1).repeat(1, times).view(-1)
 
     # regroup images
     new_data['images'] = images
