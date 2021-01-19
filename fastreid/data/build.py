@@ -28,7 +28,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     dataset_names = cfg.DATASETS.NAMES
     if for_clustering:
         assert is_train is False, "is_train should be False for clustering."
-        dataset_names = [dataset_names[idx] for idx in cfg.PSEUDO.UNSUP]
+        dataset_names = tuple([dataset_names[idx] for idx in cfg.PSEUDO.UNSUP])
 
     if datasets is None:
         # Generally for the first epoch, the datasets have not been built.

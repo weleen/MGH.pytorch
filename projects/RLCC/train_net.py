@@ -25,7 +25,9 @@ from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
 
-from hybrid_memory import HybridMemory
+from hooks import RLCCLabelGeneratorHook
+from hybrid_memory import RLCCMemory
+from config import add_rlcc_config
 
 try:
     import apex
@@ -54,12 +56,13 @@ class SPCLTrainer(DefaultTrainer):
             else:
                 num_memory += set.num_train_pids
 
-        self.memory = HybridMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM,
-                                   num_memory=num_memory,
-                                   temp=cfg.PSEUDO.MEMORY.TEMP,
-                                   momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
-                                   soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
-                                   soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH).to(cfg.MODEL.DEVICE)
+        self.memory = RLCCMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM,
+                                 num_memory=num_memory,
+                                 temp=cfg.PSEUDO.MEMORY.TEMP,
+                                 momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
+                                 soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
+                                 soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH,
+                                 rlcc_start_epoch=cfg.PSEUDO.RLCC.START_EPOCH).to(cfg.MODEL.DEVICE)
         features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
@@ -89,6 +92,82 @@ class SPCLTrainer(DefaultTrainer):
         self.memory._update_feature(torch.cat(memory_features))
         self.memory._update_label(torch.cat(memory_labels))
         del data_loader, common_dataset, features
+        
+    def build_hooks(self):
+        """
+        Build a list of default hooks, including timing, evaluation,
+        checkpointing, lr scheduling, precise BN, writing events.
+        Returns:
+            list[HookBase]:
+        """
+        cfg = self.cfg.clone()
+        cfg.defrost()
+        cfg.DATALOADER.NUM_WORKERS = 0  # save some memory and time for PreciseBN
+        cfg.DATASETS.NAMES = tuple([cfg.TEST.PRECISE_BN.DATASET])  # set dataset name for PreciseBN
+
+        ret = [
+            hooks.IterationTimer(),
+            hooks.LRScheduler(self.optimizer, self.scheduler),
+        ]
+
+        if cfg.PSEUDO.ENABLED:
+            assert len(cfg.PSEUDO.UNSUP) > 0, "there are no dataset for unsupervised learning"
+            ret.append(
+                RLCCLabelGeneratorHook(
+                    self.cfg,
+                    self.model
+                )
+            )
+
+        if cfg.SOLVER.SWA.ENABLED:
+            ret.append(
+                hooks.SWA(
+                    cfg.SOLVER.MAX_EPOCH,
+                    cfg.SOLVER.SWA.PERIOD,
+                    cfg.SOLVER.SWA.LR_FACTOR,
+                    cfg.SOLVER.SWA.ETA_MIN_LR,
+                    cfg.SOLVER.SWA.LR_SCHED,
+                )
+            )
+
+        if cfg.TEST.PRECISE_BN.ENABLED and hooks.get_bn_modules(self.model):
+            ret.append(hooks.PreciseBN(
+                # Run at the same freq as (but before) evaluation.
+                self.model,
+                # Build a new data loader to not affect training
+                self.build_train_loader(cfg),
+                cfg.TEST.PRECISE_BN.NUM_ITER,
+            ))
+
+        if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
+            open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
+            self._logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
+            ret.append(hooks.FreezeLayer(
+                self.model,
+                cfg.MODEL.OPEN_LAYERS,
+                cfg.SOLVER.FREEZE_ITERS,
+                cfg.SOLVER.FREEZE_FC_ITERS,
+            ))
+        # Do PreciseBN before checkpointer, because it updates the model and need to
+        # be saved by checkpointer.
+        # This is not always the best: if checkpointing has a different frequency,
+        # some checkpoints may have more precise statistics than others.
+        if comm.is_main_process():
+            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD * self.iters_per_epoch, self.max_iter))
+
+        def test_and_save_results(mode='test'):
+            self._last_eval_results = self.test(self.cfg, self.model, mode=mode)
+            return self._last_eval_results
+
+        # Do evaluation after checkpointer, because then if it fails,
+        # we can use the saved checkpoint to debug.
+        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results, do_val=self.cfg.TEST.DO_VAL, metric_names=self.cfg.TEST.METRIC_NAMES))
+
+        if comm.is_main_process():
+            # run writers in the end, so that evaluation metrics are written
+            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_ITERS))
+
+        return ret
 
     def run_step(self) -> None:
         assert self.model.training, "[SpCLTrainer] model was changed to eval mode!"
@@ -122,6 +201,7 @@ def setup(args):
     """
     Create configs and perform basic setups.
     """
+    add_rlcc_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

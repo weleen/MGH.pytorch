@@ -72,7 +72,7 @@ class SemiActiveTrainer(DefaultTrainer):
                                    temp=cfg.PSEUDO.MEMORY.TEMP,
                                    momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
                                    weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK).to(cfg.MODEL.DEVICE)
-        features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)
+        features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
         memory_features = []

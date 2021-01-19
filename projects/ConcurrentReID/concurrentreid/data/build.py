@@ -39,7 +39,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     logger = logging.getLogger(__name__)
     dataset_names = cfg.DATASETS.NAMES
     if for_clustering:
-        dataset_names = [dataset_names[idx] for idx in cfg.PSEUDO.UNSUP]
+        dataset_names = tuple([dataset_names[idx] for idx in cfg.PSEUDO.UNSUP])
 
     if datasets is None:
         # Generally for the first epoch, the datasets have not been built.
@@ -85,7 +85,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
 
     iters_per_epoch = len(train_set) // cfg.SOLVER.IMS_PER_BATCH
     cfg.SOLVER.MAX_EPOCH *= iters_per_epoch
-    num_workers = cfg.DATALOADER.NUM_WORKERS
+    num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     num_instance = cfg.DATALOADER.NUM_INSTANCE
     mini_batch_size = cfg.SOLVER.IMS_PER_BATCH // comm.get_world_size()
 

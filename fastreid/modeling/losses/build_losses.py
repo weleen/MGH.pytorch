@@ -21,6 +21,9 @@ def reid_losses(cfg, outs: dict, inputs: dict=None, prefix='', **kwargs) -> dict
             cls_outputs = outputs['cls_outputs']
             if loss_name == 'TripletLoss' and 'before_features' in outputs:
                 pred_features = outputs['before_features']
+            elif loss_name == 'PairwiseSmoothLoss':
+                assert 'low_level_feature' in outs, 'no low-level feature in output for PairwiseSmoothLoss'
+                pred_features = outs['low_level_feature']
             else:
                 pred_features = outputs['features']
             if cfg.PSEUDO.ENABLED and cfg.PSEUDO.WITH_CLASSIFIER:

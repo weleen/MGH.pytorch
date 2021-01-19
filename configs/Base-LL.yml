@@ -1,0 +1,19 @@
+_BASE_: "Base-bagtricks.yml"
+
+MODEL:
+  META_ARCHITECTURE: "LLBaseline"
+
+  LOSSES:
+    NAME: ("CrossEntropyLoss", "TripletLoss", "PairwiseSmoothLoss")
+    CE:
+      EPSILON: 0.1
+      SCALE: 1.0
+
+    TRI:
+      MARGIN: 0.0
+      HARD_MINING: False
+      SCALE: 1.0
+    
+    PS:
+      SCALE: 2.0
+      SIGMA: 1.0
