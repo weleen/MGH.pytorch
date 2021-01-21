@@ -29,7 +29,8 @@ class PairwiseSmoothLoss(object):
         dist = torch.exp(- dist / self._sigma)
 
         # inner_product
-        inner_prod = -torch.matmul(input_softmax, torch.log(input_softmax.t()))
+        # inner_prod = -torch.matmul(input_softmax, torch.log(input_softmax.t()))
+        inner_prod = -torch.matmul(input_softmax, input_softmax.t())
 
         # mask
         if len(gt_classes.shape) == 1:
@@ -45,7 +46,7 @@ class PairwiseSmoothLoss(object):
             raise ValueError('gt_classes.shape is {}, which is not supported.'.format(gt_classes.shape))
         mask = 1.0 - mask.float()
 
-        loss = dist * inner_prod# * mask
+        loss = dist * inner_prod * mask
         loss = loss.mean()
         return {
             "loss_pairwise_smooth": loss * self._scale

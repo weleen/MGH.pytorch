@@ -63,7 +63,7 @@ class SPCLTrainer(DefaultTrainer):
                                  soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
                                  soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH,
                                  rlcc_start_epoch=cfg.PSEUDO.RLCC.START_EPOCH).to(cfg.MODEL.DEVICE)
-        features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
+        features, _, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
         memory_features = []

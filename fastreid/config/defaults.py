@@ -264,27 +264,9 @@ _C.PSEUDO.MEMORY = CN()
 _C.PSEUDO.MEMORY.TEMP = 0.05
 _C.PSEUDO.MEMORY.MOMENTUM = 0.2
 _C.PSEUDO.MEMORY.WEIGHTED = False
-_C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = 5
-_C.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH = 20
+_C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = -1
+_C.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH = 0
 _C.PSEUDO.MEMORY.SOFT_LABEL = False # generate soft pseudo label for training
-
-# -----------------------------------------------------------------------------
-# Active learning
-# -----------------------------------------------------------------------------
-_C.ACTIVE = CN()
-
-# ACTIVE parameter
-_C.ACTIVE.ENABLED = False
-_C.ACTIVE.INITIAL_RATE = 0.1
-_C.ACTIVE.TRAIN_EPOCH = 2
-_C.ACTIVE.SAMPLE_K = 3
-_C.ACTIVE.SAMPLE_M = 0.1
-_C.ACTIVE.IMS_PER_BATCH = 63
-_C.ACTIVE.WARMUP_EPOCH = 10
-
-# ACTIVE sampler
-_C.ACTIVE.SAMPLER = CN()
-_C.ACTIVE.SAMPLER.NAME = 'RandomSampler' # ['RandomSampler', 'UncertaintySampler']
 
 # ---------------------------------------------------------------------------- #
 # Solver
@@ -304,6 +286,7 @@ _C.SOLVER.BIAS_LR_FACTOR = 1.
 _C.SOLVER.HEADS_LR_FACTOR = 1.
 
 _C.SOLVER.MOMENTUM = 0.9
+_C.SOLVER.NESTEROV = True
 
 _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
@@ -321,7 +304,7 @@ _C.SOLVER.ETA_MIN_LR = 1e-7
 
 # Warmup options
 _C.SOLVER.WARMUP_FACTOR = 0.1
-_C.SOLVER.WARMUP_ITERS = 10
+_C.SOLVER.WARMUP_EPOCHS = 10
 _C.SOLVER.WARMUP_METHOD = "linear"
 
 # Backbone freeze iters

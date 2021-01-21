@@ -110,13 +110,17 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
     total_compute_time = 0
     if save_path is not None:
         file_name = '{}_feature_label.pt'.format(save_path)
-        if os.path.exists(file_name):
+        img_path_file = '{}_img_path.txt'.format(save_path)
+        if os.path.exists(file_name) and os.path.exists(img_path_file):
             res = torch.load(file_name)
             features, true_label = res['features'], res['true_label']
-            return features, true_label
+            with open(img_path_file, 'r') as f:
+                img_paths = [path.strip('\n') for path in f.readlines()]
+            return features, true_label, img_paths
 
     features = list()
     true_label = list()
+    img_paths = list()
     with inference_context(model), torch.no_grad():
         for idx in range(total):
             inputs = next(data_iter)
@@ -127,6 +131,7 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
                 outputs = F.normalize(outputs, p=2, dim=1)
             features.append(outputs.cpu())
             true_label.append(inputs['targets'])
+            img_paths.extend(inputs['img_paths'])
             comm.synchronize()
             total_compute_time += time.perf_counter() - start_compute_time
 
@@ -158,14 +163,20 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
         true_label = torch.cat(true_label)
         features = comm.all_gather(features)
         true_label = comm.all_gather(true_label)
+        img_paths = comm.all_gather(img_paths)
+        img_paths = sum(img_paths, [])
     features = torch.cat(features, dim=0)
     true_label = torch.cat(true_label, dim=0)
 
     if comm.is_main_process():
         if save_path is not None:
             file_name = '{}_feature_label.pt'.format(save_path)
+            img_path_file = '{}_img_path.txt'.format(save_path)
             os.makedirs(os.path.dirname(file_name), exist_ok=True)
             res = {'features': features, 'true_label': true_label}
             torch.save(res, file_name)
+            with open(img_path_file, 'w') as f:
+                for path in img_paths:
+                    f.write(path + '\n')
 
-    return features, true_label
+    return features, true_label, img_paths

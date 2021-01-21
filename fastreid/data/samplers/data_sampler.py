@@ -86,3 +86,36 @@ class InferenceSampler(Sampler):
 
     def __len__(self):
         return len(self._local_indices)
+
+
+@SAMPLER_REGISTRY.register()
+class OutlierSampler(Sampler):
+    """
+    Process outlier instances.
+    """
+    def __init__(self, data_source: list, seed: Optional[int] = None, **kwargs):
+        self.data_source = data_source
+        self.indexes = []
+
+        for index, (_, pid, _) in enumerate(data_source):
+            if pid == -1: # only process outlier
+                self.indexes.append(index)
+        self.indexes = np.array(self.indexes)
+
+        if seed is None:
+            seed = comm.shared_random_seed()
+        self._seed = int(seed)
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
+
+    def __iter__(self):
+        start = self._rank
+        yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
+
+    def _infinite_indices(self):
+        np.random.seed(self._seed)
+        while True:
+            if self._shuffle:
+                yield from np.random.permutation(self.indexes)
+            else:
+                yield from self.indexes

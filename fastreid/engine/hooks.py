@@ -262,14 +262,11 @@ class LRScheduler(HookBase):
         lr = self._optimizer.param_groups[self._best_param_group_id]["lr"]
         self.trainer.storage.put_scalar("lr", lr, smoothing_hint=False)
 
-        next_iter = self.trainer.iter + 1
-        if next_iter < self.trainer.warmup_iters:
-            self._scheduler["warmup_sched"].step()
-
     def after_epoch(self):
-        next_iter = self.trainer.iter
         next_epoch = self.trainer.epoch + 1
-        if next_iter >= self.trainer.warmup_iters and next_epoch >= self.trainer.delay_epochs:
+        if next_epoch <= self.trainer.warmup_epochs:
+            self._scheduler["warmup_sched"].step()
+        elif next_epoch >= self.trainer.delay_epochs:
             self._scheduler["lr_sched"].step()
 
 
@@ -741,7 +738,7 @@ class LabelGeneratorHook(HookBase):
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
                 if os.path.exists(save_path):
                     res = torch.load(save_path)
-                    labels, centers, num_classes, indep_thres = res['labels'], res['centers'], res['num_classes'], res['indep_thres']
+                    labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
                 else:
                     labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
                         self._cfg,
@@ -752,7 +749,7 @@ class LabelGeneratorHook(HookBase):
                     )
                     if not os.path.exists(save_path):
                         os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                        res = {'labels': labels, 'centers': centers, 'num_classes': num_classes, 'indep_thres': indep_thres}
+                        res = {'labels': labels, 'centers': centers, 'num_classes': num_classes, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
                         torch.save(res, save_path)
 
                 if self._cfg.PSEUDO.NORM_CENTER:
@@ -770,6 +767,19 @@ class LabelGeneratorHook(HookBase):
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
                 labels = comm.broadcast_tensor(labels, 0)
                 centers = comm.broadcast_tensor(centers, 0)
+                dist_mat = comm.broadcast_tensor(dist_mat, 0)
+
+            # calculate weight_matrix if use weight_matrix in loss calculation
+            if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                weight_matrix = torch.zeros((len(labels), num_classes))
+                nums = torch.zeros((1, num_classes))
+                index_select = torch.where(labels >= 0)[0]
+                inputs_select = dist_mat[index_select]
+                labels_select = labels[index_select]
+                weight_matrix.index_add_(1, labels_select, inputs_select)
+                nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
+                weight_matrix = 1 -  weight_matrix / nums
+                self.trainer.weight_matrix = weight_matrix
 
             if comm.is_main_process():
                 self.label_summary(labels, true_labels[start_id:end_id], indep_thres=indep_thres)

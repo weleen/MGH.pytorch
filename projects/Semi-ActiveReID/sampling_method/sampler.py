@@ -123,24 +123,22 @@ class InstaceSampler:
         return len(self.query_set) < self.M
 
 
-class PairedSampler:
-    def __init__(self, cfg, dataset):
-        pass
-
-class TripletSampler:
-    def __init__(self, cfg, dataset):
-        pass
-
 def dist2classweight(dist_mat, num_classes, labels):
     """
     calculate class-wise weight matrix from dist matrix.
     """
-    weight_matrix = []
-    for i in range(num_classes):
-        index = torch.where(labels == i)[0].tolist()
-        dist_ = dist_mat[:, index].mean(1)
-        weight_matrix.append(dist_)
-    weight_matrix = 1 - torch.stack(weight_matrix).t()
+    weight_matrix = torch.zeros((len(labels), num_classes))
+    nums = torch.zeros((1, num_classes))
+    if labels.min() < 0:
+        index_select = torch.where(labels >= 0)[0]
+        inputs_select = dist_mat[index_select]
+        labels_select = labels[index_select]
+        weight_matrix.index_add_(1, labels_select, inputs_select)
+        nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
+    else:
+        weight_matrix.index_add_(1, labels, dist_mat)
+        nums.index_add_(1, labels, torch.ones(1, len(labels)))
+    weight_matrix = 1 -  weight_matrix / nums
     return weight_matrix
 
 def set_labeled_instances(sampler, dist_mat, gt_labels):

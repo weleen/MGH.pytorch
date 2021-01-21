@@ -37,10 +37,12 @@ def hm(inputs, indexes, features, momentum=0.5):
 
 
 class HybridMemory(nn.Module):
-    def __init__(self, num_features, num_memory, temp=0.05, momentum=0.2, soft_label=True, soft_label_start_epoch=20):
+    def __init__(self, num_features, num_memory, temp=0.05, momentum=0.2, weighted=True, weight_mask_topk=-1, soft_label=True, soft_label_start_epoch=20):
         super(HybridMemory, self).__init__()
         self.num_features = num_features
         self.num_memory = num_memory
+        self.weighted = weighted
+        self.weight_mask_topk = weight_mask_topk
         self.soft_label = soft_label
         self.soft_label_start_epoch = soft_label_start_epoch
         self.cur_epoch = 0
@@ -76,13 +78,12 @@ class HybridMemory(nn.Module):
         pseudo_label = F.softmax(pseudo_label * tau, dim=1)
         return pseudo_label
 
-    def forward(self, inputs, indexes):
+    def forward(self, inputs, indexes, weight=None):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
         inputs = hm(inputs, indexes, self.features, self.momentum)
         inputs /= self.temp
-        inputs = inputs.to(dtype=torch.float32) # convert the dtype to torch.float32
         B = inputs.size(0)
 
         def masked_softmax(vec, mask, dim=1, epsilon=1e-6):
@@ -111,7 +112,15 @@ class HybridMemory(nn.Module):
         sim /= (mask * nums + (1 - mask)).clone().expand_as(sim)
         mask = mask.expand_as(sim)
         masked_sim = masked_softmax(sim.t().contiguous(), mask.t().contiguous())
-        if self.soft_label and self.cur_epoch > self.soft_label_start_epoch:
+        if self.weighted and weight is not None:
+            weight = weight[indexes].cuda() / self.temp
+            if self.weight_mask_topk > 0:
+                mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
+                weight_mask = torch.zeros_like(weight)
+                weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
+                weight = masked_softmax(weight, weight_mask)
+            return -(torch.log(masked_sim + 1e-6) * F.softmax(weight, 1)).mean(0).sum()
+        elif self.soft_label and self.cur_epoch > self.soft_label_start_epoch:
             pseudo_label = self._pseudo_label(indexes)
             return -(torch.log(masked_sim + 1e-6) * pseudo_label).mean(0).sum()
         else:
