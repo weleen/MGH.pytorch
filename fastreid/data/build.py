@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None, cam_labels: list = None,
-                            is_train=True, relabel=True, for_clustering=False, **kwargs) -> DataLoader:
+                            is_train=True, relabel=True, for_clustering=False, mapper=None, **kwargs) -> DataLoader:
     cfg = cfg.clone()
     dataset_names = cfg.DATASETS.NAMES
     if for_clustering:
@@ -62,7 +62,10 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
                 if isinstance(dataset.data[0][1], str):
                     logger.warning(f"Replace the string label in labeled dataset {dataset_names[idx]} with int label. Only on the first iteration.")
                     datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
-    transforms = build_transforms(cfg, is_train=is_train)
+    if mapper is not None:
+        transforms = mapper
+    else:
+        transforms = build_transforms(cfg, is_train=is_train)
     train_set = CommDataset(datasets, transforms, relabel=relabel)
 
     num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
@@ -88,15 +91,18 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     return train_loader
 
 
-def build_reid_test_loader(cfg, dataset_name, mode='test', **kwargs):
+def build_reid_test_loader(cfg, dataset_name, mode='test', mapper=None, **kwargs):
     cfg = cfg.clone()
 
     dataset = DATASET_REGISTRY.get(dataset_name)(root=_root, mode=mode, **kwargs)
     if comm.is_main_process():
         dataset.show_test()
 
-    test_transforms = build_transforms(cfg, is_train=False)
-    test_set = CommDataset(dataset, test_transforms, relabel=False)
+    if mapper is not None:
+        transforms = mapper
+    else:
+        transforms = build_transforms(cfg, is_train=False)
+    test_set = CommDataset(dataset, transforms, relabel=False)
 
     mini_batch_size = cfg.TEST.IMS_PER_BATCH // comm.get_world_size()
     num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()

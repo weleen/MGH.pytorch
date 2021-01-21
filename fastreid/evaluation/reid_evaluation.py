@@ -6,16 +6,15 @@
 import copy
 import logging
 from collections import OrderedDict
-from sklearn import metrics
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from sklearn import metrics
 
 from .evaluator import DatasetEvaluator
 from .query_expansion import aqe
 from .rank import evaluate_rank
-from .rerank import re_ranking
 from .roc import evaluate_roc
 from fastreid.utils import comm
 from fastreid.utils.metrics import compute_distance_matrix

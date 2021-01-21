@@ -30,6 +30,7 @@ from fastreid.utils.env import seed_all_rng
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
 from fvcore.common.file_io import PathManager
 from fastreid.utils.logger import setup_logger
+
 from . import hooks, launch
 from .train_loop import TrainerBase, SimpleTrainer
 
@@ -235,6 +236,7 @@ class DefaultTrainer(SimpleTrainer):
             **optimizer_ckpt,
             **self.scheduler,
         )
+        
         self.start_epoch = 0
         self.max_epoch = cfg.SOLVER.MAX_EPOCH
         self.max_iter = self.max_epoch * self.iters_per_epoch
@@ -334,6 +336,7 @@ class DefaultTrainer(SimpleTrainer):
                 self.build_train_loader(cfg),
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ))
+
 
         if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
             open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
@@ -439,7 +442,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`fastreid.data.build_detection_train_loader`.
+        It now calls :func:`fastreid.data.build_reid_train_loader`.
         Overwrite it if you'd like a different data loader.
         """
         logger = logging.getLogger(__name__)
@@ -451,7 +454,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`fastreid.data.build_detection_test_loader`.
+        It now calls :func:`fastreid.data.build_reid_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
         return build_reid_test_loader(cfg, dataset_name, mode)

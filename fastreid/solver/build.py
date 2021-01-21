@@ -29,7 +29,7 @@ def build_optimizer(cfg, model):
             momentum=cfg.SOLVER.MOMENTUM, 
             nesterov=True if cfg.SOLVER.MOMENTUM and cfg.SOLVER.NESTEROV else False
             )
-    else:                   
+    else:
         opt_fns = getattr(optim, solver_opt)(params)
     return opt_fns
 

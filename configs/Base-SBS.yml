@@ -1,4 +1,4 @@
-_BASE_: "Base-bagtricks.yml"
+_BASE_: Base-bagtricks.yml
 
 MODEL:
   OPEN_LAYERS: ["heads"]
@@ -7,9 +7,9 @@ MODEL:
     WITH_NL: True
 
   HEADS:
-    NECK_FEAT: "after"
-    POOL_LAYER: "gempoolP"
-    CLS_LAYER: "circleSoftmax"
+    NECK_FEAT: after
+    POOL_LAYER: gempoolP
+    CLS_LAYER: circleSoftmax
     SCALE: 64
     MARGIN: 0.35
 
@@ -36,7 +36,8 @@ DATALOADER:
   NUM_INSTANCE: 16
 
 SOLVER:
-  OPT: "Adam"
+  FP16_ENABLED: False
+  OPT: Adam
   MAX_EPOCH: 60
   BASE_LR: 0.00035
   BIAS_LR_FACTOR: 1.
@@ -44,14 +45,14 @@ SOLVER:
   WEIGHT_DECAY_BIAS: 0.0005
   IMS_PER_BATCH: 64
 
-  SCHED: "CosineAnnealingLR"
+  SCHED: CosineAnnealingLR
   DELAY_EPOCHS: 30
   ETA_MIN_LR: 0.00000077
 
   WARMUP_FACTOR: 0.1
   WARMUP_EPOCHS: 10
 
-  FREEZE_ITERS: 2000
+  FREEZE_ITERS: 1000
 
   CHECKPOINT_PERIOD: 20
 

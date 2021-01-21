@@ -158,6 +158,7 @@ class MGN(nn.Module):
         b33_outputs       = outs["b33_outputs"]
         gt_labels         = outs["targets"]
         # model predictions
+        # fmt: off
         pred_class_logits = b1_outputs['pred_class_logits'].detach()
         b1_logits         = b1_outputs['cls_outputs']
         b2_logits         = b2_outputs['cls_outputs']

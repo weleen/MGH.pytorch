@@ -47,6 +47,9 @@ def build_transforms(cfg, is_train=True):
         cj_saturation = cfg.INPUT.CJ.SATURATION
         cj_hue = cfg.INPUT.CJ.HUE
 
+        # random affine
+        do_affine = cfg.INPUT.DO_AFFINE
+
         # random erasing
         do_rea = cfg.INPUT.REA.ENABLED
         rea_prob = cfg.INPUT.REA.PROB
@@ -72,6 +75,9 @@ def build_transforms(cfg, is_train=True):
             res.append(T.RandomApply([GaussianBlur([0.1, 2.0])], p=blur_prob))
         if do_cj:
             res.append(T.RandomApply([T.ColorJitter(cj_brightness, cj_contrast, cj_saturation, cj_hue)], p=cj_prob))
+        if do_affine:
+            res.append(T.RandomAffine(degrees=0, translate=None, scale=[0.9, 1.1], shear=None, resample=False,
+                                      fillcolor=128))
         if do_augmix:
             res.append(T.RandomApply([AugMix()], p=augmix_prob))
             

@@ -28,7 +28,6 @@ from fastreid.data import build_reid_train_loader
 from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans, label_generator_cdp
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
-
 from .train_loop import HookBase
 
 __all__ = [
@@ -496,7 +495,6 @@ class FreezeLayer(HookBase):
 
         self.is_frozen = False
         self.fc_frozen = False
-
         # previous requires grad status
         param_grad = {}
         for name, param in self.model.named_parameters():
@@ -515,7 +513,6 @@ class FreezeLayer(HookBase):
         if self.trainer.max_iter - self.trainer.iter <= self.fc_freeze_iters \
                 and not self.fc_frozen:
             self.freeze_classifier()
-
     def freeze_classifier(self):
         for p in self.model.heads.classifier.parameters():
             p.requires_grad_(False)
@@ -559,7 +556,6 @@ class FreezeLayer(HookBase):
         self.is_frozen = False
 
         self._logger.info(f'Open all layers for training')
-
 
 class SWA(HookBase):
     def __init__(self, swa_start: int, swa_freq: int, swa_lr_factor: float, eta_min: float, lr_sched=False, ):

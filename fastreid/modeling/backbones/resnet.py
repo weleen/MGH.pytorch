@@ -132,7 +132,7 @@ class ResNet(nn.Module):
         self.bn1 = get_norm(bn_norm, 64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)  # revised model
+        # self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, ceil_mode=True)
         self.layer1 = self._make_layer(block, 64, layers[0], 1, bn_norm, with_ibn, with_se)
         self.layer2 = self._make_layer(block, 128, layers[1], 2, bn_norm, with_ibn, with_se)
         self.layer3 = self._make_layer(block, 256, layers[2], 2, bn_norm, with_ibn, with_se)
@@ -182,6 +182,7 @@ class ResNet(nn.Module):
         x = self.relu(x)
         x = self.maxpool(x)
 
+        # layer 1
         NL1_counter = 0
         if len(self.NL_1_idx) == 0:
             self.NL_1_idx = [-1]
@@ -191,7 +192,7 @@ class ResNet(nn.Module):
                 _, C, H, W = x.shape
                 x = self.NL_1[NL1_counter](x)
                 NL1_counter += 1
-        # Layer 2
+        # layer 2
         NL2_counter = 0
         if len(self.NL_2_idx) == 0:
             self.NL_2_idx = [-1]
@@ -201,7 +202,8 @@ class ResNet(nn.Module):
                 _, C, H, W = x.shape
                 x = self.NL_2[NL2_counter](x)
                 NL2_counter += 1
-        # Layer 3
+
+        # layer 3
         NL3_counter = 0
         if len(self.NL_3_idx) == 0:
             self.NL_3_idx = [-1]
@@ -211,7 +213,8 @@ class ResNet(nn.Module):
                 _, C, H, W = x.shape
                 x = self.NL_3[NL3_counter](x)
                 NL3_counter += 1
-        # Layer 4
+
+        # layer 4
         NL4_counter = 0
         if len(self.NL_4_idx) == 0:
             self.NL_4_idx = [-1]

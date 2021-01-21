@@ -36,6 +36,7 @@ def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
     """
 
     assert len(dist_mat.size()) == 2
+
     N = dist_mat.size(0)
 
     # `dist_ap` means distance(anchor, positive)
@@ -50,7 +51,6 @@ def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
     # shape [N]
     dist_ap = dist_ap.squeeze(1)
     dist_an = dist_an.squeeze(1)
-
     if return_index:
         return dist_ap, dist_an, relative_p_inds, relative_n_inds
     return dist_ap, dist_an
@@ -68,8 +68,8 @@ def weighted_example_mining(dist_mat, is_pos, is_neg):
     """
     assert len(dist_mat.size()) == 2
 
-    is_pos = is_pos.float()
-    is_neg = is_neg.float()
+    is_pos = is_pos
+    is_neg = is_neg
     dist_ap = dist_mat * is_pos
     dist_an = dist_mat * is_neg
 
@@ -86,7 +86,6 @@ class TripletLoss(object):
     """Modified from Tong Xiao's open-reid (https://github.com/Cysu/open-reid).
     Related Triplet Loss theory can be found in paper 'In Defense of the Triplet
     Loss for Person Re-Identification'."""
-
     def __init__(self, cfg):
         self._margin = cfg.MODEL.LOSSES.TRI.MARGIN
         self._normalize_feature = cfg.MODEL.LOSSES.TRI.NORM_FEAT

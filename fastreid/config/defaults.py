@@ -26,6 +26,9 @@ _C.MODEL.META_ARCHITECTURE = "Baseline"
 
 _C.MODEL.OPEN_LAYERS = ['']
 
+# MoCo memory size
+_C.MODEL.QUEUE_SIZE = 8192
+
 # ---------------------------------------------------------------------------- #
 # Backbone options
 # ---------------------------------------------------------------------------- #
@@ -135,6 +138,13 @@ _C.MODEL.MEAN_NET = False
 _C.MODEL.MEAN_NET_ALPHA = 0.999
 
 # -----------------------------------------------------------------------------
+# KNOWLEDGE DISTILLATION
+# -----------------------------------------------------------------------------
+_C.KD = CN()
+_C.KD.MODEL_CONFIG = ""
+_C.KD.MODEL_WEIGHTS = ""
+
+# -----------------------------------------------------------------------------
 # INPUT
 # -----------------------------------------------------------------------------
 _C.INPUT = CN()
@@ -164,6 +174,9 @@ _C.INPUT.CJ.BRIGHTNESS = 0.15
 _C.INPUT.CJ.CONTRAST = 0.15
 _C.INPUT.CJ.SATURATION = 0.1
 _C.INPUT.CJ.HUE = 0.1
+
+# Random Affine
+_C.INPUT.DO_AFFINE = False
 
 # Auto augmentation
 _C.INPUT.DO_AUTOAUG = False

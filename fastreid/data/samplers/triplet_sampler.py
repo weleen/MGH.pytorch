@@ -43,7 +43,6 @@ def reorder_index(batch_indices, world_size):
 class BalancedIdentitySampler(Sampler):
     def __init__(self, data_source: list, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
-        self.batch_size = batch_size
         self.num_instances = num_instances
         self.num_pids_per_batch = batch_size // self.num_instances
 
@@ -81,7 +80,7 @@ class BalancedIdentitySampler(Sampler):
 
             # If remaining identities cannot be enough for a batch,
             # just drop the remaining parts
-            drop_indices = self.num_identities % self.num_pids_per_batch
+            drop_indices = self.num_identities % (self.num_pids_per_batch * self._world_size)
             if drop_indices: identities = identities[:-drop_indices]
 
             batch_indices = []
@@ -132,12 +131,13 @@ class NaiveIdentitySampler(Sampler):
 
     def __init__(self, data_source: list, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
-        self.batch_size = batch_size
         self.num_instances = num_instances
         self.num_pids_per_batch = batch_size // self.num_instances
 
-        self.index_pid = defaultdict(list)
-        self.pid_cam = defaultdict(list)
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
+        self.batch_size = batch_size
+
         self.pid_index = defaultdict(list)
 
         for index, info in enumerate(data_source):
@@ -155,9 +155,6 @@ class NaiveIdentitySampler(Sampler):
             seed = comm.shared_random_seed()
         self._seed = int(seed)
 
-        self._rank = comm.get_rank()
-        self._world_size = comm.get_world_size()
-
     def __iter__(self):
         start = self._rank
         yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
@@ -165,12 +162,12 @@ class NaiveIdentitySampler(Sampler):
     def _infinite_indices(self):
         np.random.seed(self._seed)
         while True:
-            avai_pids = copy.deepcopy(self.pids)
+            avl_pids = copy.deepcopy(self.pids)
             batch_idxs_dict = {}
 
             batch_indices = []
-            while len(avai_pids) >= self.num_pids_per_batch:
-                selected_pids = np.random.choice(avai_pids, self.num_pids_per_batch, replace=False).tolist()
+            while len(avl_pids) >= self.num_pids_per_batch:
+                selected_pids = np.random.choice(avl_pids, self.num_pids_per_batch, replace=False).tolist()
                 for pid in selected_pids:
                     # Register pid in batch_idxs_dict if not
                     if pid not in batch_idxs_dict:
@@ -180,11 +177,11 @@ class NaiveIdentitySampler(Sampler):
                         np.random.shuffle(idxs)
                         batch_idxs_dict[pid] = idxs
 
-                    avai_idxs = batch_idxs_dict[pid]
+                    avl_idxs = batch_idxs_dict[pid]
                     for _ in range(self.num_instances):
-                        batch_indices.append(avai_idxs.pop(0))
+                        batch_indices.append(avl_idxs.pop(0))
 
-                    if len(avai_idxs) < self.num_instances: avai_pids.remove(pid)
+                    if len(avl_idxs) < self.num_instances: avl_pids.remove(pid)
 
                 if len(batch_indices) == self.batch_size:
                     yield from reorder_index(batch_indices, self._world_size)
