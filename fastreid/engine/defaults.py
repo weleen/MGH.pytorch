@@ -221,8 +221,7 @@ class DefaultTrainer(SimpleTrainer):
         model, optimizer, optimizer_ckpt = self.build_parallel_model(cfg, model, optimizer, optimizer_ckpt)
 
         super().__init__(model, data_loader, optimizer)
-
-        self.iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+        self.iters_per_epoch = cfg.SOLVER.ITERS_PER_EPOCH
         self.scheduler = self.build_lr_scheduler(cfg, optimizer, self.iters_per_epoch)
 
         # Assume no other objects need to be checkpointed.
@@ -515,7 +514,6 @@ class DefaultTrainer(SimpleTrainer):
         frozen = cfg.is_frozen()
         cfg.defrost()
 
-        iters_per_epoch = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
         output_dir = cfg.OUTPUT_DIR
         if cfg.MODEL.HEADS.NUM_CLASSES == 0:
             if cfg.PSEUDO.ENABLED:
@@ -525,8 +523,11 @@ class DefaultTrainer(SimpleTrainer):
                 cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
             cfg.MODEL.HEADS.NUM_CAMERAS = data_loader.dataset.num_cameras
 
-            logger = logging.getLogger(__name__)
-            logger.info(f"Auto-scaling the num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, num_cameras={cfg.MODEL.HEADS.NUM_CAMERAS}, iters_per_epoch={iters_per_epoch}.")
+        if cfg.SOLVER.ITERS_PER_EPOCH == 0:
+            cfg.SOLVER.ITERS_PER_EPOCH = len(data_loader.dataset) // cfg.SOLVER.IMS_PER_BATCH
+
+        logger = logging.getLogger(__name__)
+        logger.info(f"Auto-scaling the num_classes={cfg.MODEL.HEADS.NUM_CLASSES}, num_cameras={cfg.MODEL.HEADS.NUM_CAMERAS}, iters_per_epoch={cfg.SOLVER.ITERS_PER_EPOCH}.")
 
         # Update the saved config file to make the number of classes valid
         if comm.is_main_process() and output_dir:

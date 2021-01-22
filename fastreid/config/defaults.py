@@ -115,6 +115,11 @@ _C.MODEL.LOSSES.COSFACE.MARGIN = 0.25
 _C.MODEL.LOSSES.COSFACE.GAMMA = 128
 _C.MODEL.LOSSES.COSFACE.SCALE = 1.0
 
+# Pairwise Smooth Loss options
+_C.MODEL.LOSSES.PS = CN()
+_C.MODEL.LOSSES.PS.SCALE = 2.0
+_C.MODEL.LOSSES.PS.SIGMA = 1.0
+
 # Path to a checkpoint file to be loaded to the model. You can find available models in the model zoo.
 _C.MODEL.WEIGHTS = ""
 
@@ -235,17 +240,19 @@ _C.PSEUDO.RESET_OPT = False
 _C.PSEUDO.WITH_CLASSIFIER = True # False for SpCL
 
 _C.PSEUDO.DBSCAN = CN()
+_C.PSEUDO.DBSCAN.BASE = 'eps' # perform clustering based on which metric, 'eps' or 'rho'
 _C.PSEUDO.DBSCAN.EPS = [0.6, ]  # [0.58, 0.6, 0.62] for SpCL
+_C.PSEUDO.DBSCAN.RHO = 1.6e-3 # set eps as the top_num mean
 _C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
 _C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
 _C.PSEUDO.DBSCAN.K1 = 30
 _C.PSEUDO.DBSCAN.K2 = 6
 
 _C.PSEUDO.CDP = CN()
-_C.PSEUDO.CDP.K = [23, 25, 27]
+_C.PSEUDO.CDP.K = [25]
 _C.PSEUDO.CDP.STRATEGY = 'vote'
 _C.PSEUDO.CDP.VOT = CN()
-_C.PSEUDO.CDP.VOT.THRESHOLD = [0.66, 0.66, 0.66]
+_C.PSEUDO.CDP.VOT.THRESHOLD = [0.66]
 _C.PSEUDO.CDP.PROPAGATION = CN()
 _C.PSEUDO.CDP.PROPAGATION.MAX_SIZE = 600
 _C.PSEUDO.CDP.PROPAGATION.STEP = 0.05
@@ -258,6 +265,8 @@ _C.PSEUDO.MEMORY.TEMP = 0.05
 _C.PSEUDO.MEMORY.MOMENTUM = 0.2
 _C.PSEUDO.MEMORY.WEIGHTED = False
 _C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = 5
+_C.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH = 20
+_C.PSEUDO.MEMORY.SOFT_LABEL = False # generate soft pseudo label for training
 
 # -----------------------------------------------------------------------------
 # Active learning
@@ -340,6 +349,9 @@ _C.SOLVER.LOG_ITERS = 200
 # see 2 images per batch
 _C.SOLVER.IMS_PER_BATCH = 64
 
+# iters per epoch
+_C.SOLVER.ITERS_PER_EPOCH = 0
+
 # ----------------------------------------------------------------------------
 # Test
 # ----------------------------------------------------------------------------
@@ -372,9 +384,10 @@ _C.TEST.AQE.QE_K = 5
 # Re-rank
 _C.TEST.RERANK = CN()
 _C.TEST.RERANK.ENABLED = False
-_C.TEST.RERANK.K1 = 20
-_C.TEST.RERANK.K2 = 6
-_C.TEST.RERANK.LAMBDA = 0.3
+_C.TEST.RERANK.K1 = 20 # 26
+_C.TEST.RERANK.K2 = 6 # 8
+_C.TEST.RERANK.LAMBDA = 0.3 # 0.2
+_C.TEST.RERANK.TYPE = 'jaccard'  # 'gnn'
 
 # Precise batchnorm
 _C.TEST.PRECISE_BN = CN()

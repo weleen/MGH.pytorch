@@ -7,6 +7,9 @@ import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
 
+import build_adjacency_matrix
+import gnn_propagate
+
 from .faiss_utils import (
     index_init_cpu,
     index_init_gpu,
@@ -60,13 +63,48 @@ def compute_distance_matrix(input1, input2, metric='euclidean', **kwargs) -> tor
             distmat = distmat[:input1.size(0), input1.size(0):]
         else:
             distmat = jaccard_dist(input1, **kwargs)
+    elif metric == 'gnn':
+        if input2 is None:
+            distmat = gnn_dist(input1, input1, **kwargs)
+        else:
+            distmat = gnn_dist(input1, input2, **kwargs)
     else:
         raise ValueError('Unknown distance metric: {}. '
-                         'Please choose metric from [euclidean | cosine | hamming | jaccard'.format(metric)
+                         'Please choose metric from [euclidean | cosine | hamming | jaccard | gnn]'.format(metric)
         )
         
 
     return distmat
+
+@torch.no_grad()
+def gnn_dist(X_q, X_g, k1=26, k2=8, **kwargs):
+    # X_q and X_g should be normalized
+    X_q = X_q.cuda()
+    X_g = X_g.cuda()
+    query_num = X_q.shape[0]
+
+    X_u = torch.cat((X_q, X_g), axis=0)
+    original_score = torch.mm(X_u, X_u.t())
+    del X_u, X_q, X_g
+
+    # initial ranking list
+    S, initial_rank = original_score.topk(k=k1, dim=-1, largest=True, sorted=True)
+    
+    # stage 1
+    A = build_adjacency_matrix.forward(initial_rank.float())
+    S = S * S
+
+    # stage 2
+    if k2 != 1:
+        for _ in range(2):
+            A = A + A.T
+            A = gnn_propagate.forward(A, initial_rank[:, :k2].contiguous().float(), S[:, :k2].contiguous().float())
+            A_norm = torch.norm(A, p=2, dim=1, keepdim=True)
+            A = A.div(A_norm.expand_as(A))
+
+    dist = cosine_dist(A[:query_num,], A[query_num:, ]).cpu()
+    return dist
+
 
 def k_reciprocal_neigh(initial_rank, i, k1):
     forward_k_neigh_index = initial_rank[i, :k1 + 1]
@@ -211,7 +249,7 @@ def cosine_dist(input1, input2):
     input1_normed = F.normalize(input1, p=2, dim=1)
     input2_normed = F.normalize(input2, p=2, dim=1)
     distmat = 1 - torch.mm(input1_normed, input2_normed.t())
-    return distmat
+    return distmat.clamp(min=0, max=2)
 
 
 @torch.no_grad()
@@ -270,6 +308,7 @@ def purity(output, target, min_samples=2):
             correct_cnt += 1
         all_cnt += 1
     return correct_cnt / (all_cnt + 1e-6)
+
 
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     """

@@ -658,6 +658,8 @@ class LabelGeneratorHook(HookBase):
             if hasattr(self.trainer, 'memory'):
                 # update memory labels, memory based methods such as SpCL
                 self.update_memory_labels(all_labels)
+                assert len(all_centers) == 1, 'only support single unsupervised dataset'
+                self.trainer.memory._update_center(all_centers[0])
             else:
                 # update classifier centers, methods such as SBL
                 self.update_classifier_centers(all_centers)
@@ -682,6 +684,7 @@ class LabelGeneratorHook(HookBase):
                 else:
                     start_ind += dataset.num_train_pids
             self.memory_features = torch.cat(self.memory_features)
+            self.trainer.memory._update_epoch(self.trainer.epoch)
         else:
             self.memory_features = None
 
@@ -737,13 +740,24 @@ class LabelGeneratorHook(HookBase):
 
             if comm.is_main_process():
                 # clustering only on first GPU
+                save_path = '{}/clustering/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
-                labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
-                    self._cfg,
-                    all_features[start_id: end_id],
-                    num_classes=num_classes,
-                    indep_thres=indep_thres
-                )
+                if os.path.exists(save_path):
+                    res = torch.load(save_path)
+                    labels, centers, num_classes, indep_thres = res['labels'], res['centers'], res['num_classes'], res['indep_thres']
+                else:
+                    labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
+                        self._cfg,
+                        all_features[start_id: end_id],
+                        num_classes=num_classes,
+                        indep_thres=indep_thres,
+                        epoch=self.trainer.epoch
+                    )
+                    if not os.path.exists(save_path):
+                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                        res = {'labels': labels, 'centers': centers, 'num_classes': num_classes, 'indep_thres': indep_thres}
+                        torch.save(res, save_path)
+
                 if self._cfg.PSEUDO.NORM_CENTER:
                     centers = F.normalize(centers, p=2, dim=1)
             comm.synchronize()

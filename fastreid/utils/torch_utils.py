@@ -3,7 +3,7 @@
 @author:  xingyu liao
 @contact: liaoxingyu5@jd.com
 """
-
+import os
 import time
 import datetime
 import math
@@ -103,11 +103,17 @@ def tensor2im(input_image, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
 
 
 @torch.no_grad()
-def extract_features(model, data_loader, norm_feat=True):
+def extract_features(model, data_loader, norm_feat=True, save_path=None):
     total = len(data_loader)
     data_iter = iter(data_loader)
     start_time = time.perf_counter()
     total_compute_time = 0
+    if save_path is not None:
+        file_name = '{}_feature_label.pt'.format(save_path)
+        if os.path.exists(file_name):
+            res = torch.load(file_name)
+            features, true_label = res['features'], res['true_label']
+            return features, true_label
 
     features = list()
     true_label = list()
@@ -154,5 +160,12 @@ def extract_features(model, data_loader, norm_feat=True):
         true_label = comm.all_gather(true_label)
     features = torch.cat(features, dim=0)
     true_label = torch.cat(true_label, dim=0)
+
+    if comm.is_main_process():
+        if save_path is not None:
+            file_name = '{}_feature_label.pt'.format(save_path)
+            os.makedirs(os.path.dirname(file_name), exist_ok=True)
+            res = {'features': features, 'true_label': true_label}
+            torch.save(res, file_name)
 
     return features, true_label

@@ -183,8 +183,7 @@ class ImageDataset(Dataset):
 
         data = []
         for label, camid, (img_path, _, _) in zip(pseudo_labels, cam_labels, self.data):
-            if label != -1:
-                data.append((img_path, label, camid))
+            data.append((img_path, label, camid))
         self.data = data
         self.num_train_pids, self.num_train_cams = self.parse_data(self.data)
 

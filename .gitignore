@@ -3,8 +3,13 @@ __pycache__
 .DS_Store
 .vscode
 *.so
-logs/
 .ipynb_checkpoints
+log/
+log
+logs/
 logs
 datasets/*
 **/*.c
+**/*.linux-x86_64*
+**/*.egg-info
+**/*.egg

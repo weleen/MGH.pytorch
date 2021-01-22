@@ -81,7 +81,20 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
                                        search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
     features = features.cpu()
     # clustering
-    eps = cfg.PSEUDO.DBSCAN.EPS
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho' and kwargs['epoch'] == 0:
+        rho = cfg.PSEUDO.DBSCAN.RHO
+        tri_mat = np.triu(dist, 1) # tri_mat.dim=2
+        tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
+        tri_mat = np.sort(tri_mat,axis=None)
+        top_num = np.round(rho * tri_mat.size).astype(int)  # rho=3.4e-6, eps is around 0.6
+        eps = tri_mat[:top_num].mean()
+        if len(cfg.PSEUDO.DBSCAN.EPS) == 3:
+            eps = [eps - 0.02, eps, eps + 0.02]
+        else:
+            eps = [eps]
+    else:
+        eps = cfg.PSEUDO.DBSCAN.EPS
+    logger.info(f'eps in dbscan clustering: {eps}')
 
     if len(eps) == 1:
         # normal clustering

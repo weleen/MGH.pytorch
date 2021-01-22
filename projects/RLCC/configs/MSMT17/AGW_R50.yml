@@ -1,0 +1,10 @@
+_BASE_: "../Base-rlcc.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+PSEUDO:
+  CLUSTER_EPOCH:  2
+
+OUTPUT_DIR: "logs/RLCC/msmt17/AGW_R50"

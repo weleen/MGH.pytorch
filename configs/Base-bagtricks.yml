@@ -9,7 +9,7 @@ MODEL:
     FEAT_DIM: 2048
     WITH_IBN: False
     PRETRAIN: True
-    PRETRAIN_PATH: "/home/wuyiming/.cache/torch/checkpoints/resnet50-19c8e357.pth"
+    PRETRAIN_PATH: "" # "/home/wuyiming/.cache/torch/checkpoints/resnet50-19c8e357.pth"
 
   HEADS:
     NAME: "EmbeddingHead"
