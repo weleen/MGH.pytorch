@@ -27,9 +27,9 @@ class Trans_Baseline(nn.Module):
 
         # head
         self.heads = build_heads(cfg)
-        self.transformer = Transformer(cfg)
-        batch_size = cfg.SOLVER.IMS_PER_BATCH
         feat_dim = cfg.MODEL.BACKBONE.FEAT_DIM
+        self.transformer = Transformer(feat_dim)
+        batch_size = cfg.SOLVER.IMS_PER_BATCH
         self.pos_embedding = nn.Parameter(torch.randn(1, batch_size, feat_dim))
         self.mlp = nn.Sequential(nn.Linear(feat_dim, 1), nn.Sigmoid())
         self.bce_loss = nn.BCELoss()
@@ -75,7 +75,7 @@ class Trans_Baseline(nn.Module):
             indx = indx[:, :max_rank]
         g_feats = g_feats[indx]
         # residual
-        g_feats = g_feats - q_feats.unsqueeze(1)
+        # g_feats = g_feats - q_feats.unsqueeze(1)
         g_feats = g_feats + self.pos_embedding[:, :g_feats.size(1)]
         outputs = self.transformer(g_feats)
         scores = self.mlp(outputs)
