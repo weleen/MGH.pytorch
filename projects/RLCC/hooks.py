@@ -72,6 +72,3 @@ class RLCCLabelGeneratorHook(LabelGeneratorHook):
                 centers = self.trainer.memory.centers
         self.trainer.memory._update_last_center(centers)
         saved_dict.update({'last_centers': centers})
-        filename = os.path.join(self._cfg.OUTPUT_DIR, 'clustering/last_features_labels_centers_epoch{}.pt'.format(self.trainer.epoch))
-        os.makedirs(os.path.dirname(filename), exist_ok=True)
-        torch.save(saved_dict, filename)

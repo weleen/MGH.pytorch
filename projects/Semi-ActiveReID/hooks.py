@@ -1,71 +1,34 @@
-'''
-Author: WuYiming
-Date: 2020-10-12 21:22:11
-LastEditTime: 2020-11-18 11:10:20
-LastEditors: Please set LastEditors
-Description: Hooks for SpCL
-FilePath: /fast-reid/projects/SpCL_new/hooks.py
-'''
-
-import time
 import datetime
-import collections
 import itertools
 import logging
-from sklearn.metrics import confusion_matrix
-import faiss
-import torch
-import torch.nn.functional as F
+import os
+import time
 import numpy as np
+import collections
+import faiss
 import scipy
 
-from fastreid.utils.metrics import compute_distance_matrix
-from fastreid.utils import comm
-from fastreid.engine.hooks import *
-from fvcore.common.timer import Timer
+import torch
+import torch.nn.functional as F
+
+from fastreid.utils import comm, graph
+from fastreid.engine.hooks import LabelGeneratorHook
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans, label_generator_cdp
-from sampling_method.sampler import dist2classweight, set_labeled_instances, InstaceSampler, PairedSampler, TripletSampler
+from fastreid.utils.faiss_utils import search_raw_array_pytorch
 
+import sampling_method
 
 class SALLabelGeneratorHook(LabelGeneratorHook):
     """ Hook for the combination of unsupervised learning and active learning.
     """
-    __factory = {
-        'dbscan': label_generator_dbscan,
-        'kmeans': label_generator_kmeans,
-        'cdp': label_generator_cdp
-    }
     def __init__(self, cfg, model):
-        self._logger = logging.getLogger('fastreid.' + __name__)
-        self._step_timer = Timer()
-        self._cfg = cfg
-        self.model = model
-        # only build the data loader for unlabeled dataset
-        self._logger.info("Build the dataloader for clustering.")
-        self._data_loader_cluster = build_reid_train_loader(cfg, is_train=False, for_clustering=True)
-        # save the original unlabeled dataset info
-        self._common_dataset = self._data_loader_cluster.dataset
-        assert len(self._common_dataset.datasets) == 1, "Only support single dataset."
-
-        assert cfg.PSEUDO.ENABLED, "pseudo label settings are not enabled."
-        assert cfg.PSEUDO.NAME in self.__factory.keys(), f"{cfg.PSEUDO.NAME} is not supported, please select from {self.__factory.keys()}"
-        self.label_generator = self.__factory[cfg.PSEUDO.NAME]
-
-        self.num_classes = None
-        self.indep_thres = None
-        if cfg.PSEUDO.NAME == 'kmeans':
-            self.num_classes = cfg.PSEUDO.NUM_CLUSTER
-
-        if cfg.ACTIVE.SAMPLING_METHOD == 'instance':
-            self.sampler = InstaceSampler(cfg, dataset=self._common_dataset.img_items)
-        elif cfg.ACTIVE.SAMPLING_METHOD == 'pair':
-            self.sampler = PairedSampler(cfg, dataset=self._common_dataset.img_items)
-        elif cfg.ACTIVE.SAMPLING_METHOD == 'triplet':
-            self.sampler = TripletSampler(cfg, dataset=self._common_dataset.img_items)
-        else:
-            raise ValueError("Only support sampling method from [instance | pair | triplet], {} is not recognized.".format(cfg.ACTIVE.SAMPLING_METHOD))
+        super().__init__(cfg, model)
+        try:
+            self.sampler = getattr(sampling_method, cfg.ACTIVE.QUERY_FUNC)(cfg, dataset=self._common_dataset.img_items)
+        except Exception as e:
+            self._logger.info('Error when execute {}'.format(cfg.ACTIVE.QUERY_FUNC))
+            raise
 
     def could_active_sampling(self):
         return self.trainer.epoch % self._cfg.ACTIVE.SAMPLE_EPOCH == 0 \
@@ -75,7 +38,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
     def could_pseudo_labeling(self):
         return self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
-            or self.trainer.iter == self.trainer.start_iter
+            or self.trainer.epoch == self.trainer.start_epoch
 
     def before_epoch(self):
         if self.could_pseudo_labeling() or self.could_active_sampling():
@@ -89,8 +52,20 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
             self._logger.info(f"Update unsupervised data loader.")
             self.update_train_loader(all_labels)
-            # update memory labels
-            self.update_memory_labels(all_labels)
+
+            # reset optimizer
+            if self._cfg.PSEUDO.RESET_OPT:
+                self._logger.info(f"Reset optimizer")
+                self.trainer.optimizer.state = collections.defaultdict(dict)
+
+            if hasattr(self.trainer, 'memory'):
+                # update memory labels, memory based methods such as SpCL
+                self.update_memory_labels(all_labels)
+                assert len(all_centers) == 1, 'only support single unsupervised dataset'
+                self.trainer.memory._update_center(all_centers[0])
+            else:
+                # update classifier centers, methods such as SBL
+                self.update_classifier_centers(all_centers)
 
             if self.could_active_sampling() and self._cfg.ACTIVE.BUILD_DATALOADER:
                 self._logger.info(f"Update active data loader.")
@@ -99,82 +74,125 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             comm.synchronize()
 
             sec = self._step_timer.seconds()
-            self._logger.info(f"Finished updating label in {str(datetime.timedelta(seconds=int(sec)))}")
+            self._logger.info(f"Finished updating pseudo label in {str(datetime.timedelta(seconds=int(sec)))}")
 
     def update_labels(self):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
-            features, gt_labels = extract_features(self.model,
-                                                     self._data_loader_cluster,
-                                                     self._cfg.PSEUDO.NORM_FEAT)
+            all_features = []
+            features, true_labels = extract_features(self.model,
+                                                    self._data_loader_cluster,
+                                                    self._cfg.PSEUDO.NORM_FEAT)
+            all_features.append(features)
+            all_features = torch.stack(all_features, dim=0).mean(0)
         else:
-            features = self.memory_features
-            gt_labels = torch.LongTensor([self._data_loader_cluster.dataset.pid_dict[item[1]] for item in self._data_loader_cluster.dataset.img_items])
+            all_features = self.memory_features
+            true_labels = torch.LongTensor([self._data_loader_cluster.dataset.pid_dict[item[1]] for item in self._data_loader_cluster.dataset.img_items])
 
         if self._cfg.PSEUDO.NORM_FEAT:
-            features = F.normalize(features, p=2, dim=1)
+            all_features = F.normalize(all_features, p=2, dim=1)
+        datasets_size = self._common_dataset.datasets_size
+        datasets_size_range = list(itertools.accumulate([0] + datasets_size))
+        assert len(all_features) == datasets_size_range[-1], f"number of features {len(all_features)} should be same as the unlabeled data size {datasets_size_range[-1]}"
 
         all_centers = []
         all_labels = []
-        indep_thres = self.indep_thres
-        num_classes = self.num_classes
+        all_active_labels = []
+        for idx, dataset in enumerate(self._common_dataset.datasets):
 
-        # clustering only on first GPU, this step is time-consuming
-        labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
-            self._cfg,
-            features,
-            num_classes=num_classes,
-            indep_thres=indep_thres
-        )
-        if self._cfg.PSEUDO.NORM_CENTER:
-            centers = F.normalize(centers, p=2, dim=1)
-        comm.synchronize()
+            try:
+                indep_thres = self.indep_thres[idx]
+            except:
+                indep_thres = None
+            try:
+                num_classes = self.num_classes[idx]
+            except:
+                num_classes = None
 
-        # calculate class-wise weight matrix
-        class_weight_matrix = dist2classweight(dist_mat, num_classes, labels)
-        cluster_num, _, _ = self.label_summary(labels, gt_labels, indep_thres=indep_thres)
+            if comm.is_main_process():
+                # clustering only on first GPU
+                save_path = '{}/clustering/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
+                start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
+                labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
+                    self._cfg,
+                    all_features[start_id: end_id],
+                    num_classes=num_classes,
+                    indep_thres=indep_thres,
+                    epoch=self.trainer.epoch
+                )
+                if not os.path.exists(save_path):
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    res = {'labels': labels, 'num_classes': num_classes}#, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
+                    torch.save(res, save_path)
 
-        # active sampling 
-        if self.could_active_sampling() and self.sampler.could_sample():
-            self.sampler.query_sample(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
+                if self._cfg.PSEUDO.NORM_CENTER:
+                    centers = F.normalize(centers, p=2, dim=1)
 
-        # node label propagation
-        if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
-            active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
-            classes = list(set(active_labels))
-            active_labels = [classes.index(i) for i in active_labels]
-        else:
-            labeled_index = list(self.sampler.query_set)
-            gt_query = gt_labels[labeled_index].tolist()
-            classes = list(set(gt_query))
-            active_labels = [classes.index(gt_query[labeled_index.index(i)]) if i in labeled_index else -1 for i in range(len(labels))]
+                features = all_features[start_id: end_id]
+                gt_labels = true_labels[start_id: end_id]
+                # calculate weight_matrix if use weight_matrix in loss calculation
+                class_weight_matrix = sampling_method.dist2classweight(dist_mat, num_classes, labels)
+                cluster_num, _, _ = self.label_summary(labels, gt_labels, indep_thres=indep_thres)
 
-        # edge label propagation and rectification
-        if self._cfg.ACTIVE.RECTIFY and self.sampler.index_label.sum() > 0:
-            labels, centers, num_classes, indep_thres, dist_mat, class_weight_matrix = self.rectify(features, labels, num_classes, indep_thres, dist_mat, gt_labels)
-        
-        if self._cfg.PSEUDO.MEMORY.WEIGHTED:
-            # set weight matrix for calculating weighted contrastive loss.
-            self.trainer.weight_matrix = class_weight_matrix
+                # active sampling 
+                if self.could_active_sampling() and self.sampler.could_sample():
+                    self.sampler.query(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
 
-        if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
-            all_labels.append(active_labels)
-        else:
+                # # node label propagation
+                # if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
+                #     active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
+                #     classes = list(set(active_labels))
+                #     active_labels = [classes.index(i) for i in active_labels]
+                # else:
+                labeled_index = list(self.sampler.query_set)
+                gt_query = gt_labels[labeled_index].tolist()
+                classes = list(set(gt_query))
+                # reset the labels
+                active_labels = [classes.index(gt_query[labeled_index.index(i)]) if i in labeled_index else -1 for i in range(len(labels))]
+
+                # edge label propagation and rectification
+                if self._cfg.ACTIVE.RECTIFY and self.sampler.index_label.sum() > 0:
+                    labels, centers, num_classes, indep_thres, dist_mat, class_weight_matrix = self.rectify(features, labels, num_classes, indep_thres, dist_mat, gt_labels)
+            comm.synchronize()
+
+            # broadcast to other process
+            if comm.get_world_size() > 1:
+                num_classes = int(comm.broadcast_value(num_classes, 0))
+                if self._cfg.PSEUDO.NAME == "dbscan" and len(self._cfg.PSEUDO.DBSCAN.EPS) > 1:
+                    # use clustering reliability criterion
+                    indep_thres = comm.broadcast_value(indep_thres, 0)
+                if comm.get_rank() > 0:
+                    labels = torch.arange(len(dataset)).long()
+                    centers = torch.zeros((num_classes, all_features.size(-1))).float()
+                labels = comm.broadcast_tensor(labels, 0)
+                centers = comm.broadcast_tensor(centers, 0)
+                dist_mat = comm.broadcast_tensor(dist_mat, 0)
+                active_labels = comm.broadcast_tensor(active_labels, 0)
+
+            if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                self.trainer.weight_matrix = class_weight_matrix
             all_labels.append(labels.tolist())
-        all_centers.append(centers)
+            all_centers.append(centers)
+            all_active_labels.append(active_labels)
 
-        self.indep_thres = indep_thres
-        self.num_classes = num_classes
+            try:
+                self.indep_thres[idx] = indep_thres
+            except:
+                self.indep_thres.append(indep_thres)
+            try:
+                self.num_classes[idx] = num_classes
+            except:
+                self.num_classes.append(num_classes)
 
-        return all_labels, all_centers, active_labels
+        return all_labels, all_centers, all_active_labels
 
     def rectify(self, features, labels, num_classes, indep_thres, dist_mat, gt_labels):
         if self._cfg.ACTIVE.EDGE_PROP:
-            new_dist_mat = self.edge_label_propagation(dist_mat, gt_labels, max_step=self._cfg.ACTIVE.EDGE_PROP_STEP)
+            new_dist_mat = self.edge_label_propagation_(features, dist_mat, gt_labels, step=self._cfg.ACTIVE.EDGE_PROP_STEP)
             torch.cuda.empty_cache()
         else:
-            new_dist_mat, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+            new_dist_mat = sampling_method.set_labeled_instances(self.sampler, dist_mat, gt_labels)
 
         new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat = self.label_generator(
                     self._cfg,
@@ -186,7 +204,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         if self._cfg.PSEUDO.NORM_CENTER:
             new_centers = F.normalize(new_centers, p=2, dim=1)
 
-        new_weight_matrix = dist2classweight(new_dist_mat, new_num_classes, new_labels)
+        new_weight_matrix = sampling_method.dist2classweight(new_dist_mat, new_num_classes, new_labels)
         _, _, _ = self.label_summary(new_labels, gt_labels, indep_thres=new_indep_thres)
         return new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat, new_weight_matrix
 
@@ -223,7 +241,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         else:
             self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
 
-    def edge_label_propagation(self, dist_mat: torch.Tensor, gt_labels, step=50, alpha=0.99, debug=False):
+    def edge_label_propagation(self, features: torch.Tensor, dist_mat: torch.Tensor, gt_labels: torch.Tensor, step=50, alpha=0.99, debug=False):
         # TODO: try cdp graph propagation
         """
         edge label propagation. 
@@ -233,7 +251,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         start_time = time.time()
         # mask for residual regression
         dist_mat = dist_mat.cuda('cuda:1')
-        corrected_dist_mat, labeled_dist_mat = set_labeled_instances(self.sampler, dist_mat, gt_labels)
+        corrected_dist_mat, labeled_dist_mat = sampling_method.set_labeled_instances(self.sampler, dist_mat, gt_labels)
         mask = (labeled_dist_mat > -1).float()
         error_dist_mat = corrected_dist_mat - dist_mat
 
@@ -344,3 +362,78 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
  
         return active_labels
 
+    def edge_label_propagation_(self, features: torch.Tensor, dist_mat: torch.Tensor, gt_labels: torch.Tensor, k=15, th=0.66, step=0.05, max_iter=100, max_sz=600, debug=False, **kwargs):
+        if dist_mat is not None:
+            knn_dist, knn_idx = torch.sort(dist_mat, dim=1)
+            knn_dist = knn_dist[:, :k].cpu().numpy()
+            knn_idx = knn_idx[:, :k].cpu().numpy()
+        else:
+            res = faiss.StandardGpuResources()
+            res.setDefaultNullStreamAllDevices()
+            knn_dist, knn_idx = search_raw_array_pytorch(res, features, features, k)  # normalized features, jaccard distances
+            knn_dist = knn_dist.cpu().numpy()
+            knn_idx = knn_idx.cpu().numpy()
+
+        # generate pairs and scores
+        simi = 1. - knn_dist
+        anchor = np.tile(np.arange(len(knn_idx)).reshape(len(knn_idx), 1), (1, knn_idx.shape[1]))
+        selidx = np.where((simi > th) & (knn_idx != -1) & (knn_idx != anchor))
+
+        pairs = np.hstack((anchor[selidx].reshape(-1, 1), knn_idx[selidx].reshape(-1, 1)))
+        scores = simi[selidx]
+        pairs = np.sort(pairs, axis=1)
+        pairs, unique_idx = np.unique(pairs, return_index=True, axis=0)
+        scores = scores[unique_idx]
+        import time
+        a = time.time()
+        # generate positive pairs and negative pairs from sampler indexes
+        if self.sampler.index_label.sum() > 0:
+            pos_pairs = []
+            neg_pairs = []
+            for i, j in itertools.permutations(self.sampler.query_set, 2):
+                if gt_labels[i] == gt_labels[j]:
+                    # positive pairs
+                    pos_pairs.append([i, j])
+                    if [i, j] in pairs:
+                        index = np.where((pairs == (i, j)).all(axis=1))[0]
+                        scores[index] = 1.0
+                    else:
+                        pairs = np.concatenate((pairs, np.array([[i, j]])))
+                        scores = np.concatenate((scores, np.array([1.0])))
+                else:
+                    # negative pairs
+                    neg_pairs.append([i, j])
+                    if [i, j] in pairs:
+                        index = np.where((pairs == (i, j)).all(axis=1))[0]
+                        scores[index] = 0.0
+            kept_index = np.where(scores > th)[0]
+            pairs = pairs[kept_index]
+            scores = scores[kept_index]
+        print('{}'.format(time.time() - a))
+        components = graph.graph_propagation(pairs, scores, max_sz, step, max_iter)
+
+        # collect results
+        cdp_res = []
+        for c in components:
+            cdp_res.append(sorted([n.name for n in c]))
+        pred = -1 * np.ones(len(features), dtype=np.int)
+        for i, c in enumerate(cdp_res):
+            pred[np.array(c)] = i
+
+        valid = np.where(pred != -1)
+        _, unique_idx = np.unique(pred[valid], return_index=True)
+        pred_unique = pred[valid][np.sort(unique_idx)]
+        pred_mapping = dict(zip(list(pred_unique), range(pred_unique.shape[0])))
+        pred_mapping[-1] = -1
+        pred = np.array([pred_mapping[p] for p in pred])
+
+        outlier_index = np.where(pred == -1)[0]
+        pred_max = pred.max() + 1
+        pred_classes = np.arange(pred_max, pred_max + len(outlier_index))
+        pred[outlier_index] = pred_classes
+        
+        new_dist_mat = 1 - (pred.reshape(-1, 1) == pred.reshape(1, -1))
+        new_dist_mat = torch.from_numpy(new_dist_mat).to(dist_mat.device)
+        if dist_mat is not None:
+            new_dist_mat = (new_dist_mat + dist_mat) / 2
+        return new_dist_mat

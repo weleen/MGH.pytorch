@@ -732,21 +732,17 @@ class LabelGeneratorHook(HookBase):
                 # clustering only on first GPU
                 save_path = '{}/clustering/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
-                if os.path.exists(save_path):
-                    res = torch.load(save_path)
-                    labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
-                else:
-                    labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
-                        self._cfg,
-                        all_features[start_id: end_id],
-                        num_classes=num_classes,
-                        indep_thres=indep_thres,
-                        epoch=self.trainer.epoch
-                    )
-                    if not os.path.exists(save_path):
-                        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                        res = {'labels': labels, 'centers': centers, 'num_classes': num_classes, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
-                        torch.save(res, save_path)
+                labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
+                    self._cfg,
+                    all_features[start_id: end_id],
+                    num_classes=num_classes,
+                    indep_thres=indep_thres,
+                    epoch=self.trainer.epoch
+                )
+                if not os.path.exists(save_path):
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    res = {'labels': labels, 'num_classes': num_classes}#, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
+                    torch.save(res, save_path)
 
                 if self._cfg.PSEUDO.NORM_CENTER:
                     centers = F.normalize(centers, p=2, dim=1)
@@ -774,7 +770,7 @@ class LabelGeneratorHook(HookBase):
                 labels_select = labels[index_select]
                 weight_matrix.index_add_(1, labels_select, inputs_select)
                 nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
-                weight_matrix = 1 -  weight_matrix / nums
+                weight_matrix = 1 - weight_matrix / nums
                 self.trainer.weight_matrix = weight_matrix
 
             if comm.is_main_process():

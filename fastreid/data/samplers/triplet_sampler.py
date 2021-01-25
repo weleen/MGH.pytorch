@@ -142,10 +142,7 @@ class NaiveIdentitySampler(Sampler):
 
         for index, info in enumerate(data_source):
             pid = info[1]
-            camid = info[2]
             if pid == -1: continue  # ignore unused instances
-            self.index_pid[index] = pid
-            self.pid_cam[pid].append(camid)
             self.pid_index[pid].append(index)
 
         self.pids = sorted(list(self.pid_index.keys()))

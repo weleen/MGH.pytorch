@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+echo "Semi-ActiveReID project with DataParallel"
+# rectify from spcl
+python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveReID/configs/Market1501/BoT_R50.yml ACTIVE.RECTIFY True ACTIVE.BUILD_DATALOADER False ACTIVE.EDGE_PROP True SOLVER.MAX_EPOCH 50 SOLVER.BASE_LR 3.5e-6 OUTPUT_DIR logs/SpCL_SemiActive/BoT_R50_rectify_random/market1501 MODEL.WEIGHTS logs/SpCL_new/BoT_R50/market1501/model_0017169.pth
+python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveReID/configs/DukeMTMC/BoT_R50.yml ACTIVE.RECTIFY True ACTIVE.BUILD_DATALOADER False ACTIVE.EDGE_PROP True SOLVER.MAX_EPOCH 50 SOLVER.BASE_LR 3.5e-6 OUTPUT_DIR logs/SpCL_SemiActive/BoT_R50_rectify_random/dukemtmc MODEL.WEIGHTS logs/SpCL_new/BoT_R50/dukemtmc/model_0018999.pth
+python projects/Semi-ActiveReID/train_net.py --config-file projects/Semi-ActiveReID/configs/MSMT17/BoT_R50.yml ACTIVE.RECTIFY True ACTIVE.BUILD_DATALOADER False ACTIVE.EDGE_PROP True SOLVER.MAX_EPOCH 50 SOLVER.BASE_LR 3.5e-6 OUTPUT_DIR logs/SpCL_SemiActive/BoT_R50_rectify_random/msmt17 MODEL.WEIGHTS logs/SpCL_new/BoT_R50/msmt17/model_0035999.pth

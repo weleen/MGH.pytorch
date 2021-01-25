@@ -11,7 +11,6 @@ since they are meant to represent the "common default behavior" people need in t
 import argparse
 import logging
 import os
-import math
 import sys
 from collections import OrderedDict
 
@@ -30,9 +29,8 @@ from fastreid.utils.env import seed_all_rng
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
 from fvcore.common.file_io import PathManager
 from fastreid.utils.logger import setup_logger
-
-from . import hooks, launch
-from .train_loop import TrainerBase, SimpleTrainer
+from . import hooks
+from .train_loop import SimpleTrainer
 
 try:
     import apex

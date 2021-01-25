@@ -30,11 +30,10 @@ from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 from fastreid.data.common import CommDataset
 from fastreid.data import samplers
 from fastreid.data.transforms import build_transforms
+from fastreid.modeling.losses import ActiveTripletLoss, HybridMemory
 
-from hybrid_memory import HybridMemory
 from hooks import SALLabelGeneratorHook
 from config import add_activereid_config
-from model import *
 
 try:
     import apex
@@ -102,8 +101,8 @@ class SemiActiveTrainer(DefaultTrainer):
         self.data_loader_active = None
         self._data_loader_active_iter = None
 
-    def build_active_dataloader(self, pair_sets=None, is_train=False):
-        transforms = build_transforms(self.cfg, is_train=is_train)
+    def build_active_dataloader(self, pair_sets=None):
+        transforms = build_transforms(self.cfg)
         img_items = list()
         for d in self.cfg.DATASETS.NAMES:
             dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=self.cfg.DATASETS.COMBINEALL)
@@ -269,6 +268,7 @@ def main(args):
 
     trainer = SemiActiveTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
+    res = SemiActiveTrainer.test(cfg, trainer.model)
     trainer.init_memory()
     return trainer.train()
 

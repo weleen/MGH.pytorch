@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn, autograd
-from fastreid.utils.comm import all_gather_tensor, all_gather
+from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size
 from fastreid.utils.metrics import compute_distance_matrix
 
 
@@ -12,8 +12,12 @@ class HM(autograd.Function):
         ctx.features = features
         ctx.momentum = momentum
         outputs = inputs.mm(ctx.features.t())
-        all_inputs = all_gather_tensor(inputs)
-        all_indexes = all_gather_tensor(indexes)
+        if get_world_size() > 1:  # distributed
+            all_inputs = all_gather_tensor(inputs)
+            all_indexes = all_gather_tensor(indexes)
+        else:  # error when use DDP
+            all_inputs = torch.cat(all_gather(inputs), dim=0)
+            all_indexes = torch.cat(all_gather(indexes), dim=0)
         ctx.save_for_backward(all_inputs, all_indexes)
         return outputs
 
@@ -78,7 +82,7 @@ class HybridMemory(nn.Module):
         pseudo_label = F.softmax(pseudo_label * tau, dim=1)
         return pseudo_label
 
-    def forward(self, inputs, indexes, weight=None):
+    def forward(self, inputs, indexes, weight=None, eps=1e-6, **kwargs):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
@@ -96,22 +100,22 @@ class HybridMemory(nn.Module):
         labels = self.labels.clone()
 
         if labels.min() >= 0:
-            sim = torch.zeros(labels.max() + 1, B).float().cuda()
-            sim.index_add_(0, labels, inputs.t().contiguous())
-            nums = torch.zeros(labels.max() + 1, 1).float().cuda()
-            nums.index_add_(0, labels, torch.ones(self.num_memory, 1).float().cuda())
+            sim = torch.zeros(B, labels.max() + 1).float().cuda()
+            sim.index_add_(1, labels, inputs)
+            nums = torch.zeros(1, labels.max() + 1).float().cuda()
+            nums.index_add_(1, labels, torch.ones(1, self.num_memory).float().cuda())
         else:
-            sim = torch.zeros(labels.max() + 1, B).float().cuda()
-            nums = torch.zeros(labels.max() + 1, 1).float().cuda()
+            sim = torch.zeros(B, labels.max() + 1).float().cuda()
+            nums = torch.zeros(1, labels.max() + 1).float().cuda()
             index_select = torch.where(labels >= 0)[0]
             inputs_select = inputs.t().contiguous()[index_select]
             labels_select = labels[index_select]
-            sim.index_add_(0, labels_select, inputs_select)
-            nums.index_add_(0, labels_select, torch.ones(len(index_select), 1).float().cuda())
+            sim.index_add_(1, labels_select, inputs_select)
+            nums.index_add_(1, labels_select, torch.ones(1, len(index_select)).float().cuda())
         mask = (nums > 0).float()
         sim /= (mask * nums + (1 - mask)).clone().expand_as(sim)
         mask = mask.expand_as(sim)
-        masked_sim = masked_softmax(sim.t().contiguous(), mask.t().contiguous())
+        masked_sim = masked_softmax(sim, mask)
         if self.weighted and weight is not None:
             weight = weight[indexes].cuda() / self.temp
             if self.weight_mask_topk > 0:
@@ -119,9 +123,9 @@ class HybridMemory(nn.Module):
                 weight_mask = torch.zeros_like(weight)
                 weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
                 weight = masked_softmax(weight, weight_mask)
-            return -(torch.log(masked_sim + 1e-6) * F.softmax(weight, 1)).mean(0).sum()
+            return -(torch.log(masked_sim + eps) * F.softmax(weight, 1)).mean(0).sum()
         elif self.soft_label and self.cur_epoch > self.soft_label_start_epoch:
             pseudo_label = self._pseudo_label(indexes)
-            return -(torch.log(masked_sim + 1e-6) * pseudo_label).mean(0).sum()
+            return -(torch.log(masked_sim + eps) * pseudo_label).mean(0).sum()
         else:
-            return F.nll_loss(torch.log(masked_sim + 1e-6), targets)
+            return F.nll_loss(torch.log(masked_sim + eps), targets)

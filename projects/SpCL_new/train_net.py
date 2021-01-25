@@ -23,9 +23,7 @@ from fastreid.engine import default_argument_parser, default_setup, launch, hook
 from fastreid.engine.defaults import DefaultTrainer
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
-from fastreid.utils import comm
-
-from hybrid_memory import HybridMemory
+from fastreid.modeling.losses.hybrid_memory import HybridMemory
 
 try:
     import apex

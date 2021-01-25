@@ -9,7 +9,7 @@ import logging
 import torch
 import torch.nn.functional as F
 
-from fastreid.config import get_cfg
+from fastreid.config import cfg as cfg_t
 from fastreid.modeling.meta_arch import META_ARCH_REGISTRY, build_model, Baseline
 from fvcore.common.checkpoint import Checkpointer
 
@@ -22,7 +22,6 @@ class Distiller(Baseline):
         super(Distiller, self).__init__(cfg)
 
         # Get teacher model config
-        cfg_t = get_cfg()
         cfg_t.merge_from_file(cfg.KD.MODEL_CONFIG)
 
         model_t = build_model(cfg_t)

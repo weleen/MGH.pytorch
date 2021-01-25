@@ -1,4 +1,1 @@
 _BASE_: "../../SpCL_new/configs/Base-spcl-BoT_R50.yml"
-
-MODEL:
-  META_ARCHITECTURE: "ActiveBaseline"

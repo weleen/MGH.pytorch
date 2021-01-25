@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from collections import OrderedDict
 import logging
-from fastreid.utils.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
+from fvcore.common.checkpoint import get_missing_parameters_message, get_unexpected_parameters_message
 
 from fastreid.layers import get_norm
 from fastreid.modeling.backbones import BACKBONE_REGISTRY
