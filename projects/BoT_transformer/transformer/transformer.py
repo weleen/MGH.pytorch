@@ -68,11 +68,10 @@ class Attention(nn.Module):
         return out
 
 class Transformer(nn.Module):
-    def __init__(self, cfg):
+    def __init__(self, dim):
         super().__init__()
-        dim = cfg.MODEL.BACKBONE.FEAT_DIM
-        depth = 6
-        heads = 8
+        depth = 3
+        heads = 4
         dim_head = 64
         mlp_dim = 2048
         dropout = 0.1

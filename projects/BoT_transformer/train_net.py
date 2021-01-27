@@ -12,7 +12,7 @@ sys.path.append('.')
 from fastreid.config import cfg
 from fastreid.engine import (DefaultTrainer, default_argument_parser,
                              default_setup, launch)
-from fastreid.evaluation import DatasetEvaluator, print_csv_format
+from fastreid.evaluation import ReidEvaluator, DatasetEvaluator, print_csv_format
 from fvcore.common.checkpoint import Checkpointer
 
 from transformer.trans_baseline import Trans_Baseline
@@ -80,7 +80,8 @@ class TRANSTrainer(DefaultTrainer):
             ret.append(hooks.FreezeLayer(
                 self.model,
                 cfg.MODEL.OPEN_LAYERS,
-                cfg.SOLVER.FREEZE_ITERS,
+                cfg.SOLVER.FREEZE_ITERS * self.iters_per_epoch,
+                cfg.SOLVER.FREEZE_FC_ITERS * self.iters_per_epoch
             ))
         # Do PreciseBN before checkpointer, because it updates the model and need to
         # be saved by checkpointer.
@@ -89,8 +90,8 @@ class TRANSTrainer(DefaultTrainer):
         if comm.is_main_process():
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
 
-        def test_and_save_results(val=False):
-            self._last_eval_results = self.test_transformer(self.cfg, self.model, val=val)
+        def test_and_save_results(mode='test'):
+            self._last_eval_results = self.test_transformer(self.cfg, self.model, mode=mode)
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
@@ -99,11 +100,11 @@ class TRANSTrainer(DefaultTrainer):
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_PERIOD))
+            ret.append(hooks.PeriodicWriter(self.build_writers(), cfg.SOLVER.LOG_ITERS))
 
         return ret
 
-    def test_transformer(cls, cfg, model, evaluators=None, val=False):
+    def test_transformer(cls, cfg, model, evaluators=None, mode='test'):
         """
         Args:
             cfg (CfgNode):
@@ -127,14 +128,14 @@ class TRANSTrainer(DefaultTrainer):
         results = OrderedDict()
         for idx, dataset_name in enumerate(cfg.DATASETS.TESTS):
             logger.info("Prepare testing set")
-            data_loader, num_query = cls.build_test_loader(cfg, dataset_name, val)
+            data_loader, num_query = cls.build_test_loader(cfg, dataset_name, mode)
             # When evaluators are passed in as arguments,
             # implicitly assume that evaluators can be created before data_loader.
             if evaluators is not None:
                 evaluator = evaluators[idx]
             else:
                 try:
-                    evaluator = cls.build_evaluator(cfg, num_query)
+                    evaluator = ReidEvaluator(cfg, num_query)
                 except NotImplementedError:
                     logger.warning(
                         "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "

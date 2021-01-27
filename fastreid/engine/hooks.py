@@ -205,7 +205,7 @@ class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):
     """
 
     def before_train(self):
-        self.max_epoch = self.trainer.max_epoch
+        self.max_iter = self.trainer.max_iter
         if len(self.trainer.cfg.DATASETS.TESTS) == 1:
             self.metric_name = self.trainer.cfg.TEST.METRIC_NAMES
         else:
@@ -524,18 +524,21 @@ class FreezeLayer(HookBase):
     def freeze_specific_layer(self):
         open_layer_names = copy.deepcopy(self.open_layer_names)
         for name, module in self.model.named_modules():
+            flag = False
             for layer in open_layer_names:
+                if flag: continue
                 if layer in name:
                     module.train()
                     for p in module.parameters():
                         p.requires_grad_(True)
+                    flag = True
                 else:
                     module.eval()
                     for p in module.parameters():
                         p.requires_grad_(False)
 
         self.is_frozen = True
-        for layer in open_layer_names:
+        for layer in self.open_layer_names:
             for name, module in self.model.named_modules():
                 if layer in name:
                     open_layer_names.remove(layer)
