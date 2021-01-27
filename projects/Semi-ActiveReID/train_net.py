@@ -30,11 +30,10 @@ from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 from fastreid.data.common import CommDataset
 from fastreid.data import samplers
 from fastreid.data.transforms import build_transforms
+from fastreid.modeling.losses import ActiveTripletLoss, HybridMemory
 
-from hybrid_memory import HybridMemory
 from hooks import SALLabelGeneratorHook
 from config import add_activereid_config
-from model import *
 
 try:
     import apex
@@ -71,8 +70,11 @@ class SemiActiveTrainer(DefaultTrainer):
                                    num_memory=num_memory,
                                    temp=cfg.PSEUDO.MEMORY.TEMP,
                                    momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
-                                   weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK).to(cfg.MODEL.DEVICE)
-        features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
+                                   weighted=cfg.PSEUDO.MEMORY.WEIGHTED,
+                                   weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK,
+                                   soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
+                                   soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH).to(cfg.MODEL.DEVICE)
+        features, _, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
         memory_features = []
@@ -86,7 +88,7 @@ class SemiActiveTrainer(DefaultTrainer):
                 # init memory for labeled dataset with class center features
                 centers_dict = collections.defaultdict(list)
                 for i, (_, pid, _) in enumerate(set.data):
-                    centers_dict[common_dataset.pid_dict[pid]].append(features[i].unsqueeze(0))
+                    centers_dict[pid].append(features[i + start_id].unsqueeze(0))
                 centers = [
                     torch.cat(centers_dict[pid], 0).mean(0) for pid in sorted(centers_dict.keys())
                 ]
@@ -99,8 +101,8 @@ class SemiActiveTrainer(DefaultTrainer):
         self.data_loader_active = None
         self._data_loader_active_iter = None
 
-    def build_active_dataloader(self, pair_sets=None, is_train=False):
-        transforms = build_transforms(self.cfg, is_train=is_train)
+    def build_active_dataloader(self, pair_sets=None):
+        transforms = build_transforms(self.cfg)
         img_items = list()
         for d in self.cfg.DATASETS.NAMES:
             dataset = DATASET_REGISTRY.get(d)(root=_root, combineall=self.cfg.DATASETS.COMBINEALL)
@@ -266,6 +268,7 @@ def main(args):
 
     trainer = SemiActiveTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
+    res = SemiActiveTrainer.test(cfg, trainer.model)
     trainer.init_memory()
     return trainer.train()
 

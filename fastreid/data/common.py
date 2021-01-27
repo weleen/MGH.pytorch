@@ -18,22 +18,28 @@ class CommDataset(Dataset):
         else:
             self.datasets = [datasets]
         self.img_items = list()
-        for dataset in self.datasets:
-            self.img_items.extend(dataset.data)
         self.transform = transform
-        self.relabel = relabel
 
-        pid_set = set()
-        cam_set = set()
-        for i in self.img_items:
-            pid_set.add(i[1])
-            cam_set.add(i[2])
-
-        self.pids = sorted(list(pid_set))
-        self.cams = sorted(list(cam_set))
         if relabel:
-            self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
-            self.cam_dict = dict([(p, i) for i, p in enumerate(self.cams)])
+            # Please relabel the dataset in the first epoch
+            start_pid = 0
+            start_camid = 0
+            for data_ind, dataset in enumerate(self.datasets):
+                pids = sorted(list(set([d[1] for d in dataset.data])))
+                cams = sorted(list(set([d[2] for d in dataset.data])))
+                pid_dict = dict([(p, i) for i, p in enumerate(pids)])
+                cam_dict = dict([(p, i) for i, p in enumerate(cams)])
+                for idx, data in enumerate(dataset.data):
+                    new_data = (data[0], pid_dict[data[1]] + start_pid, cam_dict[data[2]] + start_camid)
+                    self.datasets[data_ind].data[idx] = new_data
+                added_pid, added_camid = dataset.parse_data(self.datasets[data_ind].data)
+                start_pid += added_pid
+                start_camid += added_camid
+                self.img_items.extend(self.datasets[data_ind].data)
+        else:
+            for dataset in self.datasets:
+                self.img_items.extend(dataset.data)
+
 
     @property
     def datasets_size(self):
@@ -46,9 +52,6 @@ class CommDataset(Dataset):
         img_path, pid, camid = self.img_items[index]
         img = read_image(img_path)
         if self.transform is not None: img = self.transform(img)
-        if self.relabel:
-            pid = self.pid_dict[pid]
-            camid = self.cam_dict[camid]
         return {
             "images": img,
             "targets": int(pid),
@@ -59,7 +62,9 @@ class CommDataset(Dataset):
 
     @property
     def num_classes(self):
-        return len(set([item[1] for item in self.img_items]))
+        class_set = set([item[1] for item in self.img_items])
+        if -1 in class_set: return len(class_set) - 1
+        return len(class_set)
 
     @property
     def num_cameras(self):

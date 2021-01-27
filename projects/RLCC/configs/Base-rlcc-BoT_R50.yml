@@ -1,8 +1,7 @@
 _BASE_: "../../SpCL_new/configs/Base-spcl-BoT_R50.yml"
 
 PSEUDO:
-  RLCC: True
-
-PSEUDO:
+  RLCC:
+    ENABLED: True
   MEMORY:
     SOFT_LABEL: True

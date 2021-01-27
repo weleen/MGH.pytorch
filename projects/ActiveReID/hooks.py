@@ -151,7 +151,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                 clu_num, _, _ = self.label_summary(labels, gt_labels, indep_thres=indep_thres)
                 # rectify labels with active learning
                 if self._cfg.ACTIVE.RECTIFY:
-                    if self.trainer.iter >= self._cfg.ACTIVE.START_EPOCH and self.sampler.could_sample():
+                    if self.trainer.epoch >= self._cfg.ACTIVE.START_EPOCH and self.sampler.could_sample():
                         clu_sim_mat = weight_matrix[:, :clu_num].clone()
                         self.sampler.sample(clu_sim_mat, dist_mat, labels, gt_labels)
                         labels, centers, num_classes, indep_thres, dist_mat, weight_matrix = self.rectify(features, labels, num_classes, indep_thres, dist_mat)

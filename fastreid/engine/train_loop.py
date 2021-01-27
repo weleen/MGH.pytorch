@@ -254,6 +254,7 @@ class SimpleTrainer(TrainerBase):
         wrap the optimizer with your custom `zero_grad()` method.
         """
         self.optimizer.zero_grad()
+        
         if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
             with amp.scale_loss(losses, self.optimizer) as scaled_loss:
                 scaled_loss.backward()

@@ -19,14 +19,14 @@ and expected to return a `nn.Module` object.
 """
 
 
-def build_model(cfg):
+def build_model(cfg, **kwargs):
     """
     Build the whole model architecture, defined by ``cfg.MODEL.META_ARCHITECTURE``.
     Note that it does not load any weights from ``cfg``.
     """
     logger = logging.getLogger(__name__)
     meta_arch = cfg.MODEL.META_ARCHITECTURE
-    model = META_ARCH_REGISTRY.get(meta_arch)(cfg)
+    model = META_ARCH_REGISTRY.get(meta_arch)(cfg, **kwargs)
     model.to(torch.device(cfg.MODEL.DEVICE))
 
     frozen = cfg.is_frozen()
@@ -34,9 +34,6 @@ def build_model(cfg):
 
     # convert domain-specific batch normalization
     num_domains = len(cfg.DATASETS.NAMES)
-    if num_domains > 1:
-        # TODO: multiple datasets are not supported in un/semi-supervised learning.
-        assert not cfg.PSEUDO.ENABLED, "multiple datasets are not supported in un/semi-supervised learning."
     if num_domains > 1 and cfg.MODEL.DSBN:
         # TODO: set the first test dataset as the target dataset.
         target_dataset = cfg.DATASETS.TESTS[0]
@@ -91,6 +88,9 @@ class TeacherStudentNetwork(torch.nn.Module):
 
         return results, results_m
 
+    def losses(self, *args, **kwargs):
+        return self.net.losses(*args, **kwargs)
+
     @torch.no_grad()
     def initialize_centers(self, centers, labels):
         self.net.initialize_centers(centers, labels)
@@ -99,4 +99,4 @@ class TeacherStudentNetwork(torch.nn.Module):
     @torch.no_grad()
     def _update_mean_net(self):
         for param, param_m in zip(self.net.parameters(), self.mean_net.parameters()):
-            param_m.data.mul_(self.alpha).add_(param.data, alpha=1-self.alpha)
+            param_m.data.mul_(self.alpha).add_(param.data, alpha=1 - self.alpha)

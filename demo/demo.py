@@ -19,7 +19,6 @@ sys.path.append('..')
 from fastreid.config import cfg
 from fastreid.utils.logger import setup_logger
 from fvcore.common.file_io import PathManager
-
 from predictor import FeatureExtractionDemo
 # import some modules added in project like this below
 # from projects.PartialReID.partialreid import *

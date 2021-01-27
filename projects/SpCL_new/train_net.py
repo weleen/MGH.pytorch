@@ -24,8 +24,7 @@ from fastreid.engine.defaults import DefaultTrainer
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
-
-from hybrid_memory import HybridMemory
+from fastreid.modeling.losses.hybrid_memory import HybridMemory
 
 try:
     import apex
@@ -38,6 +37,8 @@ except ImportError:
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg):
         super(SPCLTrainer, self).__init__(cfg)
+        # add weight_matrix for loss calculation
+        self.weight_matrix = None
 
     def init_memory(self):
         logger = logging.getLogger('fastreid.' + __name__)
@@ -58,36 +59,31 @@ class SPCLTrainer(DefaultTrainer):
                                    num_memory=num_memory,
                                    temp=cfg.PSEUDO.MEMORY.TEMP,
                                    momentum=cfg.PSEUDO.MEMORY.MOMENTUM,
+                                   weighted=cfg.PSEUDO.MEMORY.WEIGHTED,
+                                   weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK,
                                    soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
                                    soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH).to(cfg.MODEL.DEVICE)
-        features, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT)#, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
+        features, _, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
         memory_features = []
-        memory_labels = []
         for idx, set in enumerate(common_dataset.datasets):
             start_id, end_id = datasets_size_range[idx], datasets_size_range[idx+1]
             assert end_id - start_id == len(set)
             if idx in self.cfg.PSEUDO.UNSUP:
                 # init memory for unlabeled dataset with instance features
                 memory_features.append(features[start_id: end_id])
-                labels = torch.arange(start_id, end_id)
-                memory_labels.append(labels)
             else:
                 # init memory for labeled dataset with class center features
                 centers_dict = collections.defaultdict(list)
-                labels = []
                 for i, (_, pid, _) in enumerate(set.data):
-                    centers_dict[common_dataset.pid_dict[pid]].append(features[i].unsqueeze(0))
-                    labels.append(common_dataset.pid_dict[pid])
+                    centers_dict[pid].append(features[i + start_id].unsqueeze(0))
                 centers = [
                     torch.cat(centers_dict[pid], 0).mean(0) for pid in sorted(centers_dict.keys())
                 ]
                 memory_features.append(torch.stack(centers, 0))
-                memory_labels.append(torch.stack(labels, 0))
 
         self.memory._update_feature(torch.cat(memory_features))
-        self.memory._update_label(torch.cat(memory_labels))
         del data_loader, common_dataset, features
 
     def run_step(self) -> None:
@@ -97,13 +93,14 @@ class SPCLTrainer(DefaultTrainer):
         data = next(self._data_loader_iter)
         data_time = time.perf_counter() - start
 
+        data = self.batch_process(data, is_dsbn=self.cfg.MODEL.DSBN)
         outs = self.model(data)
 
         # Compute loss
         if hasattr(self.model, 'module'):
-            loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
+            loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
         else:
-            loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
+            loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
 
         losses = sum(loss_dict.values())
         

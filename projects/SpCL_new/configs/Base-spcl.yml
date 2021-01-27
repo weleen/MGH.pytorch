@@ -12,11 +12,6 @@ MODEL:
   LOSSES:
     NAME: ("ContrastiveLoss", )
 
-    TRI:
-      MARGIN: 0.0
-      HARD_MINING: False
-      SCALE: 1.0
-
 DATALOADER:
   SAMPLER_NAME: "RandomMultipleGallerySampler"
 
@@ -30,16 +25,17 @@ PSEUDO:
 
 SOLVER:
   OPT: "Adam"
-  MAX_EPOCH: 160
+  MAX_EPOCH: 100
   BASE_LR: 0.00035
   IMS_PER_BATCH: 64
 
-  STEPS: [40, 80, 120]
-  WARMUP_ITERS: 0
+  STEPS: [40, 80]
+  WARMUP_EPOCHS: 0
 
   LOG_ITERS: 200
 
   CHECKPOINT_PERIOD: 5
+  ITERS_PER_EPOCH: 200
 
 TEST:
   EVAL_PERIOD: 5

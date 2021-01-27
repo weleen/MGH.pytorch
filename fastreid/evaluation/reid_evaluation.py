@@ -6,16 +6,15 @@
 import copy
 import logging
 from collections import OrderedDict
-from sklearn import metrics
 
 import numpy as np
 import torch
 import torch.nn.functional as F
+from sklearn import metrics
 
 from .evaluator import DatasetEvaluator
 from .query_expansion import aqe
 from .rank import evaluate_rank
-from .rerank import re_ranking
 from .roc import evaluate_roc
 from fastreid.utils import comm
 from fastreid.utils.metrics import compute_distance_matrix
@@ -100,7 +99,8 @@ class ReidEvaluator(DatasetEvaluator):
             else:
                 raise ValueError(f'Unsupported value {self.cfg.TEST.RERANK.TYPE}, select from [gnn | jaccard]')
             dist = rerank_dist * (1 - lambda_value) + dist * lambda_value
-            
+
+        logger.info("Calculate CMC and mAP")
         cmc, all_AP, all_INP = evaluate_rank(dist, query_pids, gallery_pids, query_camids, gallery_camids)
 
         mAP = np.mean(all_AP)
@@ -111,6 +111,7 @@ class ReidEvaluator(DatasetEvaluator):
         self._results['mINP'] = mINP
 
         if self.cfg.TEST.ROC_ENABLED:
+            logger.info("Calculate ROC")
             scores, labels = evaluate_roc(dist, query_pids, gallery_pids, query_camids, gallery_camids)
             fprs, tprs, thres = metrics.roc_curve(labels, scores)
 

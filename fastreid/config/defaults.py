@@ -26,6 +26,9 @@ _C.MODEL.META_ARCHITECTURE = "Baseline"
 
 _C.MODEL.OPEN_LAYERS = ['']
 
+# MoCo memory size
+_C.MODEL.QUEUE_SIZE = 8192
+
 # ---------------------------------------------------------------------------- #
 # Backbone options
 # ---------------------------------------------------------------------------- #
@@ -130,9 +133,17 @@ _C.MODEL.PIXEL_STD = [0.229, 0.224, 0.225]
 
 # Domain-Specific batch normalization
 _C.MODEL.DSBN = True
+
 # Mean Teacher Network
 _C.MODEL.MEAN_NET = False
 _C.MODEL.MEAN_NET_ALPHA = 0.999
+
+# -----------------------------------------------------------------------------
+# KNOWLEDGE DISTILLATION
+# -----------------------------------------------------------------------------
+_C.KD = CN()
+_C.KD.MODEL_CONFIG = ""
+_C.KD.MODEL_WEIGHTS = ""
 
 # -----------------------------------------------------------------------------
 # INPUT
@@ -164,6 +175,9 @@ _C.INPUT.CJ.BRIGHTNESS = 0.15
 _C.INPUT.CJ.CONTRAST = 0.15
 _C.INPUT.CJ.SATURATION = 0.1
 _C.INPUT.CJ.HUE = 0.1
+
+# Random Affine
+_C.INPUT.DO_AFFINE = False
 
 # Auto augmentation
 _C.INPUT.DO_AUTOAUG = False
@@ -217,7 +231,7 @@ _C.DATASETS.MARKET1501.ENABLE_500K = False
 # DataLoader
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
-# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler
+# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler,
 _C.DATALOADER.SAMPLER_NAME = "BalancedIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4
@@ -264,27 +278,9 @@ _C.PSEUDO.MEMORY = CN()
 _C.PSEUDO.MEMORY.TEMP = 0.05
 _C.PSEUDO.MEMORY.MOMENTUM = 0.2
 _C.PSEUDO.MEMORY.WEIGHTED = False
-_C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = 5
-_C.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH = 20
+_C.PSEUDO.MEMORY.WEIGHT_MASK_TOPK = -1
+_C.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH = 0
 _C.PSEUDO.MEMORY.SOFT_LABEL = False # generate soft pseudo label for training
-
-# -----------------------------------------------------------------------------
-# Active learning
-# -----------------------------------------------------------------------------
-_C.ACTIVE = CN()
-
-# ACTIVE parameter
-_C.ACTIVE.ENABLED = False
-_C.ACTIVE.INITIAL_RATE = 0.1
-_C.ACTIVE.TRAIN_EPOCH = 2
-_C.ACTIVE.SAMPLE_K = 3
-_C.ACTIVE.SAMPLE_M = 0.1
-_C.ACTIVE.IMS_PER_BATCH = 63
-_C.ACTIVE.WARMUP_EPOCH = 10
-
-# ACTIVE sampler
-_C.ACTIVE.SAMPLER = CN()
-_C.ACTIVE.SAMPLER.NAME = 'RandomSampler' # ['RandomSampler', 'UncertaintySampler']
 
 # ---------------------------------------------------------------------------- #
 # Solver
@@ -304,6 +300,7 @@ _C.SOLVER.BIAS_LR_FACTOR = 1.
 _C.SOLVER.HEADS_LR_FACTOR = 1.
 
 _C.SOLVER.MOMENTUM = 0.9
+_C.SOLVER.NESTEROV = True
 
 _C.SOLVER.WEIGHT_DECAY = 0.0005
 _C.SOLVER.WEIGHT_DECAY_BIAS = 0.
@@ -321,7 +318,7 @@ _C.SOLVER.ETA_MIN_LR = 1e-7
 
 # Warmup options
 _C.SOLVER.WARMUP_FACTOR = 0.1
-_C.SOLVER.WARMUP_ITERS = 10
+_C.SOLVER.WARMUP_EPOCHS = 10
 _C.SOLVER.WARMUP_METHOD = "linear"
 
 # Backbone freeze iters

@@ -31,6 +31,7 @@ def main(args):
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
         model = DefaultTrainer.build_model(cfg)
+
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
         model = DefaultTrainer.build_parallel_model(cfg, model)  # parallel
 

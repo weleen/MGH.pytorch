@@ -43,7 +43,6 @@ def reorder_index(batch_indices, world_size):
 class BalancedIdentitySampler(Sampler):
     def __init__(self, data_source: list, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
-        self.batch_size = batch_size
         self.num_instances = num_instances
         self.num_pids_per_batch = batch_size // self.num_instances
 
@@ -81,7 +80,7 @@ class BalancedIdentitySampler(Sampler):
 
             # If remaining identities cannot be enough for a batch,
             # just drop the remaining parts
-            drop_indices = self.num_identities % self.num_pids_per_batch
+            drop_indices = self.num_identities % (self.num_pids_per_batch * self._world_size)
             if drop_indices: identities = identities[:-drop_indices]
 
             batch_indices = []
@@ -132,20 +131,18 @@ class NaiveIdentitySampler(Sampler):
 
     def __init__(self, data_source: list, batch_size: int, num_instances: int, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
-        self.batch_size = batch_size
         self.num_instances = num_instances
         self.num_pids_per_batch = batch_size // self.num_instances
 
-        self.index_pid = defaultdict(list)
-        self.pid_cam = defaultdict(list)
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
+        self.batch_size = batch_size
+
         self.pid_index = defaultdict(list)
 
         for index, info in enumerate(data_source):
             pid = info[1]
-            camid = info[2]
             if pid == -1: continue  # ignore unused instances
-            self.index_pid[index] = pid
-            self.pid_cam[pid].append(camid)
             self.pid_index[pid].append(index)
 
         self.pids = sorted(list(self.pid_index.keys()))
@@ -155,9 +152,6 @@ class NaiveIdentitySampler(Sampler):
             seed = comm.shared_random_seed()
         self._seed = int(seed)
 
-        self._rank = comm.get_rank()
-        self._world_size = comm.get_world_size()
-
     def __iter__(self):
         start = self._rank
         yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
@@ -165,12 +159,12 @@ class NaiveIdentitySampler(Sampler):
     def _infinite_indices(self):
         np.random.seed(self._seed)
         while True:
-            avai_pids = copy.deepcopy(self.pids)
+            avl_pids = copy.deepcopy(self.pids)
             batch_idxs_dict = {}
 
             batch_indices = []
-            while len(avai_pids) >= self.num_pids_per_batch:
-                selected_pids = np.random.choice(avai_pids, self.num_pids_per_batch, replace=False).tolist()
+            while len(avl_pids) >= self.num_pids_per_batch:
+                selected_pids = np.random.choice(avl_pids, self.num_pids_per_batch, replace=False).tolist()
                 for pid in selected_pids:
                     # Register pid in batch_idxs_dict if not
                     if pid not in batch_idxs_dict:
@@ -180,11 +174,11 @@ class NaiveIdentitySampler(Sampler):
                         np.random.shuffle(idxs)
                         batch_idxs_dict[pid] = idxs
 
-                    avai_idxs = batch_idxs_dict[pid]
+                    avl_idxs = batch_idxs_dict[pid]
                     for _ in range(self.num_instances):
-                        batch_indices.append(avai_idxs.pop(0))
+                        batch_indices.append(avl_idxs.pop(0))
 
-                    if len(avai_idxs) < self.num_instances: avai_pids.remove(pid)
+                    if len(avl_idxs) < self.num_instances: avl_pids.remove(pid)
 
                 if len(batch_indices) == self.batch_size:
                     yield from reorder_index(batch_indices, self._world_size)
@@ -193,9 +187,10 @@ class NaiveIdentitySampler(Sampler):
 
 @SAMPLER_REGISTRY.register()
 class RandomMultipleGallerySampler(Sampler):
-    def __init__(self, data_source: list, num_instances: int = 4, seed: Optional[int] = None, **kwargs):
+    def __init__(self, data_source: list, batch_size: int, num_instances: int = 4, seed: Optional[int] = None, **kwargs):
         self.data_source = data_source
         self.num_instances = num_instances
+        self.batch_size = batch_size
 
         self.index_pid = defaultdict(int)
         self.pid_cam = defaultdict(list)
@@ -254,4 +249,84 @@ class RandomMultipleGallerySampler(Sampler):
                     for kk in ind_indexes:
                         ret.append(index[kk])
 
-            yield from ret
+                if len(ret) == self.batch_size:
+                    yield from reorder_index(ret, self._world_size)
+                    ret = []
+            # yield from ret
+
+@SAMPLER_REGISTRY.register()
+class MultiDomainSampler(Sampler):
+    """
+    Sampler for multiple datasets, when num_domains = M, and batch_size = N, int(N/M) images for each domain, used for domain-specific BN.
+    """
+    def __init__(self, data_source: list, batch_size: int, num_instances: int = 4, seed: Optional[int] = None, train_set: list=None, **kwargs):
+        assert train_set is not None, "datasets is required for MultiDomainSampler"
+        self.data_source = data_source
+        self.num_instances = num_instances
+        self.batch_size = batch_size
+
+        self.num_domains = len(train_set.datasets)
+        self.img_size_list = list(itertools.accumulate([len(d) for d in train_set.datasets]))
+
+        self.index_pid = [defaultdict(int) for _ in range(self.num_domains)]
+        self.pid_cam = [defaultdict(list) for _ in range(self.num_domains)]
+        self.pid_index = [defaultdict(list) for _ in range(self.num_domains)]
+
+        for index, (_, pid, cam) in enumerate(data_source):
+            if pid == -1: continue  # ignore unused instances
+            domain_index = next(x[0] for x in enumerate(self.img_size_list) if x[1] > index)
+            self.index_pid[domain_index][index] = pid
+            self.pid_cam[domain_index][pid].append(cam)
+            self.pid_index[domain_index][pid].append(index)
+
+        self.pids = [list(self.pid_index[ind].keys()) for ind in range(len(self.pid_index))]
+        self.num_identities = [len(pids) for pids in self.pids]
+
+        if seed is None:
+            seed = comm.shared_random_seed()
+        self._seed = int(seed)
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
+
+    def __iter__(self):
+        start = self._rank
+        yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
+
+    def _infinite_indices(self):
+        np.random.seed(self._seed)
+        while True:
+            ret_combined = []
+            indices = [np.random.permutation(self.pids[did]).tolist() for did in range(self.num_domains)]
+            for did in range(self.num_domains):
+                ret = []
+                for kid in indices[did]:
+                    i = np.random.choice(self.pid_index[did][kid])
+                    _, i_pid, i_cam = self.data_source[i]
+                    ret.append(i)
+                    pid_i = self.index_pid[did][i]
+                    cams = self.pid_cam[did][pid_i]
+                    index = self.pid_index[did][pid_i]
+                    select_cams = no_index(cams, i_cam)
+
+                    if select_cams:
+                        if len(select_cams) >= self.num_instances:
+                            cam_indexes = np.random.choice(select_cams, size=self.num_instances - 1, replace=False)
+                        else:
+                            cam_indexes = np.random.choice(select_cams, size=self.num_instances - 1, replace=True)
+                        for kk in cam_indexes:
+                            ret.append(index[kk])
+                    else:
+                        select_indexes = no_index(index, i)
+                        if (not select_indexes):
+                            continue  # exist a pid only contain a single image.
+                        if len(select_indexes) >= self.num_instances:
+                            ind_indexes = np.random.choice(select_indexes, size=self.num_instances - 1, replace=False)
+                        else:
+                            ind_indexes = np.random.choice(select_indexes, size=self.num_instances - 1, replace=True)
+
+                        for kk in ind_indexes:
+                            ret.append(index[kk])
+                    if len(ret) >= (self.batch_size // self.num_domains):
+                        ret_combined.extend(reorder_index(ret[:self.batch_size // self.num_domains], self._world_size))
+                        break
+            yield from ret_combined

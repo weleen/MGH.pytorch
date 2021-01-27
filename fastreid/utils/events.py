@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
+# Copyright (c) Facebook, Inc. and its affiliates.
 import datetime
 import json
 import logging
@@ -102,7 +102,7 @@ class JSONWriter(EventWriter):
 
         for k, (v, iter) in storage.latest_with_smoothing_hint(self._window_size).items():
             # keep scalars that have not been written
-            if iter <= self._last_write:
+            if iter < self._last_write:
                 continue
             to_save[iter][k] = v
         if len(to_save):
@@ -144,7 +144,7 @@ class TensorboardXWriter(EventWriter):
         storage = get_event_storage()
         new_last_write = self._last_write
         for k, (v, iter) in storage.latest_with_smoothing_hint(self._window_size).items():
-            if iter > self._last_write:
+            if iter >= self._last_write:
                 self._writer.add_scalar(k, v, iter)
                 new_last_write = max(new_last_write, iter)
         self._last_write = new_last_write

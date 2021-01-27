@@ -11,7 +11,6 @@ since they are meant to represent the "common default behavior" people need in t
 import argparse
 import logging
 import os
-import math
 import sys
 from collections import OrderedDict
 
@@ -30,8 +29,8 @@ from fastreid.utils.env import seed_all_rng
 from fastreid.utils.events import CommonMetricPrinter, JSONWriter, TensorboardXWriter
 from fvcore.common.file_io import PathManager
 from fastreid.utils.logger import setup_logger
-from . import hooks, launch
-from .train_loop import TrainerBase, SimpleTrainer
+from . import hooks
+from .train_loop import SimpleTrainer
 
 try:
     import apex
@@ -217,27 +216,29 @@ class DefaultTrainer(SimpleTrainer):
         cfg = self.auto_scale_hyperparams(cfg, data_loader)
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
+        
         optimizer_ckpt = dict(optimizer=optimizer)
         model, optimizer, optimizer_ckpt = self.build_parallel_model(cfg, model, optimizer, optimizer_ckpt)
 
         super().__init__(model, data_loader, optimizer)
         self.iters_per_epoch = cfg.SOLVER.ITERS_PER_EPOCH
-        self.scheduler = self.build_lr_scheduler(cfg, optimizer, self.iters_per_epoch)
+        self.scheduler = self.build_lr_scheduler(cfg, optimizer)
 
         # Assume no other objects need to be checkpointed.
         # We can later make it checkpoint the stateful hooks
         self.checkpointer = Checkpointer(
             # Assume you want to save checkpoints together with logs/statistics
-            model.module,
+            model.module if hasattr(model, 'module') else model,
             cfg.OUTPUT_DIR,
             save_to_disk=comm.is_main_process(),
             **optimizer_ckpt,
             **self.scheduler,
         )
+        
         self.start_epoch = 0
         self.max_epoch = cfg.SOLVER.MAX_EPOCH
         self.max_iter = self.max_epoch * self.iters_per_epoch
-        self.warmup_iters = cfg.SOLVER.WARMUP_ITERS
+        self.warmup_epochs = cfg.SOLVER.WARMUP_EPOCHS
         self.delay_epochs = cfg.SOLVER.DELAY_EPOCHS
         self.cfg = cfg
 
@@ -258,7 +259,12 @@ class DefaultTrainer(SimpleTrainer):
             # )
             model = DistributedDataParallel(model, delay_allreduce=True)
         else:
-            model = torch.nn.DataParallel(model)
+            try:
+                device_num = torch.cuda.device_count()
+            except:
+                device_num = 1
+            if device_num > 1:
+                model = torch.nn.DataParallel(model)
 
         if optimizer is not None:
             return model, optimizer, optimizer_ckpt
@@ -333,6 +339,7 @@ class DefaultTrainer(SimpleTrainer):
                 self.build_train_loader(cfg),
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ))
+
 
         if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
             open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
@@ -426,15 +433,11 @@ class DefaultTrainer(SimpleTrainer):
         return build_optimizer(cfg, model)
 
     @classmethod
-    def build_lr_scheduler(cls, cfg, optimizer, iters_per_epoch):
+    def build_lr_scheduler(cls, cfg, optimizer):
         """
         It now calls :func:`fastreid.solver.build_lr_scheduler`.
         Overwrite it if you'd like a different scheduler.
         """
-        cfg = cfg.clone()
-        cfg.defrost()
-        cfg.SOLVER.MAX_EPOCH = cfg.SOLVER.MAX_EPOCH - max(
-            math.ceil(cfg.SOLVER.WARMUP_ITERS / iters_per_epoch), cfg.SOLVER.DELAY_EPOCHS)
         return build_lr_scheduler(cfg, optimizer)
 
     @classmethod
@@ -442,7 +445,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`fastreid.data.build_detection_train_loader`.
+        It now calls :func:`fastreid.data.build_reid_train_loader`.
         Overwrite it if you'd like a different data loader.
         """
         logger = logging.getLogger(__name__)
@@ -454,7 +457,7 @@ class DefaultTrainer(SimpleTrainer):
         """
         Returns:
             iterable
-        It now calls :func:`fastreid.data.build_detection_test_loader`.
+        It now calls :func:`fastreid.data.build_reid_test_loader`.
         Overwrite it if you'd like a different data loader.
         """
         return build_reid_test_loader(cfg, dataset_name, mode)
@@ -517,8 +520,14 @@ class DefaultTrainer(SimpleTrainer):
         output_dir = cfg.OUTPUT_DIR
         if cfg.MODEL.HEADS.NUM_CLASSES == 0:
             if cfg.PSEUDO.ENABLED:
+                num_classes = 0
+                for idx, data_name in enumerate(cfg.DATASETS.NAMES):
+                    if idx in cfg.PSEUDO.UNSUP:
+                        num_classes += len(data_loader.dataset.datasets[idx])
+                    else:
+                        num_classes += data_loader.dataset.datasets[idx].num_train_pids
                 # In unsupervised learning, set the num_classes as the dataset size
-                cfg.MODEL.HEADS.NUM_CLASSES = len(data_loader.dataset)
+                cfg.MODEL.HEADS.NUM_CLASSES = num_classes
             else:
                 cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
             cfg.MODEL.HEADS.NUM_CAMERAS = data_loader.dataset.num_cameras
@@ -539,3 +548,31 @@ class DefaultTrainer(SimpleTrainer):
         if frozen: cfg.freeze()
 
         return cfg
+
+    def batch_process(self, batch, is_dsbn=True):
+        # re-order the input batch to meet the domain specific training.
+        try:
+            device_num = torch.cuda.device_count()
+        except:
+            device_num = 1
+        domain_num = len(self.cfg.DATASETS.NAMES)
+
+        if device_num == 1 or domain_num == 1 or comm.get_world_size() > 1 or not is_dsbn:
+            return batch
+        else:
+            # reorder the input when use DP
+            def reshape(x):
+                bs = len(x)
+                assert bs % (device_num * domain_num) == 0
+                reorder_index = torch.arange(bs).view(domain_num, device_num, -1).transpose(0, 1).contiguous().view(-1).tolist()
+                if isinstance(x, list):
+                    new_x = [x[i] for i in reorder_index]
+                else:
+                    new_x = x[reorder_index]
+                return new_x
+            
+            new_batch = dict()
+            for key, value in batch.items():
+                new_batch[key] = reshape(value)
+            
+            return new_batch
