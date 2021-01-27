@@ -92,6 +92,7 @@ class TRANSTrainer(DefaultTrainer):
 
         def test_and_save_results(mode='test'):
             self._last_eval_results = self.test_transformer(self.cfg, self.model, mode=mode)
+            torch.cuda.empty_cache()
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
