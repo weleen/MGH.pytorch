@@ -205,7 +205,6 @@ class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):
     """
 
     def before_train(self):
-        self.max_iter = self.trainer.max_iter
         if len(self.trainer.cfg.DATASETS.TESTS) == 1:
             self.metric_name = self.trainer.cfg.TEST.METRIC_NAMES
         else:
