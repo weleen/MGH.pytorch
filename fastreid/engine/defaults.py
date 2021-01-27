@@ -228,7 +228,7 @@ class DefaultTrainer(SimpleTrainer):
         # We can later make it checkpoint the stateful hooks
         self.checkpointer = Checkpointer(
             # Assume you want to save checkpoints together with logs/statistics
-            model.module,
+            model.module if hasattr(model, 'module') else model,
             cfg.OUTPUT_DIR,
             save_to_disk=comm.is_main_process(),
             **optimizer_ckpt,
@@ -259,7 +259,12 @@ class DefaultTrainer(SimpleTrainer):
             # )
             model = DistributedDataParallel(model, delay_allreduce=True)
         else:
-            model = torch.nn.DataParallel(model)
+            try:
+                device_num = torch.cuda.device_count()
+            except:
+                device_num = 1
+            if device_num > 1:
+                model = torch.nn.DataParallel(model)
 
         if optimizer is not None:
             return model, optimizer, optimizer_ckpt
@@ -515,8 +520,14 @@ class DefaultTrainer(SimpleTrainer):
         output_dir = cfg.OUTPUT_DIR
         if cfg.MODEL.HEADS.NUM_CLASSES == 0:
             if cfg.PSEUDO.ENABLED:
+                num_classes = 0
+                for idx, data_name in enumerate(cfg.DATASETS.NAMES):
+                    if idx in cfg.PSEUDO.UNSUP:
+                        num_classes += len(data_loader.dataset.datasets[idx])
+                    else:
+                        num_classes += data_loader.dataset.datasets[idx].num_train_pids
                 # In unsupervised learning, set the num_classes as the dataset size
-                cfg.MODEL.HEADS.NUM_CLASSES = len(data_loader.dataset)
+                cfg.MODEL.HEADS.NUM_CLASSES = num_classes
             else:
                 cfg.MODEL.HEADS.NUM_CLASSES = data_loader.dataset.num_classes
             cfg.MODEL.HEADS.NUM_CAMERAS = data_loader.dataset.num_cameras
@@ -537,3 +548,31 @@ class DefaultTrainer(SimpleTrainer):
         if frozen: cfg.freeze()
 
         return cfg
+
+    def batch_process(self, batch, is_dsbn=True):
+        # re-order the input batch to meet the domain specific training.
+        try:
+            device_num = torch.cuda.device_count()
+        except:
+            device_num = 1
+        domain_num = len(self.cfg.DATASETS.NAMES)
+
+        if device_num == 1 or domain_num == 1 or comm.get_world_size() > 1 or not is_dsbn:
+            return batch
+        else:
+            # reorder the input when use DP
+            def reshape(x):
+                bs = len(x)
+                assert bs % (device_num * domain_num) == 0
+                reorder_index = torch.arange(bs).view(domain_num, device_num, -1).transpose(0, 1).contiguous().view(-1).tolist()
+                if isinstance(x, list):
+                    new_x = [x[i] for i in reorder_index]
+                else:
+                    new_x = x[reorder_index]
+                return new_x
+            
+            new_batch = dict()
+            for key, value in batch.items():
+                new_batch[key] = reshape(value)
+            
+            return new_batch

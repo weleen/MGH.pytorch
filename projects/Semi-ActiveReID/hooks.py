@@ -1,12 +1,14 @@
 import datetime
 import itertools
 import logging
+import copy
 import os
 import time
 import numpy as np
 import collections
 import faiss
 import scipy
+import pickle
 
 import torch
 import torch.nn.functional as F
@@ -24,6 +26,10 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
     """
     def __init__(self, cfg, model):
         super().__init__(cfg, model)
+        try:
+            self.indep_thres = cfg.PSEUDO.INDEP_THRE
+        except:
+            self.indep_thres = []
         try:
             self.sampler = getattr(sampling_method, cfg.ACTIVE.QUERY_FUNC)(cfg, dataset=self._common_dataset.img_items)
         except Exception as e:
@@ -48,7 +54,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             self.get_memory_features()
 
             # generate pseudo labels and centers
-            all_labels, all_centers, active_labels = self.update_labels()
+            all_labels, all_centers, active_labels, triplet_set = self.update_labels()
 
             self._logger.info(f"Update unsupervised data loader.")
             self.update_train_loader(all_labels)
@@ -69,7 +75,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
             if self.could_active_sampling() and self._cfg.ACTIVE.BUILD_DATALOADER:
                 self._logger.info(f"Update active data loader.")
-                self.update_active_loader(active_labels)
+                self.update_active_loader(active_labels, triplet_set)
 
             comm.synchronize()
 
@@ -80,15 +86,12 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
-            all_features = []
-            features, true_labels = extract_features(self.model,
-                                                    self._data_loader_cluster,
-                                                    self._cfg.PSEUDO.NORM_FEAT)
-            all_features.append(features)
-            all_features = torch.stack(all_features, dim=0).mean(0)
+            all_features, true_labels, _ = extract_features(self.model,
+                                                            self._data_loader_cluster,
+                                                            self._cfg.PSEUDO.NORM_FEAT)
         else:
             all_features = self.memory_features
-            true_labels = torch.LongTensor([self._data_loader_cluster.dataset.pid_dict[item[1]] for item in self._data_loader_cluster.dataset.img_items])
+            true_labels = torch.LongTensor([item[1] for item in self._data_loader_cluster.dataset.img_items])
 
         if self._cfg.PSEUDO.NORM_FEAT:
             all_features = F.normalize(all_features, p=2, dim=1)
@@ -99,6 +102,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         all_centers = []
         all_labels = []
         all_active_labels = []
+        all_dataset_names = [self._cfg.DATASETS.NAMES[ind] for ind in self._cfg.PSEUDO.UNSUP]
         for idx, dataset in enumerate(self._common_dataset.datasets):
 
             try:
@@ -112,7 +116,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
 
             if comm.is_main_process():
                 # clustering only on first GPU
-                save_path = '{}/clustering/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
+                save_path = '{}/clustering/{}/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, all_dataset_names[idx], self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
                 labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
                     self._cfg,
@@ -138,18 +142,26 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                 # active sampling 
                 if self.could_active_sampling() and self.sampler.could_sample():
                     self.sampler.query(dist_mat, labels, num_classes, gt_labels, cluster_num=cluster_num, features=features, centers=centers)
+                    save_path = '{}/active/query_set_epoch{}.pkl'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
+                    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+                    with open(save_path, 'wb') as f:
+                        pickle.dump(self.sampler.query_set, f)
 
-                # # node label propagation
-                # if self._cfg.ACTIVE.NODE_PROP and self.sampler.index_label.sum() > 0:
-                #     active_labels = self.node_label_propagation(features.cpu().numpy(), gt_labels)
-                #     classes = list(set(active_labels))
-                #     active_labels = [classes.index(i) for i in active_labels]
-                # else:
                 labeled_index = list(self.sampler.query_set)
                 gt_query = gt_labels[labeled_index].tolist()
                 classes = list(set(gt_query))
                 # reset the labels
                 active_labels = [classes.index(gt_query[labeled_index.index(i)]) if i in labeled_index else -1 for i in range(len(labels))]
+                # triplet set
+                triplet_set = set()
+                for ind, i in enumerate(gt_query):
+                    pos_ind = np.where(gt_query == i)[0]
+                    if len(pos_ind) == 1: continue
+                    for j in pos_ind:
+                        neg_ind = np.where(gt_query != i)[0]
+                        if len(neg_ind) == 0: continue
+                        for k in neg_ind:
+                            triplet_set.add((i, j, k))
 
                 # edge label propagation and rectification
                 if self._cfg.ACTIVE.RECTIFY and self.sampler.index_label.sum() > 0:
@@ -165,10 +177,14 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
                 if comm.get_rank() > 0:
                     labels = torch.arange(len(dataset)).long()
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
+                    active_labels = -torch.ones((len(dataset))).long()
+                    if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                        class_weight_matrix = torch.zeros((len(dataset), num_classes)).float()
                 labels = comm.broadcast_tensor(labels, 0)
                 centers = comm.broadcast_tensor(centers, 0)
-                dist_mat = comm.broadcast_tensor(dist_mat, 0)
                 active_labels = comm.broadcast_tensor(active_labels, 0)
+                if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                    class_weight_matrix = comm.broadcast_tensor(class_weight_matrix, 0)
 
             if self._cfg.PSEUDO.MEMORY.WEIGHTED:
                 self.trainer.weight_matrix = class_weight_matrix
@@ -185,11 +201,17 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
             except:
                 self.num_classes.append(num_classes)
 
-        return all_labels, all_centers, all_active_labels
+        return all_labels, all_centers, all_active_labels, triplet_set
 
     def rectify(self, features, labels, num_classes, indep_thres, dist_mat, gt_labels):
+        self._logger.info('Rectify labels.')
         if self._cfg.ACTIVE.EDGE_PROP:
-            new_dist_mat = self.edge_label_propagation_(features, dist_mat, gt_labels, step=self._cfg.ACTIVE.EDGE_PROP_STEP)
+            if self._cfg.ACTIVE.EDGE_PROP_METHOD == 'res': 
+                new_dist_mat = self.edge_label_propagation(features, dist_mat, gt_labels, step=self._cfg.ACTIVE.EDGE_PROP_STEP)
+            elif self._cfg.ACTIVE.EDGE_PROP_METHOD == 'cdp':
+                new_dist_mat = self.edge_label_propagation_cdp(features, dist_mat, gt_labels, step=self._cfg.ACTIVE.EDGE_PROP_STEP_CDP)
+            else:
+                raise NotImplementedError
             torch.cuda.empty_cache()
         else:
             new_dist_mat = sampling_method.set_labeled_instances(self.sampler, dist_mat, gt_labels)
@@ -208,38 +230,18 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         _, _, _ = self.label_summary(new_labels, gt_labels, indep_thres=new_indep_thres)
         return new_labels, new_centers, new_num_classes, new_indep_thres, new_dist_mat, new_weight_matrix
 
-    def update_active_loader(self, pseudo_labels, **kwargs):
+    def update_active_loader(self, pseudo_labels, triplet_set, **kwargs):
         self._logger.info('Build active dataloader.')
-
-        sup_commdataset = self.trainer.data_loader.dataset
-        sup_datasets = sup_commdataset.datasets
-
-        re_gt_set = pseudo_labels
-        dataset = sup_datasets[0].data
-        cam_labels = [dataset[i][2] for i in range(len(dataset))]
-        
-        gt_dict = dict()
-        i = 0
-        for p in re_gt_set:
-            if gt_dict.get(p) is None:
-                gt_dict[p] = i
-                i += 1
-        re_gt_set = [gt_dict[p] for p in re_gt_set]
+        assert len(pseudo_labels) == 1, 'Only support single dataset for active learning.'
+        sup_datasets = self._data_loader_sup.dataset.datasets
 
         self.trainer.data_loader_active = build_reid_train_loader(self._cfg,
-                                                        datasets=sup_datasets,
-                                                        pseudo_labels=[re_gt_set],
-                                                        cam_labels=[cam_labels],
-                                                        is_train=True,
-                                                        relabel=False)
+                                                                  datasets=copy.deepcopy(sup_datasets),
+                                                                  pseudo_labels=pseudo_labels,
+                                                                  is_train=True,
+                                                                  relabel=False)
         self.trainer._data_loader_active_iter = iter(self.trainer.data_loader_active)
-        # update cfg
-        if self._cfg.is_frozen():
-            self._cfg.defrost()
-            self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
-            self._cfg.freeze()
-        else:
-            self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader_active.dataset.num_classes
+        # self.trainer.build_active_dataloader(triplet_set)
 
     def edge_label_propagation(self, features: torch.Tensor, dist_mat: torch.Tensor, gt_labels: torch.Tensor, step=50, alpha=0.99, debug=False):
         # TODO: try cdp graph propagation
@@ -362,7 +364,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
  
         return active_labels
 
-    def edge_label_propagation_(self, features: torch.Tensor, dist_mat: torch.Tensor, gt_labels: torch.Tensor, k=15, th=0.66, step=0.05, max_iter=100, max_sz=600, debug=False, **kwargs):
+    def edge_label_propagation_cdp(self, features: torch.Tensor, dist_mat: torch.Tensor, gt_labels: torch.Tensor, k=15, th=0.66, step=0.05, max_iter=100, max_sz=100, debug=False, **kwargs):
         if dist_mat is not None:
             knn_dist, knn_idx = torch.sort(dist_mat, dim=1)
             knn_dist = knn_dist[:, :k].cpu().numpy()

@@ -175,3 +175,17 @@ class MutualTransform:
 
     def __repr__(self):
         return "Mutual Transformer"
+
+class RandomGrayScale:
+    def __init__(self, prob=0.5):
+        self.prob = prob
+    
+    def __call__(self, image):
+        pass
+
+class RandomPatchGrayScale:    
+    def __init__(self, prob=0.5):
+        self.prob = prob
+    
+    def __call__(self, image):
+        pass

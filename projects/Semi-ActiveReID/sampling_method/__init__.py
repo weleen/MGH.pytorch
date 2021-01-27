@@ -5,3 +5,4 @@ from .confidence_sampler import ConfidenceSampler
 from .coreset_sampler import CoresetSampler
 from .entropy_sampler import EntropySampler
 from .margin_sampler import MarginSampler
+from .cluster_sampler import ClusterSampler

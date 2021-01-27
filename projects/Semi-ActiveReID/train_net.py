@@ -88,7 +88,7 @@ class SemiActiveTrainer(DefaultTrainer):
                 # init memory for labeled dataset with class center features
                 centers_dict = collections.defaultdict(list)
                 for i, (_, pid, _) in enumerate(set.data):
-                    centers_dict[common_dataset.pid_dict[pid]].append(features[i].unsqueeze(0))
+                    centers_dict[pid].append(features[i + start_id].unsqueeze(0))
                 centers = [
                     torch.cat(centers_dict[pid], 0).mean(0) for pid in sorted(centers_dict.keys())
                 ]

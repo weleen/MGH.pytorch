@@ -23,6 +23,7 @@ from fastreid.engine import default_argument_parser, default_setup, launch, hook
 from fastreid.engine.defaults import DefaultTrainer
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
+from fastreid.utils import comm
 from fastreid.modeling.losses.hybrid_memory import HybridMemory
 
 try:
@@ -76,7 +77,7 @@ class SPCLTrainer(DefaultTrainer):
                 # init memory for labeled dataset with class center features
                 centers_dict = collections.defaultdict(list)
                 for i, (_, pid, _) in enumerate(set.data):
-                    centers_dict[common_dataset.pid_dict[pid]].append(features[i].unsqueeze(0))
+                    centers_dict[pid].append(features[i + start_id].unsqueeze(0))
                 centers = [
                     torch.cat(centers_dict[pid], 0).mean(0) for pid in sorted(centers_dict.keys())
                 ]
@@ -92,6 +93,7 @@ class SPCLTrainer(DefaultTrainer):
         data = next(self._data_loader_iter)
         data_time = time.perf_counter() - start
 
+        data = self.batch_process(data, is_dsbn=self.cfg.MODEL.DSBN)
         outs = self.model(data)
 
         # Compute loss

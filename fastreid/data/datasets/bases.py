@@ -80,6 +80,8 @@ class Dataset(object):
         for info in data:
             pids.add(info[1])
             cams.add(info[2])
+        if -1 in pids:  # -1 is ignored in training
+            return len(pids) - 1, len(cams)
         return len(pids), len(cams)
 
     def get_num_pids(self, data):

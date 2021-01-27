@@ -22,7 +22,7 @@ _root = os.getenv("FASTREID_DATASETS", "datasets")
 logger = logging.getLogger(__name__)
 
 
-def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None, cam_labels: list = None,
+def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = None, 
                             is_train=True, relabel=True, for_clustering=False, mapper=None, **kwargs) -> DataLoader:
     cfg = cfg.clone()
     dataset_names = cfg.DATASETS.NAMES
@@ -49,24 +49,15 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
                 dataset.show_train()
             datasets.append(dataset)
     else:
-        # TODO: multiple datasets training in unsupervised domain adaptation is not supported now. Please refer to implementation of OpenUnReID.
-        # update unlabeled datasets with given pseudo labels, 
-        # update labeled datasets if label is string with dataset_name and relabel should be False.
         assert pseudo_labels is not None, "Please give pseudo_labels for the datasets."
-        assert relabel is False, "Please set relabel to False when using pseudo labels."
         for idx, dataset in enumerate(datasets):
-            if idx in cfg.PSEUDO.UNSUP:
-                logger.info(f"Replace the unlabeled label in dataset {dataset_names[idx]} with pseudo labels.")
-                datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
-            else:
-                if isinstance(dataset.data[0][1], str):
-                    logger.warning(f"Replace the string label in labeled dataset {dataset_names[idx]} with int label. Only on the first iteration.")
-                    datasets[idx].renew_labels(pseudo_labels[idx], cam_labels[idx])
+            logger.info(f"Replace the unlabeled label in dataset {dataset_names[idx]} with pseudo labels.")
+            datasets[idx].renew_labels(pseudo_labels[idx])
     if mapper is not None:
         transforms = mapper
     else:
         transforms = build_transforms(cfg, is_train=is_train)
-    train_set = CommDataset(datasets, transforms, relabel=relabel)
+    train_set = CommDataset(datasets, transforms, relabel=relabel)  # relabel image pid and camid when relabel = True
 
     num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
     num_instance = cfg.DATALOADER.NUM_INSTANCE
@@ -76,7 +67,8 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
         data_sampler = samplers.SAMPLER_REGISTRY.get(cfg.DATALOADER.SAMPLER_NAME)(data_source=train_set.img_items,
                                                                                   batch_size=cfg.SOLVER.IMS_PER_BATCH,
                                                                                   num_instances=num_instance,
-                                                                                  size=len(train_set))
+                                                                                  size=len(train_set),
+                                                                                  train_set=train_set)
     else:
         data_sampler = samplers.InferenceSampler(len(train_set))
     batch_sampler = torch.utils.data.sampler.BatchSampler(data_sampler, mini_batch_size, drop_last=is_train)

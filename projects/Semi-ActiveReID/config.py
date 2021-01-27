@@ -1,11 +1,3 @@
-'''
-Author: WuYiming
-Date: 2020-10-27 10:18:25
-LastEditTime: 2020-11-17 10:16:19
-LastEditors: Please set LastEditors
-Description: In User Settings Edit
-FilePath: /fast-reid/projects/ActiveReID/config.py
-'''
 # encoding: utf-8
 """
 @author:  wuyiming
@@ -16,6 +8,8 @@ from fvcore.common.config import CfgNode as CN
 
 def add_activereid_config(cfg):
     _C = cfg
+    # Pseudo
+    _C.PSEUDO.INDEP_THRE = [0.6000000238418579,] # market 0.6000000238418579 duke 0.7647058963775635 msmt 0.6000000238418579, in log, print 1-indep_thre
     # ----------------------------------------------------------------------------
     # Active
     # ----------------------------------------------------------------------------
@@ -36,8 +30,13 @@ def add_activereid_config(cfg):
 
     # rectify task
     _C.ACTIVE.EDGE_PROP = True
+    _C.ACTIVE.EDGE_PROP_METHOD = 'res' # 'cdp'
+    # res
     _C.ACTIVE.EDGE_PROP_STEP = 10
+    # cdp
+    _C.ACTIVE.EDGE_PROP_STEP_CDP = 0.05
 
     # build active data loader
-    _C.ACTIVE.NODE_PROP = True
-    _C.ACTIVE.NODE_PROP_STEP = -1
+    _C.ACTIVE.IMS_PER_BATCH = 63
+    # _C.ACTIVE.NODE_PROP = True
+    # _C.ACTIVE.NODE_PROP_STEP = -1

@@ -8,9 +8,13 @@ from .. import losses as Loss
 
 
 def reid_losses(cfg, outs: dict, inputs: dict=None, prefix='', **kwargs) -> dict:
-    outputs            = outs["outputs"]
-    gt_classes         = outs["targets"]
-
+    outputs = outs["outputs"]
+    gt_classes = outs["targets"]
+    cls_outputs = outputs['cls_outputs']
+    if cfg.PSEUDO.ENABLED and cfg.PSEUDO.WITH_CLASSIFIER:
+        cls_outputs = cls_outputs[:, :cfg.MODEL.HEADS.NUM_CLASSES]
+        if 'outs_mean' in kwargs:
+            kwargs['outs_mean']['outputs']['cls_outputs'] = kwargs['outs_mean']['outputs']['cls_outputs'][:, :cfg.MODEL.HEADS.NUM_CLASSES]
     loss_dict = {}
     for loss_name in cfg.MODEL.LOSSES.NAME:
         if loss_name == 'ContrastiveLoss':
@@ -18,7 +22,6 @@ def reid_losses(cfg, outs: dict, inputs: dict=None, prefix='', **kwargs) -> dict
             pred_features = outputs['features']
             loss = {"contrastive_loss": kwargs['memory'](pred_features, inputs['index'], **kwargs)}
         else:
-            cls_outputs = outputs['cls_outputs']
             if loss_name == 'TripletLoss' and 'before_features' in outputs:
                 pred_features = outputs['before_features']
             elif loss_name == 'PairwiseSmoothLoss':
@@ -26,8 +29,6 @@ def reid_losses(cfg, outs: dict, inputs: dict=None, prefix='', **kwargs) -> dict
                 pred_features = outs['low_level_feature']
             else:
                 pred_features = outputs['features']
-            if cfg.PSEUDO.ENABLED and cfg.PSEUDO.WITH_CLASSIFIER:
-                cls_outputs = cls_outputs[:, :cfg.MODEL.HEADS.NUM_CLASSES]
             loss = getattr(Loss, loss_name)(cfg)(cls_outputs, pred_features, gt_classes, **kwargs)
         loss_dict.update(loss)
     # rename

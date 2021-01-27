@@ -699,15 +699,12 @@ class LabelGeneratorHook(HookBase):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
-            all_features = []
-            features, true_labels = extract_features(self.model,
-                                                    self._data_loader_cluster,
-                                                    self._cfg.PSEUDO.NORM_FEAT)
-            all_features.append(features)
-            all_features = torch.stack(all_features, dim=0).mean(0)
+            all_features, true_labels, _ = extract_features(self.model,
+                                                            self._data_loader_cluster,
+                                                            self._cfg.PSEUDO.NORM_FEAT)
         else:
             all_features = self.memory_features
-            true_labels = torch.LongTensor([self._data_loader_cluster.dataset.pid_dict[item[1]] for item in self._data_loader_cluster.dataset.img_items])
+            true_labels = torch.LongTensor([item[1] for item in self._data_loader_cluster.dataset.img_items])
 
         if self._cfg.PSEUDO.NORM_FEAT:
             all_features = F.normalize(all_features, p=2, dim=1)
@@ -717,6 +714,7 @@ class LabelGeneratorHook(HookBase):
 
         all_centers = []
         all_labels = []
+        all_dataset_names = [self._cfg.DATASETS.NAMES[ind] for ind in self._cfg.PSEUDO.UNSUP]
         for idx, dataset in enumerate(self._common_dataset.datasets):
 
             try:
@@ -730,8 +728,12 @@ class LabelGeneratorHook(HookBase):
 
             if comm.is_main_process():
                 # clustering only on first GPU
-                save_path = '{}/clustering/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, self.trainer.epoch)
+                save_path = '{}/clustering/{}/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, all_dataset_names[idx], self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
+                # if os.path.exists(save_path):
+                #     res = torch.load(save_path)
+                #     labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
+                # else:
                 labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
                     self._cfg,
                     all_features[start_id: end_id],
@@ -757,12 +759,16 @@ class LabelGeneratorHook(HookBase):
                 if comm.get_rank() > 0:
                     labels = torch.arange(len(dataset)).long()
                     centers = torch.zeros((num_classes, all_features.size(-1))).float()
+                    if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                        dist_mat = torch.zeros((len(dataset), len(dataset))).float()
                 labels = comm.broadcast_tensor(labels, 0)
                 centers = comm.broadcast_tensor(centers, 0)
-                dist_mat = comm.broadcast_tensor(dist_mat, 0)
+                if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                    dist_mat = comm.broadcast_tensor(dist_mat, 0)
 
             # calculate weight_matrix if use weight_matrix in loss calculation
             if self._cfg.PSEUDO.MEMORY.WEIGHTED:
+                assert len(self._cfg.DATASETS.NAMES) == 1, 'Only single single dataset is supported for calculating weight_matrix'
                 weight_matrix = torch.zeros((len(labels), num_classes))
                 nums = torch.zeros((1, num_classes))
                 index_select = torch.where(labels >= 0)[0]
@@ -795,18 +801,13 @@ class LabelGeneratorHook(HookBase):
         sup_datasets = sup_commdataset.datasets
         # add the ground truth labels into the all_labels
         pid_labels = list()
-        cam_labels = list()
         start_pid = 0
-        start_camid = 0
+
         for idx, dataset in enumerate(sup_datasets):
             # get ground truth pid labels start from 0
-            pid_lbls = [sup_commdataset.pid_dict[pid] if isinstance(pid, str) else pid for _, pid, _ in dataset.data]
+            pid_lbls = [pid for _, pid, _ in dataset.data]
             min_pid = min(pid_lbls)
             pid_lbls = [pid_lbl - min_pid for pid_lbl in pid_lbls]
-            # get camera id labels
-            cam_lbls = [sup_commdataset.cam_dict[camid] if isinstance(camid, str) else camid for _, _, camid in dataset.data]
-            min_camid = min(cam_lbls)
-            cam_lbls = [cam_lbl - min_camid for cam_lbl in cam_lbls]
             
             if idx in self._cfg.PSEUDO.UNSUP:
                 # replace gt labels with pseudo labels
@@ -814,16 +815,12 @@ class LabelGeneratorHook(HookBase):
                 pid_lbls = all_labels[unsup_idx]
 
             pid_lbls = [pid + start_pid if pid != -1 else pid for pid in pid_lbls]
-            cam_lbls = [camid + start_camid for camid in cam_lbls]
-            start_pid += max(pid_lbls) + 1
-            start_camid += max(cam_lbls) + 1
-            pid_labels.append(pid_lbls)
-            cam_labels.append(cam_lbls)
+            start_pid = max(pid_lbls) + 1
+            pid_labels.append(pid_lbls)            
 
         self.trainer.data_loader = build_reid_train_loader(self._cfg,
                                                            datasets=copy.deepcopy(sup_datasets),  # copy the sup_datasets
                                                            pseudo_labels=pid_labels,
-                                                           cam_labels=cam_labels,
                                                            is_train=True,
                                                            relabel=False)
         self.trainer._data_loader_iter = iter(self.trainer.data_loader)
@@ -836,6 +833,7 @@ class LabelGeneratorHook(HookBase):
             self._cfg.MODEL.HEADS.NUM_CLASSES = self.trainer.data_loader.dataset.num_classes
 
     def update_classifier_centers(self, all_centers):
+        assert len(self._cfg.DATASETS.NAMES) == len(self._cfg.PSEUDO.UNSUP), 'Only support training on unlabeled datasets.'
         start_cls_id = 0
         for idx in range(len(self._cfg.DATASETS.NAMES)):
             if idx in self._cfg.PSEUDO.UNSUP:
@@ -845,6 +843,7 @@ class LabelGeneratorHook(HookBase):
                     self.model.module.initialize_centers(centers, center_labels)
                 else:
                     self.model.initialize_centers(centers, center_labels)
+                start_cls_id += self.trainer.data_loader.dataset.datasets[idx].num_train_pids
 
     def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
         if cluster_metric:

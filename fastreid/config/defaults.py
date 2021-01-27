@@ -133,6 +133,7 @@ _C.MODEL.PIXEL_STD = [0.229, 0.224, 0.225]
 
 # Domain-Specific batch normalization
 _C.MODEL.DSBN = True
+
 # Mean Teacher Network
 _C.MODEL.MEAN_NET = False
 _C.MODEL.MEAN_NET_ALPHA = 0.999
@@ -230,7 +231,7 @@ _C.DATASETS.MARKET1501.ENABLE_500K = False
 # DataLoader
 # -----------------------------------------------------------------------------
 _C.DATALOADER = CN()
-# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler
+# Sampler name, support BalancedIdentitySampler, NaiveIdentitySampler, RandomMultipleGallerySampler, TrainingSampler, InferenceSampler,
 _C.DATALOADER.SAMPLER_NAME = "BalancedIdentitySampler"
 # Number of instance for each person
 _C.DATALOADER.NUM_INSTANCE = 4

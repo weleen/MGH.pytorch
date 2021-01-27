@@ -55,6 +55,21 @@ def hard_example_mining(dist_mat, is_pos, is_neg, return_index=False):
         return dist_ap, dist_an, relative_p_inds, relative_n_inds
     return dist_ap, dist_an
 
+def _batch_hard(mat_distance, mat_similarity, return_indices=False):
+    # TODO support distributed
+    sorted_mat_distance, positive_indices = torch.sort(
+        mat_distance + (-9999.0) * (1 - mat_similarity), dim=1, descending=True
+    )
+    hard_p = sorted_mat_distance[:, 0]
+    hard_p_indice = positive_indices[:, 0]
+    sorted_mat_distance, negative_indices = torch.sort(
+        mat_distance + (9999.0) * (mat_similarity), dim=1, descending=False
+    )
+    hard_n = sorted_mat_distance[:, 0]
+    hard_n_indice = negative_indices[:, 0]
+    if return_indices:
+        return hard_p, hard_n, hard_p_indice, hard_n_indice
+    return hard_p, hard_n
 
 def weighted_example_mining(dist_mat, is_pos, is_neg):
     """For each anchor, find the weighted positive and negative sample.
@@ -92,7 +107,7 @@ class TripletLoss(object):
         self._scale = cfg.MODEL.LOSSES.TRI.SCALE
         self._hard_mining = cfg.MODEL.LOSSES.TRI.HARD_MINING
 
-    def __call__(self, _, embedding, targets):
+    def __call__(self, _, embedding, targets, **kwargs):
         if self._normalize_feature: embedding = F.normalize(embedding, dim=1)
 
         # For distributed training, gather all features from different process.
@@ -127,8 +142,14 @@ class TripletLoss(object):
         }
 
 
-class SoftmaxTripletLoss(TripletLoss):
-    def __call__(self, _, embedding, targets):
+class SoftmaxTripletLoss(object):
+    def __init__(self, cfg):
+        self._margin = cfg.MODEL.LOSSES.STRI.MARGIN
+        self._normalize_feature = cfg.MODEL.LOSSES.STRI.NORM_FEAT
+        self._scale = cfg.MODEL.LOSSES.STRI.SCALE
+
+    def __call__(self, _, embedding, targets, **kwargs):
+        assert 'outs_mean' in kwargs, 'outs_mean not found in input, only {}'.format(kwargs.keys())
         if self._normalize_feature:
             embedding = F.normalize(embedding, dim=1)
 
@@ -139,19 +160,68 @@ class SoftmaxTripletLoss(TripletLoss):
         else:
             all_embedding = embedding
             all_targets = targets
-
         dist_mat = euclidean_dist(all_embedding, all_embedding)
 
         N, M = dist_mat.size()
-        is_pos = all_targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t())
-        is_neg = all_targets.view(N, 1).expand(N, M).ne(all_targets.view(M, 1).expand(M, N).t())
+        is_pos = all_targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t()).float()
 
-        dist_ap, dist_an, ap_idx, an_idx = hard_example_mining(dist_mat, is_pos, is_neg, return_index=True)
+        # dist_ap, dist_an, ap_idx, an_idx = hard_example_mining(dist_mat, is_pos, is_neg, return_index=True)
+        dist_ap, dist_an, ap_idx, an_idx = _batch_hard(
+            dist_mat, is_pos, return_indices=True
+        )
 
         triplet_dist = F.log_softmax(torch.stack((dist_ap, dist_an), dim=1), dim=1)
         loss = (-self._margin * triplet_dist[:, 0] - (1 - self._margin) * triplet_dist[:, 1]).mean()
         return {
             "loss_softmax_triplet": loss * self._scale,
+        }
+
+
+class SoftSoftmaxTripletLoss(object):
+    def __init__(self, cfg):
+        self._margin = cfg.MODEL.LOSSES.SSTRI.MARGIN
+        self._normalize_feature = cfg.MODEL.LOSSES.SSTRI.NORM_FEAT
+        self._scale = cfg.MODEL.LOSSES.SSTRI.SCALE
+
+    def __call__(self, _, embedding, targets, **kwargs):
+        assert 'outs_mean' in kwargs, 'outs_mean not found in input, only {}'.format(kwargs.keys())
+        results_mean = kwargs['outs_mean']
+        embedding_mean = results_mean['outputs']['features']
+        if self._normalize_feature:
+            embedding = F.normalize(embedding, dim=1)
+            embedding_mean = F.normalize(embedding_mean, dim=1)
+
+        # For distributed training, gather all features from different process.
+        if comm.get_world_size() > 1:
+            all_embedding = comm.concat_all_gather(embedding)
+            all_targets = comm.concat_all_gather(targets)
+            all_embedding_mean = comm.concat_all_gather(embedding_mean)
+        else:
+            all_embedding = embedding
+            all_targets = targets
+            all_embedding_mean = embedding_mean
+
+        dist_mat = euclidean_dist(all_embedding, all_embedding)
+
+        N, M = dist_mat.size()
+        is_pos = all_targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t()).float()
+
+        dist_ap, dist_an, ap_idx, an_idx = _batch_hard(
+            dist_mat, is_pos, return_indices=True
+        )
+        assert dist_an.size(0) == dist_ap.size(0), "debug"
+        triplet_dist = F.log_softmax(torch.stack((dist_ap, dist_an), dim=1), dim=1)
+
+        # reference from mean_net
+        dist_mat_ref = euclidean_dist(all_embedding_mean, all_embedding_mean)
+        dist_ap_ref = torch.gather(dist_mat_ref, 1, ap_idx.view(N, 1).expand(N, M))[:, 0]
+        dist_an_ref = torch.gather(dist_mat_ref, 1, an_idx.view(N, 1).expand(N, M))[:, 0]
+
+        triplet_dist_ref = torch.stack((dist_ap_ref, dist_an_ref), dim=1)
+        triplet_dist_ref = F.softmax(triplet_dist_ref, dim=1).detach()
+        loss = (-triplet_dist_ref * triplet_dist).mean(0).sum()
+        return {
+            "loss_soft_softmax_triplet": loss * self._scale,
         }
 
 
