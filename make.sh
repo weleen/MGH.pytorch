@@ -1,9 +1,9 @@
 #!/bin/bash
 # reranking
-pushd fastreid/utils/extension
+cd fastreid/utils/extension
 sh make.sh
-popd
+cd ../../..
 # rank
-pushd fastreid/evaluation/rank_cylib
+cd fastreid/evaluation/rank_cylib
 make
-popd
+cd ../../..

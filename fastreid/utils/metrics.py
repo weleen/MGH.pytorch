@@ -3,6 +3,7 @@ import torch
 import torch.nn.functional as F
 import time
 import logging
+import collections
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
@@ -310,6 +311,28 @@ def purity(output, target, min_samples=2):
     return correct_cnt / (all_cnt + 1e-6)
 
 
+def cluster_acc(output, target):
+    """From MLT, calculate cluster accuarcy
+    """
+    label_dict = collections.defaultdict(list)
+    for index, i in enumerate(target):
+        label_dict[i].append(index)
+    num_correct = 0
+    for pid in label_dict:
+        pid_index = np.asarray(label_dict[pid])
+        pred_label = np.argmax(np.bincount(output[pid_index]))
+        num_correct += (output[pid_index] == pred_label).astype(np.float32).sum()
+    cluster_accuracy = num_correct / len(output)
+    return cluster_accuracy
+
+
+def pairwise_cluster_acc(label_pred, label_true):
+    """Calculate pairwise acc, include precision, recall and F1 score, from cdp.
+    """
+    # TODO: implement it.
+    pass
+
+
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     """
     Calculate clustering accuracy, nmi and ari
@@ -318,8 +341,14 @@ def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     :return: Tuple(float, float, float) for acc, nmi, ari
     """
     assert label_true.dtype == label_pred.dtype == np.int64, "dtype error."
+    # ignore outliers
+    if -1 in label_pred:
+        index = np.where(label_pred != -1)
+        label_pred = label_pred[index].copy()
+        label_true = label_true[index].copy()
     nmi_score = normalized_mutual_info_score(label_true, label_pred)
     ari_score = adjusted_rand_score(label_true, label_pred)
     # acc_score = cluster_accuracy(label_pred, label_true)
     purity_score = purity(label_pred, label_true)
-    return nmi_score, ari_score, purity_score #, acc_score
+    cluster_accuracy = cluster_acc(label_pred, label_true)
+    return nmi_score, ari_score, purity_score, cluster_accuracy #, acc_score

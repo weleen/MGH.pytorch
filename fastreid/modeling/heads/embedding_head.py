@@ -82,7 +82,7 @@ class EmbeddingHead(nn.Module):
         outputs = {"features": feat,
                    "cls_outputs": None,
                    "pred_class_logits": None,
-                   "before_features": global_feat[..., 0, 0]}
+                   "global_features": global_feat[..., 0, 0]}
         # Training
         if hasattr(self, "classifier"):
             if self.classifier.__class__.__name__ == 'Linear':

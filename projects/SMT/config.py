@@ -12,7 +12,6 @@ def add_smtreid_config(cfg):
     _C.MODEL.LOSSES.CCL = CN()
     _C.MODEL.LOSSES.CCL.SCALE = 1.0
     _C.MODEL.LOSSES.CCL.TAU = 0.5
-    _C.MODEL.LOSSES.CCL.NORM_FEAT = True
 
     # Hard View Contrastive Loss
     _C.MODEL.LOSSES.VCL = CN()
@@ -23,6 +22,7 @@ def add_smtreid_config(cfg):
     # Softmax Cross Entropy Loss options
     _C.MODEL.LOSSES.SCE = CN()
     _C.MODEL.LOSSES.SCE.SCALE = 1.0
+    _C.MODEL.LOSSES.SCE.TAU = 1.0
 
     # Softmax Triplet Loss options
     _C.MODEL.LOSSES.STRI = CN()

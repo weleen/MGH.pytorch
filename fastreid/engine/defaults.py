@@ -521,7 +521,7 @@ class DefaultTrainer(SimpleTrainer):
         if cfg.MODEL.HEADS.NUM_CLASSES == 0:
             if cfg.PSEUDO.ENABLED:
                 num_classes = 0
-                for idx, data_name in enumerate(cfg.DATASETS.NAMES):
+                for idx, _ in enumerate(cfg.DATASETS.NAMES):
                     if idx in cfg.PSEUDO.UNSUP:
                         num_classes += len(data_loader.dataset.datasets[idx])
                     else:
