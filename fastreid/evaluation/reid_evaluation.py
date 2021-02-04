@@ -40,7 +40,7 @@ class ReidEvaluator(DatasetEvaluator):
     def process(self, inputs, outputs):
         self.pids.extend(inputs["targets"])
         self.camids.extend(inputs["camids"])
-        self.features.append(outputs.cpu())
+        self.features.append(outputs.data.cpu())
 
     def evaluate(self):
         if comm.get_world_size() > 1:

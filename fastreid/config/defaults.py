@@ -92,6 +92,7 @@ _C.MODEL.LOSSES.CE = CN()
 _C.MODEL.LOSSES.CE.EPSILON = 0.0
 _C.MODEL.LOSSES.CE.ALPHA = 0.2
 _C.MODEL.LOSSES.CE.SCALE = 1.0
+_C.MODEL.LOSSES.CE.TAU = 1.0
 
 # Focal Loss options
 _C.MODEL.LOSSES.FL = CN()
@@ -242,9 +243,10 @@ _C.DATALOADER.NUM_WORKERS = 8
 # -----------------------------------------------------------------------------
 _C.PSEUDO = CN()
 _C.PSEUDO.ENABLED = False
-_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp'
+_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp', 'hypergraph'
 _C.PSEUDO.UNSUP = (0,)  # unsupervised index for training datasets, support MMT.
 _C.PSEUDO.CLUSTER_EPOCH = 2
+_C.PSEUDO.CLUSTER_AUG = False # mutual transform when extracting features for clustering
 _C.PSEUDO.USE_OUTLIERS = False  # True for SpCL
 _C.PSEUDO.NORM_FEAT = True
 _C.PSEUDO.NORM_CENTER = True

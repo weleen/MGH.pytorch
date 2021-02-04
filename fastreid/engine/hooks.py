@@ -626,7 +626,7 @@ class LabelGeneratorHook(HookBase):
 
     def before_train(self):
         # save the original all dataset info
-        self._logger.info("Copy the dataloader from original dataloader with all groundtruth information.")
+        self._logger.info("Copy the dataloader from trainer dataloader for building the new dataloader in training stage.")
         self._data_loader_sup = copy.deepcopy(self.trainer.data_loader)
 
     def before_epoch(self):
@@ -850,11 +850,12 @@ class LabelGeneratorHook(HookBase):
 
     def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
         if cluster_metric:
-            nmi_score, ari_score, purity_score = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%")
+            nmi_score, ari_score, purity_score, cluster_acc = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}")
             self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)
+            self.trainer.storage.put_scalar('cluster_acc', cluster_acc, smoothing_hint=False)
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)

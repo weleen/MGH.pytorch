@@ -300,3 +300,23 @@ def label_generator_cdp_single(cfg, features, k, th, **kwargs):
     num_clusters += outliers
 
     return labels, centers, num_clusters
+
+
+def label_generator_multi(cfg, features_list:list, num_classes_list: list, indep_thres_list: list, **kwargs):
+    assert isinstance(features_list, list)
+
+    if cfg.PSEUDO.NAME in ['dbscan', 'kmean', 'cdp']:
+        new_labels_list, new_num_classes_list, new_indep_thres_list = [], [], []
+        for idx, (features, num_classes, indep_thres) in zip(features_list, num_classes_list, indep_thres_list):
+            labels, _, num_classes, indep_thres, dist_mat = exec('label_generator_'+cfg.PSEUDO.NAME)(cfg, features, num_classes=num_classes, indep_thres=indep_thres, **kwargs)
+            new_labels_list.append(labels)
+            new_num_classes_list.append(num_classes)
+            new_indep_thres_list.append(indep_thres)
+        # merge the multiple results
+        logger.info('Result for MultiPart Label Generator.')
+        logger.info('labels: {}'.format([len(label) for label in new_labels_list]))
+        logger.info('num_classes: {}'.format(new_num_classes_list))
+        logger.info('indep_thres: {}'.format(new_indep_thres_list))
+
+
+        logger.info('After Merging')

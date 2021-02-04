@@ -104,6 +104,9 @@ def tensor2im(input_image, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)
 
 @torch.no_grad()
 def extract_features(model, data_loader, norm_feat=True, save_path=None):
+    """
+    features in output maybe [N, K, C] or [N, C], where K is not 1 when MultiPartHead is enabled.
+    """
     total = len(data_loader)
     data_iter = iter(data_loader)
     start_time = time.perf_counter()
@@ -126,10 +129,20 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
             inputs = next(data_iter)
 
             start_compute_time = time.perf_counter()
-            outputs = model(inputs)
+            assert 'images' in inputs, 'images not found in inputs, only {}'.format(inputs.keys())
+            if isinstance(inputs['images'], list): # inputs is a dict, 'images' must be in inputs
+                input_dict = {}
+                outputs = []
+                for i in range(len(inputs['images'])):
+                    for k, v in inputs.items():
+                        input_dict[k] = v[i] if k == 'images' else v
+                    outputs.append(model(input))
+                outputs = torch.stack(outputs, dim=0).mean(dim=0)
+            else:
+                outputs = model(inputs)
             if norm_feat:
                 outputs = F.normalize(outputs, p=2, dim=1)
-            features.append(outputs.cpu())
+            features.append(outputs.data.cpu())
             true_label.append(inputs['targets'])
             img_paths.extend(inputs['img_paths'])
             comm.synchronize()

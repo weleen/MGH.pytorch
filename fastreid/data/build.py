@@ -56,7 +56,17 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
     if mapper is not None:
         transforms = mapper
     else:
-        transforms = build_transforms(cfg, is_train=is_train)
+        if for_clustering and cfg.PSEUDO.CLUSTER_AUG:
+            # when extract feature in clustering, use augmentation to extract robust features.
+            frozen = cfg.is_frozen()
+            cfg.defrost()
+            is_mutual = cfg.INPUT.MUTUAL.ENABLED
+            cfg.INPUT.MUTUAL.ENABLED = True
+            transforms = build_transforms(cfg, is_train=True)
+            cfg.INPUT.MUTUAL.ENABLED = is_mutual
+            if frozen: cfg.freeze()
+        else:
+            transforms = build_transforms(cfg, is_train=is_train)
     train_set = CommDataset(datasets, transforms, relabel=relabel)  # relabel image pid and camid when relabel = True
 
     num_workers = cfg.DATALOADER.NUM_WORKERS // comm.get_world_size()
@@ -77,7 +87,7 @@ def build_reid_train_loader(cfg, datasets: list = None, pseudo_labels: list = No
         train_set,
         num_workers=num_workers,
         batch_sampler=batch_sampler,
-        collate_fn=fast_batch_collator,
+        # collate_fn=fast_batch_collator,
         pin_memory=True,
     )
     return train_loader
