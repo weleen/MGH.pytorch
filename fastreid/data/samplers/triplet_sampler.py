@@ -330,3 +330,49 @@ class MultiDomainSampler(Sampler):
                         ret_combined.extend(reorder_index(ret[:self.batch_size // self.num_domains], self._world_size))
                         break
             yield from ret_combined
+
+@SAMPLER_REGISTRY.register()
+class ProxyBalancedSampler(Sampler):
+    def __init__(self, data_source: list, batch_size: int, num_instances: int = 4, seed: Optional[int] = None, **kwargs):
+        self.data_source = data_source
+        self.num_instances = num_instances
+        self.batch_size = batch_size
+
+        self.pid_cam_index = defaultdict(list)
+
+        for index, (_, pid, cam) in enumerate(data_source):
+            if pid == -1: continue  # ignore unused instances
+            self.pid_cam_index[(pid, cam)].append(index)
+
+        # remove outliers
+        self.pids_cams = [k for k in self.pid_cam_index if len(self.pid_cam_index[k]) > 1]
+        self.num_identities = len(self.pids_cams)
+
+        if seed is None:
+            seed = comm.shared_random_seed()
+        self._seed = int(seed)
+        self._rank = comm.get_rank()
+        self._world_size = comm.get_world_size()
+
+    def __iter__(self):
+        start = self._rank
+        yield from itertools.islice(self._infinite_indices(), start, None, self._world_size)
+
+    def _infinite_indices(self):
+        np.random.seed(self._seed)
+        while True:
+            indices = np.random.permutation(self.num_identities).tolist()
+            ret = []
+
+            for kid in indices:
+                select_indexes = self.pid_cam_index[self.pids_cams[kid]]
+                if len(select_indexes) >= self.num_instances:
+                    indexes = np.random.choice(select_indexes, size=self.num_instances, replace=False)
+                else:
+                    indexes = np.random.choice(select_indexes, size=self.num_instances, replace=True)
+                ret.extend(indexes)
+
+                if len(ret) == self.batch_size:
+                    yield from reorder_index(ret, self._world_size)
+                    ret = []
+            # yield from ret

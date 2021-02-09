@@ -1,0 +1,43 @@
+_BASE_: "../../../configs/Base-bagtricks.yml"
+
+MODEL:
+  BACKBONE:
+    WITH_NL: False
+
+  HEADS:
+    NECK_FEAT: "after"
+    NUM_CLASSES: 0
+
+  LOSSES:
+    NAME: ("ContrastiveLoss", )
+
+DATALOADER:
+  SAMPLER_NAME: "RandomMultipleGallerySampler"
+
+PSEUDO:
+  ENABLED: True
+  CLUSTER_EPOCH:  2
+  USE_OUTLIERS: True
+  WITH_CLASSIFIER: False
+  DBSCAN:
+    EPS: [0.58, 0.6, 0.62]
+
+SOLVER:
+  OPT: "Adam"
+  MAX_EPOCH: 100
+  BASE_LR: 0.00035
+  IMS_PER_BATCH: 64
+
+  STEPS: [40, 80]
+  WARMUP_EPOCHS: 0
+
+  LOG_ITERS: 200
+
+  CHECKPOINT_PERIOD: 5
+  ITERS_PER_EPOCH: 200
+
+TEST:
+  EVAL_PERIOD: 5
+  IMS_PER_BATCH: 128
+
+CUDNN_BENCHMARK: True
