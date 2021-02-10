@@ -9,10 +9,14 @@ from sklearn.cluster import DBSCAN
 from fastreid.utils.torch_utils import to_numpy, to_torch
 from fastreid.utils.metrics import compute_distance_matrix
 from fastreid.utils.graph import graph_propagation
+from fastreid.utils.get_st_matrix import get_st_matrix
+from hyperg import gen_knn_hg, gen_clustering_hg, concat_multi_hg, spectral_hg_partitioning
+from scipy.sparse.linalg.eigen.arpack import eigsh
+
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["label_generator_dbscan_single", "label_generator_dbscan", "label_generator_kmeans", "label_generator_cdp"]
+__all__ = ["label_generator_dbscan_single", "label_generator_dbscan", "label_generator_kmeans", "label_generator_cdp", "label_generator_hypergraph"]
 
 
 @torch.no_grad()
@@ -81,7 +85,7 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
                                        search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
     features = features.cpu()
     # clustering
-    if cfg.PSEUDO.DBSCAN.BASE == 'rho' and kwargs['epoch'] == 0:
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho':
         rho = cfg.PSEUDO.DBSCAN.RHO
         tri_mat = np.triu(dist, 1) # tri_mat.dim=2
         tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
@@ -94,7 +98,7 @@ def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
             eps = [eps]
     else:
         eps = cfg.PSEUDO.DBSCAN.EPS
-    logger.info(f'eps in dbscan clustering: {eps}')
+    logger.info(f'dbscan based on {cfg.PSEUDO.DBSCAN.BASE}, eps in dbscan clustering: {eps}')
 
     if len(eps) == 1:
         # normal clustering
@@ -302,21 +306,105 @@ def label_generator_cdp_single(cfg, features, k, th, **kwargs):
     return labels, centers, num_clusters
 
 
-def label_generator_multi(cfg, features_list:list, num_classes_list: list, indep_thres_list: list, **kwargs):
-    assert isinstance(features_list, list)
+def label_generator_hypergraph(cfg, features, num_classes=500, **kwargs):
+    assert isinstance(num_classes, int), 'unsupported num_classes: {}'.format(num_classes)
 
-    if cfg.PSEUDO.NAME in ['dbscan', 'kmean', 'cdp']:
-        new_labels_list, new_num_classes_list, new_indep_thres_list = [], [], []
-        for idx, (features, num_classes, indep_thres) in zip(features_list, num_classes_list, indep_thres_list):
-            labels, _, num_classes, indep_thres, dist_mat = exec('label_generator_'+cfg.PSEUDO.NAME)(cfg, features, num_classes=num_classes, indep_thres=indep_thres, **kwargs)
-            new_labels_list.append(labels)
-            new_num_classes_list.append(num_classes)
-            new_indep_thres_list.append(indep_thres)
-        # merge the multiple results
-        logger.info('Result for MultiPart Label Generator.')
-        logger.info('labels: {}'.format([len(label) for label in new_labels_list]))
-        logger.info('num_classes: {}'.format(new_num_classes_list))
-        logger.info('indep_thres: {}'.format(new_indep_thres_list))
+    use_outliers = cfg.PSEUDO.USE_OUTLIERS
+    # construct hypergraph
+    feat_np = features.numpy()
+    H_list = []
+    for k in [20, 30]:
+        H = gen_knn_hg(feat_np, n_neighbors=k, is_prob=True, with_feature=False)
+        H_list.append(H)
+    H = concat_multi_hg(H_list)
+    labels = spectral_hg_partitioning(H, n_clusters=num_classes)
+
+    # cluster labels -> pseudo labels
+    centers = collections.defaultdict(list)
+    outliers = 0
+    for i, label in enumerate(labels):
+        if label == -1:
+            if not use_outliers:
+                continue
+            labels[i] = num_classes + outliers
+            outliers += 1
+        centers[labels[i]].append(features[i])
+
+    centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
+    centers = torch.stack(centers, dim=0)
+    labels = to_torch(labels).long()
+    num_classes += outliers
+
+    return labels, centers, num_classes, None, None
 
 
-        logger.info('After Merging')
+def label_generator_hypergraph_new(cfg, features, num_classes=500, init_cluster='dbscan', **kwargs):
+    # initial clustering
+    if 'dist' in kwargs:
+        dist = kwargs['dist']
+    else:
+        dist = compute_distance_matrix(features,
+                                       None,
+                                       metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
+                                       k1=cfg.PSEUDO.DBSCAN.K1,
+                                       k2=cfg.PSEUDO.DBSCAN.K2,
+                                       search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
+    features = features.cpu()
+    # clustering
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho':
+        rho = cfg.PSEUDO.DBSCAN.RHO
+        tri_mat = np.triu(dist, 1) # tri_mat.dim=2
+        tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
+        tri_mat = np.sort(tri_mat,axis=None)
+        top_num = np.round(rho * tri_mat.size).astype(int)  # rho=3.4e-6, eps is around 0.6
+        eps = tri_mat[:top_num].mean()
+        eps = [eps]
+    else:
+        eps = cfg.PSEUDO.DBSCAN.EPS
+    logger.info(f'dbscan based on {cfg.PSEUDO.DBSCAN.BASE}, eps in dbscan clustering: {eps}')
+
+    assert len(eps) == 1
+    labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
+
+    # generate knn hypergraph
+    H = build_hg(cfg, dist, labels.cpu().numpy(), kwargs)
+
+    # clustering
+    _, embeddings = eigsh(H.laplacian(), num_classes, which='SM')
+    embeddings = torch.from_numpy(embeddings).to(torch.float)
+    embeddings = torch.nn.functional.normalize(embeddings)
+    dist = compute_distance_matrix(embeddings,
+                                    None,
+                                    metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
+                                    k1=cfg.PSEUDO.DBSCAN.K1,
+                                    k2=cfg.PSEUDO.DBSCAN.K2,
+                                    search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho':
+        rho = cfg.PSEUDO.DBSCAN.RHO
+        tri_mat = np.triu(dist, 1) # tri_mat.dim=2
+        tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
+        tri_mat = np.sort(tri_mat,axis=None)
+        top_num = np.round(rho * tri_mat.size).astype(int)  # rho=3.4e-6, eps is around 0.6
+        eps = tri_mat[:top_num].mean()
+        eps = [eps]
+    else:
+        eps = cfg.PSEUDO.DBSCAN.EPS
+    logger.info(f'dbscan based on {cfg.PSEUDO.DBSCAN.BASE}, eps after hypergraph partitioning in dbscan clustering: {eps}')
+    labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
+
+    return labels, centers, num_classes, None, None
+
+
+def build_hg(cfg, dist_mat, pseudo_labels, kwargs):
+    H_list = []
+    for kk in cfg.PSEUDO.HG.KNN:
+        H_list.append(gen_knn_hg(dist_mat, n_neighbors=kk, is_prob=True))
+        if cfg.PSEUDO.HG.WITH_CLUSTER:
+            if 'imgs_path' in kwargs:
+                imgs_path = kwargs['imgs_path']
+                st_dist_mat = get_st_matrix(imgs_path, pseudo_labels=None)
+                H_list.append(gen_knn_hg(st_dist_mat, n_neighbors=kk, is_prob=True))
+    if cfg.PSEUDO.HG.WITH_CLUSTER:
+        H_list.append(gen_clustering_hg(dist_mat, pseudo_labels))
+    H = concat_multi_hg(H_list)
+    return H

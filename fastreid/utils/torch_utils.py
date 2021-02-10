@@ -141,7 +141,10 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
             else:
                 outputs = model(inputs)
             if norm_feat:
-                outputs = F.normalize(outputs, p=2, dim=1)
+                if isinstance(outputs, list):
+                    outputs = torch.stack([F.normalize(output, p=2, dim=1) for output in outputs], dim=1)
+                else:
+                    outputs = F.normalize(outputs, p=2, dim=1).unsqueeze(1)
             features.append(outputs.data.cpu())
             true_label.append(inputs['targets'])
             img_paths.extend(inputs['img_paths'])
@@ -179,6 +182,9 @@ def extract_features(model, data_loader, norm_feat=True, save_path=None):
         img_paths = comm.all_gather(img_paths)
         img_paths = sum(img_paths, [])
     features = torch.cat(features, dim=0)
+    if features.size(1) == 1:
+        # compactible with the original single output from model
+        features = features.squeeze(1)
     true_label = torch.cat(true_label, dim=0)
 
     if comm.is_main_process():

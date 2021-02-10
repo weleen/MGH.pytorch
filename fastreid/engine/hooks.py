@@ -25,7 +25,7 @@ from fvcore.common.file_io import PathManager
 from fvcore.nn.precise_bn import update_bn_stats, get_bn_modules
 from fvcore.common.timer import Timer
 from fastreid.data import build_reid_train_loader
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_kmeans, label_generator_cdp
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_hypergraph, label_generator_kmeans, label_generator_cdp, label_generator_hypergraph_new
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
 from .train_loop import HookBase
@@ -599,7 +599,8 @@ class LabelGeneratorHook(HookBase):
     __factory = {
         'dbscan': label_generator_dbscan,
         'kmeans': label_generator_kmeans,
-        'cdp': label_generator_cdp
+        'cdp': label_generator_cdp,
+        'hypergraph': label_generator_hypergraph_new
     }
 
     def __init__(self, cfg, model):
@@ -620,7 +621,7 @@ class LabelGeneratorHook(HookBase):
 
         self.num_classes = []
         self.indep_thres = []
-        if cfg.PSEUDO.NAME == 'kmeans':
+        if cfg.PSEUDO.NAME in ['kmeans', 'hypergraph']:
             self.num_classes = cfg.PSEUDO.NUM_CLUSTER
 
     def before_train(self):
@@ -701,9 +702,9 @@ class LabelGeneratorHook(HookBase):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
-            all_features, true_labels, _ = extract_features(self.model,
-                                                            self._data_loader_cluster,
-                                                            self._cfg.PSEUDO.NORM_FEAT)
+            all_features, true_labels, img_paths = extract_features(self.model,
+                                                                    self._data_loader_cluster,
+                                                                    self._cfg.PSEUDO.NORM_FEAT)
         else:
             all_features = self.memory_features
             true_labels = torch.LongTensor([item[1] for item in self._data_loader_cluster.dataset.img_items])
@@ -849,12 +850,18 @@ class LabelGeneratorHook(HookBase):
 
     def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
         if cluster_metric:
-            nmi_score, ari_score, purity_score, cluster_acc = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}")
+            nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_singular, recall_singular, fscore_singular = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%, precision_singular: {precision_singular*100:.2f}%, recall_singular: {recall_singular*100:.2f}%, fscore_singular: {fscore_singular*100:.2f}%.")
             self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('cluster_acc', cluster_acc, smoothing_hint=False)
+            self.trainer.storage.put_scalar('precision', precision, smoothing_hint=False)
+            self.trainer.storage.put_scalar('recall', recall, smoothing_hint=False)
+            self.trainer.storage.put_scalar('fscore', fscore, smoothing_hint=False)
+            self.trainer.storage.put_scalar('precision_singular', precision_singular, smoothing_hint=False)
+            self.trainer.storage.put_scalar('recall_singular', recall_singular, smoothing_hint=False)
+            self.trainer.storage.put_scalar('fscore_singular', fscore_singular, smoothing_hint=False)
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)

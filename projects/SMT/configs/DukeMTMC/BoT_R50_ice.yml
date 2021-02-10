@@ -1,0 +1,7 @@
+_BASE_: "../Base-ice-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
+
+OUTPUT_DIR: "logs/SMT/dukemtmc/BoT_R50_ice"

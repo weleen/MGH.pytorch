@@ -7,6 +7,7 @@ import collections
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
 from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
+from scipy import sparse as sp
 
 import build_adjacency_matrix
 import gnn_propagate
@@ -273,7 +274,7 @@ def hamming_distance(input1, input2):
     return torch.abs(c1 + c2)
 
 
-def cluster_accuracy(output, target):
+def cluster_acc_linear_assign(output, target):
     """
     Calculate clustering accuracy.
     :param output: (numpy.array): predicted matrix with shape (batch_size,)
@@ -312,7 +313,8 @@ def purity(output, target, min_samples=2):
 
 
 def cluster_acc(output, target):
-    """From MLT, calculate cluster accuarcy
+    """From MLT, calculate cluster accuarcy.
+    Reference: https://github.com/MLT-reid/MLT
     """
     label_dict = collections.defaultdict(list)
     for index, i in enumerate(target):
@@ -326,11 +328,46 @@ def cluster_acc(output, target):
     return cluster_accuracy
 
 
+def contingency_matrix(labels_true, labels_pred, eps=None, sparse=False):
+    if eps is not None and sparse:
+        raise ValueError("Cannot set 'eps' when sparse=True")
+
+    classes, class_idx = np.unique(labels_true, return_inverse=True)
+    clusters, cluster_idx = np.unique(labels_pred, return_inverse=True)
+    n_classes = classes.shape[0]
+    n_clusters = clusters.shape[0]
+    # Using coo_matrix to accelerate simple histogram calculation,
+    # i.e. bins are consecutive integers
+    # Currently, coo_matrix is faster than histogram2d for simple cases
+    contingency = sp.coo_matrix((np.ones(class_idx.shape[0]),
+                                 (class_idx, cluster_idx)),
+                                shape=(n_classes, n_clusters),
+                                dtype=np.int)
+    if sparse:
+        contingency = contingency.tocsr()
+        contingency.sum_duplicates()
+    else:
+        contingency = contingency.toarray()
+        if eps is not None:
+            # don't use += as contingency is integer
+            contingency = contingency + eps
+    return contingency
+
+
 def pairwise_cluster_acc(label_pred, label_true):
     """Calculate pairwise acc, include precision, recall and F1 score, from cdp.
+    Reference: https://github.com/XiaohangZhan/cdp
     """
-    # TODO: implement it.
-    pass
+    n_samples, = label_true.shape
+
+    c = contingency_matrix(label_true, label_pred, sparse=True)
+    tk = np.dot(c.data, c.data) - n_samples
+    pk = np.sum(np.asarray(c.sum(axis=0)).ravel() ** 2) - n_samples
+    qk = np.sum(np.asarray(c.sum(axis=1)).ravel() ** 2) - n_samples
+    avg_pre = tk / pk
+    avg_rec = tk / qk
+    fscore = 2. * avg_pre * avg_rec / (avg_pre + avg_rec)
+    return avg_pre, avg_rec, fscore
 
 
 def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
@@ -344,11 +381,15 @@ def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
     # ignore outliers
     if -1 in label_pred:
         index = np.where(label_pred != -1)
-        label_pred = label_pred[index].copy()
-        label_true = label_true[index].copy()
+    else:
+        index = np.arange(len(label_pred))
+    precision_singular, recall_singular, fscore_singular = pairwise_cluster_acc(label_pred, label_true)
+    label_pred = label_pred[index].copy()
+    label_true = label_true[index].copy()
     nmi_score = normalized_mutual_info_score(label_true, label_pred)
     ari_score = adjusted_rand_score(label_true, label_pred)
-    # acc_score = cluster_accuracy(label_pred, label_true)
+    # cluster_acc_score = cluster_acc_linear_assign(label_pred, label_true)
     purity_score = purity(label_pred, label_true)
     cluster_accuracy = cluster_acc(label_pred, label_true)
-    return nmi_score, ari_score, purity_score, cluster_accuracy #, acc_score
+    precision, recall, fscore = pairwise_cluster_acc(label_pred, label_true)
+    return nmi_score, ari_score, purity_score, cluster_accuracy, precision, recall, fscore, precision_singular, recall_singular, fscore_singular #, cluster_acc_score

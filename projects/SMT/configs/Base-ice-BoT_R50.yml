@@ -6,20 +6,14 @@ MODEL:
 
   HEADS:
     POOL_LAYER: "avgpool"
-    NECK_FEAT: "before"
+    NECK_FEAT: "after"
     NUM_CLASSES: 0
 
   LOSSES:
-    NAME: ("CrossEntropyLoss", "SoftEntropyLoss", "SoftmaxTripletLoss", "SoftSoftmaxTripletLoss")
+    NAME: ("CrossEntropyLoss", "HardViewContrastiveLoss")
     CE:
-      SCALE: 0.5
       EPSILON: 0.
-    SCE:
-      SCALE: 0.5
-    STRI:
-      SCALE: 0.2
-    SSTRI:
-      SCALE: 0.8
+      TAU: 0.5
     
   MEAN_NET: True
   MEAN_NET_ALPHA: 0.999
@@ -33,16 +27,23 @@ PSEUDO:
   USE_OUTLIERS: False
   WITH_CLASSIFIER: True
   DBSCAN:
+    BASE: 'rho'
+    RHO: 2.2e-3
     EPS: [0.7,]
+
+INPUT:
+  DO_BLUR: True
 
 SOLVER:
   OPT: "Adam"
   MAX_EPOCH: 100
   BASE_LR: 0.00035
-  IMS_PER_BATCH: 64
+  IMS_PER_BATCH: 32
+  WEIGHT_DECAY: 0. 
+  WEIGHT_DECAY_BIAS: 0.
 
   STEPS: [100,]
-  WARMUP_EPOCHS: 0
+  WARMUP_EPOCHS: 10
 
   LOG_ITERS: 200
 

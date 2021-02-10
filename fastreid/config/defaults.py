@@ -105,6 +105,7 @@ _C.MODEL.LOSSES.TRI = CN()
 _C.MODEL.LOSSES.TRI.MARGIN = 0.3
 _C.MODEL.LOSSES.TRI.NORM_FEAT = False
 _C.MODEL.LOSSES.TRI.HARD_MINING = True
+_C.MODEL.LOSSES.TRI.WEIGHT_MINING = True
 _C.MODEL.LOSSES.TRI.SCALE = 1.0
 
 # Circle Loss options
@@ -273,6 +274,12 @@ _C.PSEUDO.CDP.PROPAGATION = CN()
 _C.PSEUDO.CDP.PROPAGATION.MAX_SIZE = 600
 _C.PSEUDO.CDP.PROPAGATION.STEP = 0.05
 _C.PSEUDO.CDP.PROPAGATION.MAX_ITER = 100
+
+_C.PSEUDO.HG = CN()
+_C.PSEUDO.HG.KNN = [30,]
+_C.PSEUDO.HG.WITH_CLUSTER = True  # build hypergraph with clustering
+_C.PSEUDO.HG.PROBH = False
+_C.PSEUDO.HG.WITH_ST = False  # build hypergraph with spatial temporal constraint
 
 # Memory related options for Self-paced learning
 # Temperature for scaling contrastive loss

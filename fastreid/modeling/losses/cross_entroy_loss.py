@@ -90,27 +90,9 @@ class SoftEntropyLoss(object):
         targets = kwargs['outs_mean']['outputs']['cls_outputs']
         log_probs = self.logsoftmax(pred_class_logits / self._tau)
         assert targets.size(1) == log_probs.size(1)
-        loss = (-self.softmax(targets).detach() * log_probs).mean(0).sum()
+        loss = (-self.softmax(targets / self._tau).detach() * log_probs).mean(0).sum()
         return {
             "loss_soft_cls": loss * self._scale
-        }
-
-
-class CenterContrastiveLoss(object):
-    """
-    Reference: ICE: Inter-instance Contrastive Encoding for Unsupervised Person Re-identification, CVPR2021 submission
-    """
-    def __init__(self, cfg):
-        self._scale = cfg.MODEL.LOSSES.CCL.SCALE
-        self._tau = cfg.MODEL.LOSSES.CCL.TAU
-
-    def __call__(self, pred_class_logits, _, gt_classes, **kwargs):
-        CrossEntropyLoss.log_accuracy(pred_class_logits, gt_classes)
-
-        log_probs = F.log_softmax(pred_class_logits / self._tau, dim=1)
-        
-        return {
-            "loss_ccl": self._scale * F.nll_loss(log_probs, gt_classes),
         }
 
 
@@ -139,17 +121,11 @@ class HardViewContrastiveLoss(object):
             all_targets = targets
             all_embedding_mean = embedding_mean
         embedding_sim = torch.exp(embedding.mm(all_embedding_mean.t()) / self._tau)
+        N, M = embedding_sim.size()
 
-        unique_targets = all_targets.unique()
-        mapping_targets = {}
-        for index, c in enumerate(unique_targets.tolist()):
-            mapping_targets[c] = index
-        new_targets = torch.Tensor([mapping_targets[c] for c in targets.tolist()]).long().cuda()
-        new_all_targets = torch.Tensor([mapping_targets[c] for c in all_targets.tolist()]).long().cuda()
-
-        mask = (new_targets.view(-1, 1) == new_all_targets.view(1, -1)).float()
-        masked_pos = (embedding_sim * mask + 99999 * (1 - mask)).min(dim=1)[0]
-        masked_neg = (embedding_sim * (1 - mask)).sum(dim=1)
+        is_pos = targets.view(N, 1).expand(N, M).eq(all_targets.view(M, 1).expand(M, N).t()).float()
+        masked_pos = (embedding_sim * is_pos + 9999.0 * (1 - is_pos)).min(dim=1)[0]
+        masked_neg = (embedding_sim * (1 - is_pos)).sum(dim=1)
 
         return {
             'loss_vcl': self._scale * -torch.log(masked_pos / (masked_neg + masked_pos)).mean()

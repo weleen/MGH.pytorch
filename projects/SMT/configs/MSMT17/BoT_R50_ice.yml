@@ -1,0 +1,10 @@
+_BASE_: "../Base-ice-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("MSMT17",)
+  TESTS: ("MSMT17",)
+
+SOLVER:
+  ITERS_PER_EPOCH: 400
+
+OUTPUT_DIR: "logs/SMT/msmt17/BoT_R50_ice"
