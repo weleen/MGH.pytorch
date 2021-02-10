@@ -502,6 +502,7 @@ class FreezeLayer(HookBase):
 
     def before_step(self):
         # Freeze specific layers
+        self.is_frozen = not self.model.training
         if self.trainer.iter < self.freeze_iters and not self.is_frozen:
             self.freeze_specific_layer()
 

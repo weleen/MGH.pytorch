@@ -1,31 +1,52 @@
 # encoding: utf-8
 """
-@author:  sherlock
-@contact: sherlockliao01@gmail.com
+@author:  wuyiming
+@contact: yimingwu@hotmail.com
+@function: Implementation of Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID
 """
-
-import sys
+import os
 import logging
-from collections import OrderedDict
+import sys
 
 sys.path.append('.')
-from fastreid.config import cfg
-from fastreid.engine import (DefaultTrainer, default_argument_parser,
-                             default_setup, launch)
-from fastreid.evaluation import ReidEvaluator, DatasetEvaluator, print_csv_format
+
+import time
+import itertools
+import collections
+import torch
+import torch.nn.functional as F
+from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
-from transformer.trans_baseline import Trans_Baseline
-from utils import inference_on_dataset
+from fastreid.config import cfg
+from fastreid.engine import default_argument_parser, default_setup, launch, hooks
+from fastreid.engine.defaults import DefaultTrainer
+from fastreid.data import build_reid_train_loader
+from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
+from fastreid.modeling.losses.hybrid_memory import HybridMemory
+from cap_memory import CAPMemory
+from cap_labelgenerator import CAPLabelGeneratorHook
 from fastreid.engine import hooks
-import torch
 
+try:
+    import apex
+    from apex import amp
+    from apex.parallel import DistributedDataParallel
+except ImportError:
+    raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example if you want to"
+                      "train with DDP")
 
-class TRANSTrainer(DefaultTrainer):
+class CAPTrainer(DefaultTrainer):
     def __init__(self, cfg):
-        super(TRANSTrainer, self).__init__(cfg)
-    
+        super(CAPTrainer, self).__init__(cfg)
+
+    def init_memory(self):
+        logger = logging.getLogger('fastreid.' + __name__)
+        logger.info("Initialize CAP memory")
+
+        self.memory = CAPMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM)
+
     def build_hooks(self):
         """
         Build a list of default hooks, including timing, evaluation,
@@ -47,7 +68,7 @@ class TRANSTrainer(DefaultTrainer):
         if cfg.PSEUDO.ENABLED:
             assert len(cfg.PSEUDO.UNSUP) > 0, "there are no dataset for unsupervised learning"
             ret.append(
-                hooks.LabelGeneratorHook(
+                CAPLabelGeneratorHook(
                     self.cfg,
                     self.model
                 )
@@ -56,7 +77,7 @@ class TRANSTrainer(DefaultTrainer):
         if cfg.SOLVER.SWA.ENABLED:
             ret.append(
                 hooks.SWA(
-                    cfg.SOLVER.MAX_ITER,
+                    cfg.SOLVER.MAX_EPOCH,
                     cfg.SOLVER.SWA.PERIOD,
                     cfg.SOLVER.SWA.LR_FACTOR,
                     cfg.SOLVER.SWA.ETA_MIN_LR,
@@ -74,25 +95,25 @@ class TRANSTrainer(DefaultTrainer):
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ))
 
+
         if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
             open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
             logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
             ret.append(hooks.FreezeLayer(
                 self.model,
                 cfg.MODEL.OPEN_LAYERS,
-                cfg.SOLVER.FREEZE_ITERS * self.iters_per_epoch,
-                cfg.SOLVER.FREEZE_FC_ITERS * self.iters_per_epoch
+                cfg.SOLVER.FREEZE_ITERS,
+                cfg.SOLVER.FREEZE_FC_ITERS,
             ))
         # Do PreciseBN before checkpointer, because it updates the model and need to
         # be saved by checkpointer.
         # This is not always the best: if checkpointing has a different frequency,
         # some checkpoints may have more precise statistics than others.
         if comm.is_main_process():
-            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
+            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD * self.iters_per_epoch, self.max_iter))
 
         def test_and_save_results(mode='test'):
-            self._last_eval_results = self.test_transformer(self.cfg, self.model, mode=mode)
-            torch.cuda.empty_cache()
+            self._last_eval_results = self.test(self.cfg, self.model, mode=mode)
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
@@ -105,60 +126,34 @@ class TRANSTrainer(DefaultTrainer):
 
         return ret
 
-    def test_transformer(cls, cfg, model, evaluators=None, mode='test'):
-        """
-        Args:
-            cfg (CfgNode):
-            model (nn.Module):
-            evaluators (list[DatasetEvaluator] or None): if None, will call
-                :meth:`build_evaluator`. Otherwise, must have the same length as
-                `cfg.DATASETS.TESTS`.
-            val (bool): if True, perform validation on val split. Otherwise, test on query and gallery split.
-        Returns:
-            dict: a dict of result metrics
-        """
-        logger = logging.getLogger('fastreid.' + __name__)
-        if isinstance(evaluators, DatasetEvaluator):
-            evaluators = [evaluators]
+    def run_step(self) -> None:
+        assert self.model.training, "[CAPTrainer] model was changed to eval mode!"
+        start = time.perf_counter()
 
-        if evaluators is not None:
-            assert len(cfg.DATASETS.TESTS) == len(evaluators), "{} != {}".format(
-                len(cfg.DATASETS.TESTS), len(evaluators)
-            )
+        data = next(self._data_loader_iter)
+        data_time = time.perf_counter() - start
 
-        results = OrderedDict()
-        for idx, dataset_name in enumerate(cfg.DATASETS.TESTS):
-            logger.info("Prepare testing set")
-            data_loader, num_query = cls.build_test_loader(cfg, dataset_name, mode)
-            # When evaluators are passed in as arguments,
-            # implicitly assume that evaluators can be created before data_loader.
-            if evaluators is not None:
-                evaluator = evaluators[idx]
-            else:
-                try:
-                    evaluator = ReidEvaluator(cfg, num_query)
-                except NotImplementedError:
-                    logger.warning(
-                        "No evaluator found. Use `DefaultTrainer.test(evaluators=)`, "
-                        "or implement its `build_evaluator` method."
-                    )
-                    results[dataset_name] = {}
-                    continue
-            results_i = inference_on_dataset(model, data_loader, evaluator)
-            results[dataset_name] = results_i
+        data = self.batch_process(data, is_dsbn=self.cfg.MODEL.DSBN)
+        outs = self.model(data)
 
-        if comm.is_main_process():
-            assert isinstance(
-                results, dict
-            ), "Evaluator must return a dict on the main process. Got {} instead.".format(
-                results
-            )
-            print_csv_format(results)
+        # Compute loss
+        if hasattr(self.model, 'module'):
+            loss_dict = self.memory(outs, data, self.epoch)
+        else:
+            loss_dict = self.memory(outs, data, self.epoch)
 
-        if len(results) == 1: results = list(results.values())[0]
+        losses = sum(loss_dict.values())
+        
+        self.optimizer.zero_grad()
+        if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
+            with amp.scale_loss(losses, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            losses.backward()
 
-        return results
+        self._write_metrics(loss_dict, data_time)
 
+        self.optimizer.step()
 
 def setup(args):
     """
@@ -177,16 +172,16 @@ def main(args):
     if args.eval_only:
         cfg.defrost()
         cfg.MODEL.BACKBONE.PRETRAIN = False
-        model = TRANSTrainer.build_model(cfg)
-        Checkpointer(model, save_dir=cfg.OUTPUT_DIR).load(cfg.MODEL.WEIGHTS)  # load trained model
-        res = TRANSTrainer.test(cfg, model)
+        model = CAPTrainer.build_model(cfg)
+        Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
+        model = CAPTrainer.build_parallel_model(cfg, model)  # parallel
+        
+        res = CAPTrainer.test(cfg, model)
         return res
 
-    trainer = TRANSTrainer(cfg)
+    trainer = CAPTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
-    # trainer.test(trainer.cfg, trainer.model)
-    # trainer.test_transformer(trainer.cfg, trainer.model)
-    # torch.cuda.empty_cache()
+    trainer.init_memory()
     return trainer.train()
 
 
