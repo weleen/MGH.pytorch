@@ -338,21 +338,45 @@ class ProxyBalancedSampler(Sampler):
         self.num_instances = num_instances
         self.batch_size = batch_size
 
-        self.pid_cam_index = defaultdict(list)
-
-        for index, (_, pid, cam) in enumerate(data_source):
-            if pid == -1: continue  # ignore unused instances
-            self.pid_cam_index[(pid, cam)].append(index)
-
-        # remove outliers
-        self.pids_cams = [k for k in self.pid_cam_index if len(self.pid_cam_index[k]) > 1]
-        self.num_identities = len(self.pids_cams)
+        self.get_labels()
+        self.pids = list(self.pid_index.keys())
+        self.num_identities = len(self.pids)
 
         if seed is None:
             seed = comm.shared_random_seed()
         self._seed = int(seed)
         self._rank = comm.get_rank()
         self._world_size = comm.get_world_size()
+
+    def get_labels(self):
+        all_label = []
+        all_cams = []
+        for _, pid, cam in self.data_source:
+            all_label.append(pid)
+            all_cams.append(cam)
+        all_label = np.array(all_label)
+        all_cams = np.array(all_cams)
+        pure_label = all_label[all_label >= 0]
+        pure_cams = all_cams[all_label >= 0]
+        accum_labels = np.zeros(len(pure_label))
+        prev_id_count = 0
+        id_count_each_cam = []
+        for cc in np.unique(pure_cams):
+            percam_labels = pure_label[pure_cams == cc]
+            unique_id = np.unique(percam_labels)
+            id_count_each_cam.append(len(unique_id))
+            id_dict = {ID: i for i, ID in enumerate(unique_id.tolist())}
+            for i in range(len(percam_labels)):
+                percam_labels[i] = id_dict[percam_labels[i]]
+            accum_labels[pure_cams == cc] = percam_labels + prev_id_count
+            prev_id_count += len(unique_id)
+        new_accum_labels = -1 * np.ones(all_label.shape, all_label.dtype)
+        new_accum_labels[all_label>=0] = accum_labels
+
+        self.pid_index = defaultdict(list)
+        for index, accum_pid in enumerate(new_accum_labels):
+            if accum_pid == -1: continue
+            self.pid_index[accum_pid].append(index)
 
     def __iter__(self):
         start = self._rank
@@ -365,7 +389,7 @@ class ProxyBalancedSampler(Sampler):
             ret = []
 
             for kid in indices:
-                select_indexes = self.pid_cam_index[self.pids_cams[kid]]
+                select_indexes = self.pid_index[kid]
                 if len(select_indexes) >= self.num_instances:
                     indexes = np.random.choice(select_indexes, size=self.num_instances, replace=False)
                 else:

@@ -11,23 +11,17 @@ import sys
 sys.path.append('.')
 
 import time
-import itertools
-import collections
-import torch
-import torch.nn.functional as F
-from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
 from fastreid.config import cfg
 from fastreid.engine import default_argument_parser, default_setup, launch, hooks
 from fastreid.engine.defaults import DefaultTrainer
-from fastreid.data import build_reid_train_loader
-from fastreid.utils.torch_utils import extract_features
 from fastreid.utils import comm
-from fastreid.modeling.losses.hybrid_memory import HybridMemory
+from fastreid.engine import hooks
+
 from cap_memory import CAPMemory
 from cap_labelgenerator import CAPLabelGeneratorHook
-from fastreid.engine import hooks
+from config import add_cap_config
 
 try:
     import apex
@@ -45,7 +39,7 @@ class CAPTrainer(DefaultTrainer):
         logger = logging.getLogger('fastreid.' + __name__)
         logger.info("Initialize CAP memory")
 
-        self.memory = CAPMemory(num_features=cfg.MODEL.BACKBONE.FEAT_DIM)
+        self.memory = CAPMemory(self.cfg)
 
     def build_hooks(self):
         """
@@ -134,16 +128,25 @@ class CAPTrainer(DefaultTrainer):
         data_time = time.perf_counter() - start
 
         data = self.batch_process(data, is_dsbn=self.cfg.MODEL.DSBN)
-        outs = self.model(data)
+        if self.cfg.MODEL.MEAN_NET:
+            outs, outs_mean = self.model(data)
+        else:
+            outs = self.model(data)
 
         # Compute loss
-        if hasattr(self.model, 'module'):
-            loss_dict = self.memory(outs, data, self.epoch)
+        if self.cfg.MODEL.MEAN_NET:
+            if hasattr(self.model, 'module'):
+                loss_dict = self.model.module.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, epoch=self.epoch)
+            else:
+                loss_dict = self.model.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, epoch=self.epoch)
         else:
-            loss_dict = self.memory(outs, data, self.epoch)
+            if hasattr(self.model, 'module'):
+                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, epoch=self.epoch)
+            else:
+                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, epoch=self.epoch)
 
         losses = sum(loss_dict.values())
-        
+
         self.optimizer.zero_grad()
         if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
             with amp.scale_loss(losses, self.optimizer) as scaled_loss:
@@ -159,6 +162,7 @@ def setup(args):
     """
     Create configs and perform basic setups.
     """
+    add_cap_config(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
     cfg.freeze()

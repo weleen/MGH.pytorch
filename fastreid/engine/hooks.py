@@ -639,7 +639,7 @@ class LabelGeneratorHook(HookBase):
             self.get_memory_features()
 
             # generate pseudo labels and centers
-            all_labels, all_centers = self.update_labels()
+            all_labels, all_centers, all_features, all_camids = self.update_labels()
 
             # update train loader
             self.update_train_loader(all_labels)
@@ -702,13 +702,16 @@ class LabelGeneratorHook(HookBase):
     def update_labels(self):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
-        if self.memory_features is None:
-            all_features, true_labels, img_paths = extract_features(self.model,
+        if not hasattr(self, 'memory_features') or self.memory_features is None:
+            all_features, true_labels, img_paths, all_camids, indexes = extract_features(self.model,
                                                                     self._data_loader_cluster,
                                                                     self._cfg.PSEUDO.NORM_FEAT)
         else:
             all_features = self.memory_features
             true_labels = torch.LongTensor([item[1] for item in self._data_loader_cluster.dataset.img_items])
+            img_paths = [item[0] for item in self._data_loader_cluster.dataset.img_items]
+            all_camids = torch.LongTensor([item[1] for item in self._data_loader_cluster.dataset.img_items])
+            indexes = torch.arange(len(self._data_loader_cluster.dataset.img_items))
 
         if self._cfg.PSEUDO.NORM_FEAT:
             all_features = F.normalize(all_features, p=2, dim=1)
@@ -718,6 +721,8 @@ class LabelGeneratorHook(HookBase):
 
         all_centers = []
         all_labels = []
+        all_feats = []
+        all_cams = []
         all_dataset_names = [self._cfg.DATASETS.NAMES[ind] for ind in self._cfg.PSEUDO.UNSUP]
         for idx, dataset in enumerate(self._common_dataset.datasets):
 
@@ -730,24 +735,30 @@ class LabelGeneratorHook(HookBase):
             except:
                 num_classes = None
 
+            start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
+            feats = all_features[start_id: end_id]
+            cams = all_camids[start_id: end_id]
             if comm.is_main_process():
                 # clustering only on first GPU
                 save_path = '{}/clustering/{}/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, all_dataset_names[idx], self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
-                # if os.path.exists(save_path):
-                #     res = torch.load(save_path)
-                #     labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
-                # else:
-                labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
-                    self._cfg,
-                    all_features[start_id: end_id],
-                    num_classes=num_classes,
-                    indep_thres=indep_thres,
-                    epoch=self.trainer.epoch
-                )
+                if os.path.exists(save_path):
+                    res = torch.load(save_path)
+                    labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
+                else:
+                    labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
+                        self._cfg,
+                        feats,
+                        num_classes=num_classes,
+                        indep_thres=indep_thres,
+                        epoch=self.trainer.epoch,
+                        cams=cams,
+                        imgs_path=img_paths,
+                        indexes=indexes
+                    )
                 if not os.path.exists(save_path):
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                    res = {'labels': labels, 'num_classes': num_classes}#, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
+                    res = {'labels': labels, 'num_classes': num_classes, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
                     torch.save(res, save_path)
 
                 if self._cfg.PSEUDO.NORM_CENTER:
@@ -787,6 +798,8 @@ class LabelGeneratorHook(HookBase):
                 self.label_summary(labels, true_labels[start_id:end_id], indep_thres=indep_thres)
             all_labels.append(labels.tolist())
             all_centers.append(centers)
+            all_feats.append(feats)
+            all_cams.append(cams)
 
             try:
                 self.indep_thres[idx] = indep_thres
@@ -797,7 +810,7 @@ class LabelGeneratorHook(HookBase):
             except:
                 self.num_classes.append(num_classes)
 
-        return all_labels, all_centers
+        return all_labels, all_centers, all_feats, all_cams
 
     def update_train_loader(self, all_labels):
         # Here is tricky, we take the datasets from self._data_loader_sup, this datasets is created same as supervised learning.

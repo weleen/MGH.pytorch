@@ -1,6 +1,5 @@
 # coding=utf-8
 import numpy as np
-from sklearn.cluster import KMeans, DBSCAN
 import scipy.sparse as sparse
 
 from hyperg.hyperg import HyperG

@@ -115,8 +115,6 @@ def spatial_temporal_distribution(camera_id, labels, frames):
     for i in range(cam_num):
         for j in range(cam_num):
             distribution[i][j] /= (sum_[i][j] + eps)
-    
-    import pdb;pdb.set_trace()
 
     return distribution  # [to][from], to xxx camera, from xxx camera
 

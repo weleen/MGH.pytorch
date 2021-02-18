@@ -1,7 +1,7 @@
-_BASE_: "../Base-spcl.yml"
+_BASE_: "../Base-cap.yml"
 
 DATASETS:
   NAMES: ("DukeMTMC",)
   TESTS: ("DukeMTMC",)
 
-OUTPUT_DIR: "logs/SpCL/dukemtmc/AGW_R50"
+OUTPUT_DIR: "logs/CAP/dukemtmc/AGW_R50"

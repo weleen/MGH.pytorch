@@ -35,8 +35,7 @@ def spectral_hg_partitioning(hg, n_clusters, cluster_method='dbscan', n_componen
         n_components = n_clusters
 
     st = time.time()
-    L = hg.laplacian().toarray()
-    # L = check_symmetric(L)
+    # L = hg.laplacian().toarray()
     st1 = time.time()
 
     # eigenval, eigenvec = eigh(L)
@@ -44,7 +43,7 @@ def spectral_hg_partitioning(hg, n_clusters, cluster_method='dbscan', n_componen
     # eigenval_1, embeddings = eigh(L, eigvals=(0, n_clusters-1))
     _, embeddings = eigsh(hg.laplacian(), n_clusters, which='SM')
     st2 = time.time()
-    print(f'eigen time: {st2 - st1}')
+    logger.info(f'eigen time: {st2 - st1}')
 
     if cluster_method == 'kmeans':
         _, labels, _ = k_means(embeddings, n_clusters)
@@ -53,14 +52,14 @@ def spectral_hg_partitioning(hg, n_clusters, cluster_method='dbscan', n_componen
         embeddings = torch.nn.functional.normalize(embeddings)
         st = time.time()
         dist_mat_jaccard = compute_distance_matrix(embeddings, None, metric='jaccard', k1=30).cpu().numpy()
-        print('calculate jaccard distance: {}'.format(time.time() - st))
+        logger.info('calculate jaccard distance: {}'.format(time.time() - st))
 
         eps=0.6
         dbscan_cluster = DBSCAN(eps=eps, min_samples=4, metric="precomputed", n_jobs=-1)
         labels = dbscan_cluster.fit_predict(dist_mat_jaccard)
         num_clusters = len(set(labels)) - (1 if -1 in labels else 0)
-        print('num_cluster: {}'.format(num_clusters))
+        logger.info('num_cluster: {}'.format(num_clusters))
     st3 = time.time()
-    print(f'cluster time: {st3 - st2}')
+    logger.info(f'hypergraph partitioning time: {st3 - st2}')
 
     return labels.astype(int)

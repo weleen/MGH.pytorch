@@ -1,0 +1,57 @@
+_BASE_: "../../../configs/Base-AGW.yml"
+
+MODEL:
+  BACKBONE:
+    WITH_NL: False
+
+  HEADS:
+    POOL_LAYER: "gempoolP"
+    NECK_FEAT: "after"
+    NUM_CLASSES: 0
+
+  LOSSES:
+    NAME: ("CrossEntropy", "HardViewContrastiveLoss", "CameraAwareLoss")
+    CE:
+      EPSILON: 0.
+      TAU: 0.5
+
+  MEAN_NET: True
+  MEAN_NET_ALPHA: 0.999
+
+DATALOADER:
+  SAMPLER_NAME: "ProxyBalancedSampler"
+
+PSEUDO:
+  ENABLED: True
+  CLUSTER_EPOCH:  1
+  USE_OUTLIERS: False
+  WITH_CLASSIFIER: True
+  DBSCAN:
+    BASE: 'rho'
+    RHO: 2.2e-3
+    EPS: [0.7,]
+
+INPUT:
+  DO_BLUR: True
+
+SOLVER:
+  OPT: "Adam"
+  MAX_EPOCH: 50
+  BASE_LR: 0.00035
+  IMS_PER_BATCH: 32
+  WEIGHT_DECAY: 0. 
+  WEIGHT_DECAY_BIAS: 0.
+
+  STEPS: [20, 40]
+  WARMUP_EPOCHS: 0
+
+  LOG_ITERS: 200
+
+  CHECKPOINT_PERIOD: 5
+  ITERS_PER_EPOCH: 400
+
+TEST:
+  EVAL_PERIOD: 1
+  IMS_PER_BATCH: 128
+
+CUDNN_BENCHMARK: True

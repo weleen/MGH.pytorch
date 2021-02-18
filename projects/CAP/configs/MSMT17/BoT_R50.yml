@@ -1,10 +1,10 @@
-_BASE_: "../Base-spcl-BoT_R50.yml"
+_BASE_: "../Base-cap-BoT_R50.yml"
 
 DATASETS:
   NAMES: ("MSMT17",)
   TESTS: ("MSMT17",)
 
 SOLVER:
-  ITERS_PER_EPOCH: 400
+  ITERS_PER_EPOCH: 800
 
-OUTPUT_DIR: "logs/SpCL/msmt17/BoT_R50"
+OUTPUT_DIR: "logs/CAP/msmt17/BoT_R50"

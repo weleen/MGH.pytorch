@@ -93,6 +93,14 @@ _C.MODEL.LOSSES.CE.EPSILON = 0.0
 _C.MODEL.LOSSES.CE.ALPHA = 0.2
 _C.MODEL.LOSSES.CE.SCALE = 1.0
 _C.MODEL.LOSSES.CE.TAU = 1.0
+_C.MODEL.LOSSES.CE.START_EPOCH = 0
+
+# Hard View Contrastive Loss
+_C.MODEL.LOSSES.VCL = CN()
+_C.MODEL.LOSSES.VCL.SCALE = 1.0
+_C.MODEL.LOSSES.VCL.TAU = 0.09
+_C.MODEL.LOSSES.VCL.NORM_FEAT = True
+_C.MODEL.LOSSES.VCL.START_EPOCH = 0
 
 # Focal Loss options
 _C.MODEL.LOSSES.FL = CN()
@@ -276,10 +284,11 @@ _C.PSEUDO.CDP.PROPAGATION.STEP = 0.05
 _C.PSEUDO.CDP.PROPAGATION.MAX_ITER = 100
 
 _C.PSEUDO.HG = CN()
-_C.PSEUDO.HG.KNN = [30,]
+_C.PSEUDO.HG.KNN = [50,100,]
 _C.PSEUDO.HG.WITH_CLUSTER = True  # build hypergraph with clustering
 _C.PSEUDO.HG.PROBH = False
 _C.PSEUDO.HG.WITH_ST = False  # build hypergraph with spatial temporal constraint
+_C.PSEUDO.HG.WITH_PREVIOUS = False  # combine the dist_mat in the last generation
 
 # Memory related options for Self-paced learning
 # Temperature for scaling contrastive loss

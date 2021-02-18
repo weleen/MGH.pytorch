@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch import nn, autograd
-from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size
+from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size, concat_all_gather
 from fastreid.utils.metrics import compute_distance_matrix
 
 
@@ -123,9 +123,10 @@ class HybridMemory(nn.Module):
                 weight_mask = torch.zeros_like(weight)
                 weight_mask.scatter_(dim=1, index=mask_index, src=torch.ones_like(weight))
                 weight = masked_softmax(weight, weight_mask)
-            return -(torch.log(masked_sim + eps) * F.softmax(weight, 1)).mean(0).sum()
+            loss = -(torch.log(masked_sim + eps) * F.softmax(weight, 1)).mean(0).sum()
         elif self.soft_label and self.cur_epoch > self.soft_label_start_epoch:
             pseudo_label = self._pseudo_label(indexes)
-            return -(torch.log(masked_sim + eps) * pseudo_label).mean(0).sum()
+            loss = -(torch.log(masked_sim + eps) * pseudo_label).mean(0).sum()
         else:
-            return F.nll_loss(torch.log(masked_sim + eps), targets)
+            loss = F.nll_loss(torch.log(masked_sim + eps), targets)
+        return {'contrastive_loss': loss}

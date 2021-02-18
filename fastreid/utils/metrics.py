@@ -158,30 +158,17 @@ def jaccard_dist(features, k1=20, k2=6, search_option=0, fp16=False, **kwargs):
         k_reciprocal_expansion_index = k_reciprocal_index
         for candidate in k_reciprocal_index:
             candidate_k_reciprocal_index = nn_k1_half[candidate]
-            if len(np.intersect1d(candidate_k_reciprocal_index, k_reciprocal_index)) > 2 / 3 * len(
-                    candidate_k_reciprocal_index):
-                k_reciprocal_expansion_index = np.append(
-                    k_reciprocal_expansion_index, candidate_k_reciprocal_index)
+            if (len(np.intersect1d(candidate_k_reciprocal_index,k_reciprocal_index)) > 2/3*len(candidate_k_reciprocal_index)):
+                k_reciprocal_expansion_index = np.append(k_reciprocal_expansion_index,candidate_k_reciprocal_index)
 
-        k_reciprocal_expansion_index = np.unique(
-            k_reciprocal_expansion_index)  # element-wise unique
-
-        x = features[i].unsqueeze(0).contiguous()
-        y = features[k_reciprocal_expansion_index]
-        m, n = x.size(0), y.size(0)
-        dist = (
-            torch.pow(x, 2).sum(dim=1, keepdim=True).expand(m, n)
-            + torch.pow(y, 2).sum(dim=1, keepdim=True).expand(n, m).t()
-        )
-        dist.addmm_(x, y.t(), beta=1, alpha=-2)
-
+        k_reciprocal_expansion_index = np.unique(k_reciprocal_expansion_index)  ## element-wise unique
+        dist = 2 - 2 * torch.mm(features[i].unsqueeze(0).contiguous(), features[k_reciprocal_expansion_index].t())
         if fp16:
             V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy().astype(mat_type)
         else:
             V[i, k_reciprocal_expansion_index] = F.softmax(-dist, dim=1).view(-1).cpu().numpy()
 
-    del nn_k1, nn_k1_half, x, y
-    features = features.cpu()
+    del nn_k1, nn_k1_half
 
     if k2 != 1:
         V_qe = np.zeros_like(V, dtype=mat_type)

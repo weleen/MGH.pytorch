@@ -1,4 +1,4 @@
-_BASE_: "../Base-spcl.yml"
+_BASE_: "../Base-cap.yml"
 
 DATASETS:
   NAMES: ("MSMT17",)
@@ -7,4 +7,4 @@ DATASETS:
 SOLVER:
   ITERS_PER_EPOCH: 400
 
-OUTPUT_DIR: "logs/SpCL/msmt17/AGW_R50"
+OUTPUT_DIR: "logs/CAP/msmt17/AGW_R50"

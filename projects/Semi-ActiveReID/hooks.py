@@ -86,7 +86,7 @@ class SALLabelGeneratorHook(LabelGeneratorHook):
         self._logger.info(f"Start updating pseudo labels on epoch {self.trainer.epoch}/iteration {self.trainer.iter}")
         
         if self.memory_features is None:
-            all_features, true_labels, _ = extract_features(self.model,
+            all_features, true_labels, _, _, _ = extract_features(self.model,
                                                             self._data_loader_cluster,
                                                             self._cfg.PSEUDO.NORM_FEAT)
         else:

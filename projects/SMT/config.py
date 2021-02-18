@@ -9,12 +9,6 @@ from fvcore.common.config import CfgNode as CN
 def add_smtreid_config(cfg):
     _C = cfg
 
-    # Hard View Contrastive Loss
-    _C.MODEL.LOSSES.VCL = CN()
-    _C.MODEL.LOSSES.VCL.SCALE = 1.0
-    _C.MODEL.LOSSES.VCL.TAU = 0.09
-    _C.MODEL.LOSSES.VCL.NORM_FEAT = True
-
     # Softmax Cross Entropy Loss options
     _C.MODEL.LOSSES.SCE = CN()
     _C.MODEL.LOSSES.SCE.SCALE = 1.0

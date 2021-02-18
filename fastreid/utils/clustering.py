@@ -1,3 +1,4 @@
+import time
 import logging
 import faiss
 import torch
@@ -397,14 +398,20 @@ def label_generator_hypergraph_new(cfg, features, num_classes=500, init_cluster=
 
 def build_hg(cfg, dist_mat, pseudo_labels, kwargs):
     H_list = []
-    for kk in cfg.PSEUDO.HG.KNN:
+    for kk in cfg.PSEUDO.HG.KNN:  # knn graph
         H_list.append(gen_knn_hg(dist_mat, n_neighbors=kk, is_prob=True))
-        if cfg.PSEUDO.HG.WITH_CLUSTER:
-            if 'imgs_path' in kwargs:
-                imgs_path = kwargs['imgs_path']
-                st_dist_mat = get_st_matrix(imgs_path, pseudo_labels=None)
-                H_list.append(gen_knn_hg(st_dist_mat, n_neighbors=kk, is_prob=True))
-    if cfg.PSEUDO.HG.WITH_CLUSTER:
+    if 'imgs_path' in kwargs and cfg.PSEUDO.HG.WITH_ST:  # spatial temporal graph
+        imgs_path = kwargs['imgs_path']
+        st_time = time.time()
+        st_dist_mat = get_st_matrix(imgs_path, pseudo_labels=pseudo_labels)
+        end_time = time.time()
+        logger.info(f'get spatial temporal distribution costs {end_time - st_time}s')
+        app_dist_mat = 1 - 1 / (1 + np.exp(-5 * (1 - dist_mat * 2)))  # rescale to match cosine similarity
+        st_dist_mat *= app_dist_mat
+        H_list.append(gen_knn_hg(st_dist_mat, n_neighbors=kk, is_prob=True))
+    if cfg.PSEUDO.HG.WITH_CLUSTER:  # graph based on clustering
         H_list.append(gen_clustering_hg(dist_mat, pseudo_labels))
+    if 'pre_dist_mat' in kwargs and cfg.PSEUDO.HG.WITH_PREVIOUS:  # dist_mat from last generation
+        H_list.append(gen_knn_hg(kwargs['pre_dist_mat']), n_neighbors=kk, is_prob=True)
     H = concat_multi_hg(H_list)
     return H
