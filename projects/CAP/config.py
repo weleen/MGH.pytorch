@@ -16,3 +16,6 @@ def add_cap_config(cfg):
     _C.CAP.MOMENTUM = 0.2
     _C.CAP.LOSS_WEIGHT = 0.5
     _C.CAP.INTERCAM_EPOCH = 5
+
+    _C.CAP.ST_TEST = False
+    _C.CAP.INSTANCE_LOSS = False

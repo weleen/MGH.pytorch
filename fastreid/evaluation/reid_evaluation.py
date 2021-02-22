@@ -21,6 +21,22 @@ from fastreid.utils.metrics import compute_distance_matrix
 
 logger = logging.getLogger(__name__)
 
+def joint_similarity(q_cam, q_frame, g_cam, g_frame, distribution):
+    interval = 100
+    score_st = np.zeros((len(q_cam), len(g_cam)))
+    for i in range(len(q_cam)):
+        for j in range(len(g_cam)):
+            if q_frame[i] > g_frame[j]:
+                diff = q_frame[i] - g_frame[j]
+                hist_ = int(diff / interval)
+                pr = distribution[q_cam[i]][g_cam[j]][hist_]
+            else:
+                diff = g_frame[j] - q_frame[i]
+                hist_ = int(diff / interval)
+                pr = distribution[g_cam[j]][q_cam[i]][hist_]
+            score_st[i][j] = pr
+
+    return score_st
 
 class ReidEvaluator(DatasetEvaluator):
     def __init__(self, cfg, num_query, output_dir=None):
@@ -31,16 +47,22 @@ class ReidEvaluator(DatasetEvaluator):
         self.features = []
         self.pids = []
         self.camids = []
+        self.frameids = []
 
     def reset(self):
         self.features = []
         self.pids = []
         self.camids = []
+        self.frameids = []
 
     def process(self, inputs, outputs):
         self.pids.extend(inputs["targets"])
         self.camids.extend(inputs["camids"])
         self.features.append(outputs.data.cpu())
+        if self.cfg.DATASET.NAMES[0] == "Market1501":
+            self.frameids.extend([int(path.split('/')[-1].split('_')[-2]) for path in inputs["img_paths"]])
+        elif self.cfg.DATASET.NAMES[0] == "DukeMTMC":
+            self.frameids.extend([int(path.split('/')[-1][9:16]) for path in inputs["img_paths"]])
 
     def evaluate(self):
         if comm.get_world_size() > 1:
@@ -61,17 +83,20 @@ class ReidEvaluator(DatasetEvaluator):
             features = self.features
             pids = self.pids
             camids = self.camids
+            frameids = self.frameids
 
         features = torch.cat(features, dim=0)
         # query feature, person ids and camera ids
         query_features = features[:self._num_query]
         query_pids = np.asarray(pids[:self._num_query])
         query_camids = np.asarray(camids[:self._num_query])
+        query_frameids = np.asarray(frameids[:self._num_query])
 
         # gallery features, person ids and camera ids
         gallery_features = features[self._num_query:]
         gallery_pids = np.asarray(pids[self._num_query:])
         gallery_camids = np.asarray(camids[self._num_query:])
+        gallery_frameids = np.asarray(frameids[self._num_query:])
 
         self._results = OrderedDict()
 
@@ -83,6 +108,13 @@ class ReidEvaluator(DatasetEvaluator):
             query_features, gallery_features = aqe(query_features, gallery_features, qe_time, qe_k, alpha)
 
         dist = compute_distance_matrix(query_features, gallery_features, self.cfg.TEST.METRIC)
+
+        if self.cfg.CAP.ST_TEST:
+            distribution = np.load(os.path.join(self.cfg.OUTPUT_DIR, 'distribution.npy'))
+            score_st = joint_similarity(query_camids, query_frameids, gallery_camids, gallery_frameids, distribution)
+
+            gamma = 5
+            dist = 1 - 1 / (1 + np.exp(-gamma * (1 - dist))) / (1 + 2 * np.exp(-gamma * score_st))
 
         if self.cfg.TEST.RERANK.ENABLED:
             logger.info("Test with rerank setting")
