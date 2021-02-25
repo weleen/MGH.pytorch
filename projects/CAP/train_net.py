@@ -22,6 +22,10 @@ from fastreid.engine import hooks
 from cap_memory import CAPMemory
 from cap_labelgenerator import CAPLabelGeneratorHook
 from config import add_cap_config
+from instance_loss import instance_loss
+from get_st_matrix import get_st_distribution
+import numpy as np
+from cluster import Cluster
 
 try:
     import apex
@@ -145,6 +149,12 @@ class CAPTrainer(DefaultTrainer):
                 loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
             else:
                 loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
+        
+        if self.cfg.CAP.INSTANCE_LOSS:
+            un_data = next(self.un_data_loader_iter)
+            un_data = self.batch_process(un_data, is_dsbn=self.cfg.MODEL.DSBN)
+            un_outs = self.model(un_data)
+            loss_dict.update(instance_loss(un_outs))
 
         losses = sum(loss_dict.values())
 
@@ -181,12 +191,29 @@ def main(args):
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
         model = CAPTrainer.build_parallel_model(cfg, model)  # parallel
         
+        if cfg.CAP.ST_TEST:
+            cluster = Cluster(cfg, model)
+            all_labels, all_centers, all_features, all_camids = cluster.update_labels()
+            items = cluster._data_loader_cluster.dataset.img_items
+            imgs_paths = [items[i][0] for i, lb in enumerate(all_labels[0]) if lb != -1]
+            pseudo_labels = [lb for lb in all_labels[0] if lb != -1]
+            distribution = get_st_distribution(imgs_paths, cfg.DATASETS.NAMES[0],  pseudo_labels=pseudo_labels)
+            np.save(os.path.join(cfg.OUTPUT_DIR, 'distribution.npy'), distribution)
+
         res = CAPTrainer.test(cfg, model)
         return res
 
     trainer = CAPTrainer(cfg)
     trainer.resume_or_load(resume=args.resume)
     trainer.init_memory()
+
+    # items = trainer.data_loader.dataset.img_items
+    # imgs_paths = [i[0] for i in items if i[1] != -1]
+    # pseudo_labels = [i[1] for i in items if i[1] != -1]
+    # distribution = get_st_distribution(imgs_paths, pseudo_labels=pseudo_labels)
+    # np.save('train_distribution.npy', distribution)
+    # trainer.test(trainer.cfg, trainer.model)
+
     return trainer.train()
 
 
