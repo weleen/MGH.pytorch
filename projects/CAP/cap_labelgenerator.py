@@ -28,10 +28,8 @@ class CAPLabelGeneratorHook(LabelGeneratorHook):
             self.trainer.memory._update_epoch(self.trainer.epoch)
 
             # update classifier centers
-            try:
+            if self._cfg.PSEUDO.WITH_CLASSIFIER:
                 self.update_classifier_centers(all_centers)
-            except:
-                logger.warning('Error when updating classifier centers.')
 
             comm.synchronize()
 

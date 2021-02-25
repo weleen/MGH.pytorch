@@ -11,9 +11,12 @@ from fastreid.utils.torch_utils import to_numpy, to_torch
 from fastreid.utils.metrics import compute_distance_matrix
 from fastreid.utils.graph import graph_propagation
 from fastreid.utils.get_st_matrix import get_st_matrix
+from fastreid.evaluation.rerank import re_ranking_dist
 from hyperg import gen_knn_hg, gen_clustering_hg, concat_multi_hg, spectral_hg_partitioning
 from scipy.sparse.linalg.eigen.arpack import eigsh
 
+
+preH = None
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +76,7 @@ def label_generator_dbscan_single(cfg, features, dist, eps, **kwargs):
 
 @torch.no_grad()
 def label_generator_dbscan(cfg, features, indep_thres=None, **kwargs):
-    assert cfg.PSEUDO.NAME == "dbscan"
+    assert "dbscan" in cfg.PSEUDO.NAME
 
     if 'dist' in kwargs:
         dist = kwargs['dist']
@@ -339,7 +342,8 @@ def label_generator_hypergraph(cfg, features, num_classes=500, **kwargs):
     return labels, centers, num_classes, None, None
 
 
-def label_generator_hypergraph_new(cfg, features, num_classes=500, init_cluster='dbscan', **kwargs):
+def label_generator_hypergraph_dbscan(cfg, features, **kwargs):
+    global preH
     # initial clustering
     if 'dist' in kwargs:
         dist = kwargs['dist']
@@ -367,9 +371,12 @@ def label_generator_hypergraph_new(cfg, features, num_classes=500, init_cluster=
     assert len(eps) == 1
     labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
 
+    if 'epoch' in kwargs and kwargs['epoch'] < cfg.PSEUDO.HG.START_EPOCH:
+        logger.info(f'Disable hypergraph clustering before epoch {cfg.PSEUDO.HG.START_EPOCH}')
+        return labels, centers, num_classes, None, None
     # generate knn hypergraph
-    H = build_hg(cfg, dist, labels.cpu().numpy(), kwargs)
-
+    H = build_hg(cfg, features, dist, labels.cpu().numpy(), kwargs)
+    preH = H
     # clustering
     _, embeddings = eigsh(H.laplacian(), num_classes, which='SM')
     embeddings = torch.from_numpy(embeddings).to(torch.float)
@@ -396,22 +403,113 @@ def label_generator_hypergraph_new(cfg, features, num_classes=500, init_cluster=
     return labels, centers, num_classes, None, None
 
 
-def build_hg(cfg, dist_mat, pseudo_labels, kwargs):
+def label_generator_hypergraph_lp(cfg, features, **kwargs):
+    pass
+
+
+def build_hg(cfg, features, dist_mat, pseudo_labels, kwargs):
     H_list = []
     for kk in cfg.PSEUDO.HG.KNN:  # knn graph
         H_list.append(gen_knn_hg(dist_mat, n_neighbors=kk, is_prob=True))
     if 'imgs_path' in kwargs and cfg.PSEUDO.HG.WITH_ST:  # spatial temporal graph
         imgs_path = kwargs['imgs_path']
         st_time = time.time()
-        st_dist_mat = get_st_matrix(imgs_path, pseudo_labels=pseudo_labels)
+        app_dist_mat = compute_distance_matrix(features,
+                                               features,
+                                               metric='cosine').cpu().numpy()
+        st_dist_mat = get_st_matrix(imgs_path, pseudo_labels=pseudo_labels, score=(1 - app_dist_mat))
+        st_dist_mat = re_ranking_dist(st_dist_mat, lambda_value=0.5)
         end_time = time.time()
         logger.info(f'get spatial temporal distribution costs {end_time - st_time}s')
-        app_dist_mat = 1 - 1 / (1 + np.exp(-5 * (1 - dist_mat * 2)))  # rescale to match cosine similarity
-        st_dist_mat *= app_dist_mat
         H_list.append(gen_knn_hg(st_dist_mat, n_neighbors=kk, is_prob=True))
     if cfg.PSEUDO.HG.WITH_CLUSTER:  # graph based on clustering
         H_list.append(gen_clustering_hg(dist_mat, pseudo_labels))
-    if 'pre_dist_mat' in kwargs and cfg.PSEUDO.HG.WITH_PREVIOUS:  # dist_mat from last generation
-        H_list.append(gen_knn_hg(kwargs['pre_dist_mat']), n_neighbors=kk, is_prob=True)
+    if preH is not None and cfg.PSEUDO.HG.WITH_PREVIOUS:  # dist_mat from last generation
+        H_list.append(preH)
     H = concat_multi_hg(H_list)
     return H
+
+
+def label_generator_dbscan_with_st(cfg, features, **kwargs):
+    # initial clustering
+    if 'dist' in kwargs:
+        dist = kwargs['dist']
+    else:
+        dist = compute_distance_matrix(features,
+                                       None,
+                                       metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
+                                       k1=cfg.PSEUDO.DBSCAN.K1,
+                                       k2=cfg.PSEUDO.DBSCAN.K2,
+                                       search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
+    features = features.cpu()
+    # clustering
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho':
+        rho = cfg.PSEUDO.DBSCAN.RHO
+        tri_mat = np.triu(dist, 1) # tri_mat.dim=2
+        tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
+        tri_mat = np.sort(tri_mat,axis=None)
+        top_num = np.round(rho * tri_mat.size).astype(int)
+        eps = tri_mat[:top_num].mean()
+        eps = [eps]
+    else:
+        eps = cfg.PSEUDO.DBSCAN.EPS
+    logger.info(f'dbscan based on {cfg.PSEUDO.DBSCAN.BASE}, eps in dbscan clustering: {eps}')
+
+    assert len(eps) == 1
+    labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
+    if 'epoch' in kwargs and kwargs['epoch'] < cfg.PSEUDO.ST.START_EPOCH:
+        logger.info(f'Use appearance distance matrix for clustering before epoch {cfg.PSEUDO.ST.START_EPOCH}')
+        return labels, centers, num_classes, None, None
+    logger.info('Use appearance and spatial temporal information for clustering.')
+    assert 'imgs_path' in kwargs, "imgs_path must be in kwargs, while only {}".format(kwargs.keys())
+    app_dist_mat = compute_distance_matrix(features,
+                                           features,
+                                           metric='cosine').cpu().numpy()
+    st_time = time.time()
+    dist = get_st_matrix(kwargs['imgs_path'], pseudo_labels=labels.tolist(), score=(1 - app_dist_mat))
+    dist = re_ranking_dist(dist, lambda_value=0.5)
+    logger.info(f'get spatial temporal distance matrix costs {time.time() - st_time}s')
+    # clustering based on appearance and spatial temporal information
+    if cfg.PSEUDO.DBSCAN.BASE == 'rho':
+        rho = cfg.PSEUDO.DBSCAN.RHO
+        tri_mat = np.triu(dist, 1) # tri_mat.dim=2
+        tri_mat = tri_mat[np.nonzero(tri_mat)] # tri_mat.dim=1
+        tri_mat = np.sort(tri_mat,axis=None)
+        top_num = np.round(rho * tri_mat.size).astype(int)
+        eps = tri_mat[:top_num].mean()
+        eps = [eps]
+    else:
+        eps = cfg.PSEUDO.DBSCAN.EPS
+    logger.info(f'dbscan based on {cfg.PSEUDO.DBSCAN.BASE}, eps in dbscan clustering: {eps}')
+    assert len(eps) == 1
+    labels, centers, num_classes = label_generator_dbscan_single(cfg, features, dist, eps[0])
+    return labels, centers, num_classes, None, None
+
+
+def label_generator_dbscan_with_cams(cfg, features, cams, epoch, **kwargs):
+    dist = compute_distance_matrix(features,
+                                    None,
+                                    metric=cfg.PSEUDO.DBSCAN.DIST_METRIC,
+                                    k1=cfg.PSEUDO.DBSCAN.K1,
+                                    k2=cfg.PSEUDO.DBSCAN.K2,
+                                    search_type=cfg.PSEUDO.SEARCH_TYPE).cpu().numpy()
+    if epoch >= cfg.PSEUDO.DBSCAN.CAMERA.EPOCH[0] and epoch <= cfg.PSEUDO.DBSCAN.CAMERA.EPOCH[1]:
+        labels = -1 * torch.ones(features.shape[0]).long()
+        centers = []
+        logger.info('Use Camera-aware clustering on epoch {}'.format(epoch))
+        # perform dbscan on every camera
+        num_classes = 0
+        for cc in torch.unique(cams):
+            ind = torch.where(cams == cc)[0]
+            features_tmp = features[ind]
+            labels_tmp, centers_tmp, num_classes_tmp, _, _ = label_generator_dbscan(cfg, features_tmp, **kwargs)
+            inlier_ind = torch.where(labels_tmp >= 0)[0]
+            labels_tmp[inlier_ind] += num_classes
+            centers.append(centers_tmp)
+            num_classes += num_classes_tmp
+            labels[ind] = labels_tmp.long()
+        centers = torch.cat(centers, dim=0)
+        return labels, centers, num_classes, None, torch.tensor(dist)
+    else:
+        logger.info('Use global clustering on epoch {}'.format(epoch))
+        return label_generator_dbscan(cfg, features, dist=dist, **kwargs)

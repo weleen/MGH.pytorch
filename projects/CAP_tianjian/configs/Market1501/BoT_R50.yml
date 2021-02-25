@@ -1,0 +1,7 @@
+_BASE_: "../Base-cap-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("Market1501",)
+  TESTS: ("Market1501",)
+
+OUTPUT_DIR: "logs/CAP/market1501/BoT_R50"

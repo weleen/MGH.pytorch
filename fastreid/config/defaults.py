@@ -93,14 +93,12 @@ _C.MODEL.LOSSES.CE.EPSILON = 0.0
 _C.MODEL.LOSSES.CE.ALPHA = 0.2
 _C.MODEL.LOSSES.CE.SCALE = 1.0
 _C.MODEL.LOSSES.CE.TAU = 1.0
-_C.MODEL.LOSSES.CE.START_EPOCH = 0
 
 # Hard View Contrastive Loss
 _C.MODEL.LOSSES.VCL = CN()
 _C.MODEL.LOSSES.VCL.SCALE = 1.0
 _C.MODEL.LOSSES.VCL.TAU = 0.09
 _C.MODEL.LOSSES.VCL.NORM_FEAT = True
-_C.MODEL.LOSSES.VCL.START_EPOCH = 0
 
 # Focal Loss options
 _C.MODEL.LOSSES.FL = CN()
@@ -252,7 +250,7 @@ _C.DATALOADER.NUM_WORKERS = 8
 # -----------------------------------------------------------------------------
 _C.PSEUDO = CN()
 _C.PSEUDO.ENABLED = False
-_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp', 'hypergraph'
+_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp', 'hypergraph', 'dbscan_st', 'dbscan_cam'
 _C.PSEUDO.UNSUP = (0,)  # unsupervised index for training datasets, support MMT.
 _C.PSEUDO.CLUSTER_EPOCH = 2
 _C.PSEUDO.CLUSTER_AUG = False # mutual transform when extracting features for clustering
@@ -263,6 +261,9 @@ _C.PSEUDO.SEARCH_TYPE = 0
 _C.PSEUDO.NUM_CLUSTER = [500, ]
 _C.PSEUDO.RESET_OPT = False
 _C.PSEUDO.WITH_CLASSIFIER = True # False for SpCL
+_C.PSEUDO.SAVE_CLUSTERING_RES = False
+_C.PSEUDO.CAMERA_CLUSTER_METRIC = False
+_C.PSEUDO.TRUE_LABEL = False # for upperbound
 
 _C.PSEUDO.DBSCAN = CN()
 _C.PSEUDO.DBSCAN.BASE = 'eps' # perform clustering based on which metric, 'eps' or 'rho'
@@ -272,6 +273,8 @@ _C.PSEUDO.DBSCAN.MIN_SAMPLES = 4
 _C.PSEUDO.DBSCAN.DIST_METRIC = 'jaccard'
 _C.PSEUDO.DBSCAN.K1 = 30
 _C.PSEUDO.DBSCAN.K2 = 6
+_C.PSEUDO.DBSCAN.CAMERA = CN()
+_C.PSEUDO.DBSCAN.CAMERA.EPOCH = [0, 5]
 
 _C.PSEUDO.CDP = CN()
 _C.PSEUDO.CDP.K = [25]
@@ -286,9 +289,12 @@ _C.PSEUDO.CDP.PROPAGATION.MAX_ITER = 100
 _C.PSEUDO.HG = CN()
 _C.PSEUDO.HG.KNN = [50,100,]
 _C.PSEUDO.HG.WITH_CLUSTER = True  # build hypergraph with clustering
-_C.PSEUDO.HG.PROBH = False
 _C.PSEUDO.HG.WITH_ST = False  # build hypergraph with spatial temporal constraint
 _C.PSEUDO.HG.WITH_PREVIOUS = False  # combine the dist_mat in the last generation
+_C.PSEUDO.HG.START_EPOCH = 5  # when to use hypergraph clustering
+
+_C.PSEUDO.ST = CN()
+_C.PSEUDO.ST.START_EPOCH = 20
 
 # Memory related options for Self-paced learning
 # Temperature for scaling contrastive loss

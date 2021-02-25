@@ -25,7 +25,7 @@ from fvcore.common.file_io import PathManager
 from fvcore.nn.precise_bn import update_bn_stats, get_bn_modules
 from fvcore.common.timer import Timer
 from fastreid.data import build_reid_train_loader
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_hypergraph, label_generator_kmeans, label_generator_cdp, label_generator_hypergraph_new
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_dbscan_with_st, label_generator_hypergraph, label_generator_kmeans, label_generator_cdp, label_generator_hypergraph_dbscan, label_generator_dbscan_with_cams
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
 from .train_loop import HookBase
@@ -601,7 +601,9 @@ class LabelGeneratorHook(HookBase):
         'dbscan': label_generator_dbscan,
         'kmeans': label_generator_kmeans,
         'cdp': label_generator_cdp,
-        'hypergraph': label_generator_hypergraph_new
+        'hypergraph': label_generator_hypergraph_dbscan,
+        'dbscan_st': label_generator_dbscan_with_st,
+        'dbscan_cam': label_generator_dbscan_with_cams
     }
 
     def __init__(self, cfg, model):
@@ -742,21 +744,31 @@ class LabelGeneratorHook(HookBase):
                 # clustering only on first GPU
                 save_path = '{}/clustering/{}/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, all_dataset_names[idx], self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
-                if os.path.exists(save_path):
-                    res = torch.load(save_path)
-                    labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
+                if self._cfg.PSEUDO.TRUE_LABEL:  # set all labels to ground truth
+                    labels = true_labels[start_id: end_id]
+                    num_classes = len(set(labels))
+                    centers = collections.defaultdict(list)
+                    for i, label in enumerate(labels):
+                        centers[labels[i].item()].append(feats[i])
+
+                    centers = [torch.stack(centers[idx], dim=0).mean(0) for idx in sorted(centers.keys())]
+                    centers = torch.stack(centers, dim=0)
                 else:
-                    labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
-                        self._cfg,
-                        feats,
-                        num_classes=num_classes,
-                        indep_thres=indep_thres,
-                        epoch=self.trainer.epoch,
-                        cams=cams,
-                        imgs_path=img_paths,
-                        indexes=indexes
-                    )
-                if not os.path.exists(save_path):
+                    if os.path.exists(save_path):
+                        res = torch.load(save_path)
+                        labels, centers, num_classes, indep_thres, dist_mat = res['labels'], res['centers'], res['num_classes'], res['indep_thres'], res['dist_mat']
+                    else:
+                        labels, centers, num_classes, indep_thres, dist_mat = self.label_generator(
+                            self._cfg,
+                            feats,
+                            num_classes=num_classes,
+                            indep_thres=indep_thres,
+                            epoch=self.trainer.epoch,
+                            cams=cams,
+                            imgs_path=img_paths,
+                            indexes=indexes
+                        )
+                if not os.path.exists(save_path) and self._cfg.PSEUDO.SAVE_CLUSTERING_RES:
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     res = {'labels': labels, 'num_classes': num_classes, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
                     torch.save(res, save_path)
@@ -795,7 +807,7 @@ class LabelGeneratorHook(HookBase):
                 self.trainer.weight_matrix = weight_matrix
 
             if comm.is_main_process():
-                self.label_summary(labels, true_labels[start_id:end_id], indep_thres=indep_thres)
+                self.label_summary(labels, true_labels[start_id:end_id], cams, indep_thres=indep_thres, camera_metric=self._cfg.PSEUDO.CAMERA_CLUSTER_METRIC)
             all_labels.append(labels.tolist())
             all_centers.append(centers)
             all_feats.append(feats)
@@ -862,10 +874,10 @@ class LabelGeneratorHook(HookBase):
                     self.model.initialize_centers(centers, center_labels)
                 start_cls_id += self.trainer.data_loader.dataset.datasets[idx].num_train_pids
 
-    def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
+    def label_summary(self, pseudo_labels, gt_labels, gt_cameras=np.zeros(100,), cluster_metric=True, indep_thres=None, camera_metric=False):
         if cluster_metric:
-            nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_singular, recall_singular, fscore_singular = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%, precision_singular: {precision_singular*100:.2f}%, recall_singular: {recall_singular*100:.2f}%, fscore_singular: {fscore_singular*100:.2f}%.")
+            nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_dict, recall_dict, fscore_dict = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy(), gt_cameras.long().numpy(), camera_metric)
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%.")
             self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)
@@ -873,9 +885,14 @@ class LabelGeneratorHook(HookBase):
             self.trainer.storage.put_scalar('precision', precision, smoothing_hint=False)
             self.trainer.storage.put_scalar('recall', recall, smoothing_hint=False)
             self.trainer.storage.put_scalar('fscore', fscore, smoothing_hint=False)
-            self.trainer.storage.put_scalar('precision_singular', precision_singular, smoothing_hint=False)
-            self.trainer.storage.put_scalar('recall_singular', recall_singular, smoothing_hint=False)
-            self.trainer.storage.put_scalar('fscore_singular', fscore_singular, smoothing_hint=False)
+            if camera_metric:
+                self._logger.warn('Calculate camera-specific cluster metric is slow, please set PSEUDO.CAMERA_CLUSTER_METRIC as False in training.')
+                self._logger.info('Camera specific cluster metrics:')
+                for key in precision_dict.keys():
+                    self._logger.info(f'cam{key[0]}->cam{key[1]} precision: {precision_dict[key]*100:.2f}%, recall: {recall_dict[key]*100:.2f}%, fscore: {fscore_dict[key]*100:.2f}%')
+                    self.trainer.storage.put_scalar('precision_cam{}_to_cam{}'.format(key[0], key[1]), precision_dict[key], smoothing_hint=False)
+                    self.trainer.storage.put_scalar('recall_cam{}_to_cam{}'.format(key[0], key[1]), recall_dict[key], smoothing_hint=False)
+                    self.trainer.storage.put_scalar('fscore_cam{}_to_cam{}'.format(key[0], key[1]), fscore_dict[key], smoothing_hint=False)
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)

@@ -1,3 +1,4 @@
+import itertools
 import faiss
 import torch
 import torch.nn.functional as F
@@ -6,7 +7,7 @@ import logging
 import collections
 import numpy as np
 from scipy.optimize import linear_sum_assignment as linear_assignment
-from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score
+from sklearn.metrics import normalized_mutual_info_score, adjusted_rand_score, confusion_matrix
 from scipy import sparse as sp
 
 import build_adjacency_matrix
@@ -357,7 +358,39 @@ def pairwise_cluster_acc(label_pred, label_true):
     return avg_pre, avg_rec, fscore
 
 
-def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
+def camera_aware_pairwise_cluster_acc(label_pred, label_true, camera_true):
+    """Calculate cross-camera case.
+    definition of TP, FN, FP here follows FMI, https://github.com/XiaohangZhan/cdp/issues/8
+    acc calculation follow https://www.researchgate.net/figure/Calculation-of-Precision-Recall-and-Accuracy-in-the-confusion-matrix_fig3_336402347
+    """
+    unique_cam = np.unique(camera_true)
+    combines = list(itertools.combinations(unique_cam, 2))
+    combines += [(i, i) for i in unique_cam]
+    combines = sorted(combines)
+    pre = dict()
+    rec = dict()
+    fscore = dict()
+    for i, j in combines:
+        ind_i = np.where(camera_true == i)[0]
+        ind_j = np.where(camera_true == j)[0]
+        label_pred_i = label_pred[ind_i]
+        label_pred_j = label_pred[ind_j]
+        label_true_i = label_true[ind_i]
+        label_true_j = label_true[ind_j]
+        mask = (ind_i.reshape(-1, 1) == ind_j.reshape(1, -1))  # remove the same pairs when i == j
+        sel_ind = np.where(mask.ravel() != True)[0]
+        pred_mat = (label_pred_i.reshape(-1, 1) == label_pred_j.reshape(1, -1)).ravel()[sel_ind]
+        true_mat = (label_true_i.reshape(-1, 1) == label_true_j.reshape(1, -1)).ravel()[sel_ind]
+        tn, fp, fn, tp = confusion_matrix(true_mat, pred_mat, labels=[0,1]).ravel()
+        p, r = tp * 1.0 / (tp + fp), tp * 1.0 / (tp + fn)
+        f = 2. * p * r / (p + r)
+        pre[(i, j)] = p
+        rec[(i, j)] = r
+        fscore[(i, j)] = f
+    return pre, rec, fscore
+
+
+def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray, camera_true: np.ndarray, camera_metric: bool=False):
     """
     Calculate clustering accuracy, nmi and ari
     :param label_pred(np.int64): predicted matrix with shape (N,)
@@ -370,13 +403,18 @@ def cluster_metrics(label_pred: np.ndarray, label_true: np.ndarray):
         index = np.where(label_pred != -1)
     else:
         index = np.arange(len(label_pred))
-    precision_singular, recall_singular, fscore_singular = pairwise_cluster_acc(label_pred, label_true)
+
     label_pred = label_pred[index].copy()
     label_true = label_true[index].copy()
+    camera_true = camera_true[index].copy()
     nmi_score = normalized_mutual_info_score(label_true, label_pred)
     ari_score = adjusted_rand_score(label_true, label_pred)
     # cluster_acc_score = cluster_acc_linear_assign(label_pred, label_true)
     purity_score = purity(label_pred, label_true)
     cluster_accuracy = cluster_acc(label_pred, label_true)
     precision, recall, fscore = pairwise_cluster_acc(label_pred, label_true)
-    return nmi_score, ari_score, purity_score, cluster_accuracy, precision, recall, fscore, precision_singular, recall_singular, fscore_singular #, cluster_acc_score
+    if camera_metric:
+        precision_dict, recall_dict, fscore_dict = camera_aware_pairwise_cluster_acc(label_pred, label_true, camera_true)
+        return nmi_score, ari_score, purity_score, cluster_accuracy, precision, recall, fscore, precision_dict, recall_dict, fscore_dict#, cluster_acc_score
+    else:
+        return nmi_score, ari_score, purity_score, cluster_accuracy, precision, recall, fscore, None, None, None #, cluster_acc_score

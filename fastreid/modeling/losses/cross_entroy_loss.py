@@ -21,7 +21,6 @@ class CrossEntropyLoss(object):
         self._alpha = cfg.MODEL.LOSSES.CE.ALPHA
         self._scale = cfg.MODEL.LOSSES.CE.SCALE
         self._tau = cfg.MODEL.LOSSES.CE.TAU
-        self._start_epoch = cfg.MODEL.LOSSES.CE.START_EPOCH
 
     @staticmethod
     def log_accuracy(pred_class_logits, gt_classes, topk=(1,), name='cls_accuracy'):
@@ -70,14 +69,9 @@ class CrossEntropyLoss(object):
 
         loss = loss.sum() / non_zero_cnt
 
-        if 'epoch' in kwargs and kwargs['epoch'] >= self._start_epoch:
-            return {
-                "loss_cls": loss * self._scale,
-            }
-        else:
-            return {
-                "loss_cls": torch.tensor([0]).to(pred_class_logits.device)
-            }
+        return {
+            "loss_cls": loss * self._scale,
+        }
 
 
 class SoftEntropyLoss(object):
@@ -97,14 +91,9 @@ class SoftEntropyLoss(object):
         log_probs = self.logsoftmax(pred_class_logits / self._tau)
         assert targets.size(1) == log_probs.size(1)
         loss = (-self.softmax(targets / self._tau).detach() * log_probs).mean(0).sum()
-        if 'epoch' in kwargs and kwargs['epoch'] >= self._start_epoch:
-            return {
-                "loss_soft_cls": loss * self._scale
-            }
-        else:
-            return {
-                "loss_soft_cls": torch.tensor([0]).to(pred_class_logits.device)
-            }
+        return {
+            "loss_soft_cls": loss * self._scale
+        }
 
 
 class HardViewContrastiveLoss(object):
@@ -115,7 +104,6 @@ class HardViewContrastiveLoss(object):
         self._scale = cfg.MODEL.LOSSES.VCL.SCALE
         self._tau = cfg.MODEL.LOSSES.VCL.TAU
         self._normalized_features = cfg.MODEL.LOSSES.VCL.NORM_FEAT
-        self._start_epoch = cfg.MODEL.LOSSES.VCL.START_EPOCH
 
     def __call__(self, _, embedding, targets, eps=1e-6, **kwargs):
         assert 'outs_mean' in kwargs, 'outs_mean not found in input, only {}'.format(kwargs.keys())
@@ -139,11 +127,6 @@ class HardViewContrastiveLoss(object):
         masked_pos = (embedding_sim * is_pos + 9999.0 * (1 - is_pos)).min(dim=1)[0]
         masked_neg = (embedding_sim * (1 - is_pos)).sum(dim=1)
 
-        if 'epoch' in kwargs and kwargs['epoch'] >= self._start_epoch:
-            return {
-                'loss_vcl': self._scale * -torch.log(masked_pos / (masked_neg + masked_pos)).mean()
-            }
-        else:
-            return {
-                'loss_vcl': torch.tensor([0]).to(embedding.device)
-            }
+        return {
+            'loss_vcl': self._scale * -torch.log(masked_pos / (masked_neg + masked_pos)).mean()
+        }

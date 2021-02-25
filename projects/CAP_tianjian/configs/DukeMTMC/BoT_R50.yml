@@ -1,0 +1,7 @@
+_BASE_: "../Base-cap-BoT_R50.yml"
+
+DATASETS:
+  NAMES: ("DukeMTMC",)
+  TESTS: ("DukeMTMC",)
+
+OUTPUT_DIR: "logs/CAP/dukemtmc/BoT_R50"

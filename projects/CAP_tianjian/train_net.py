@@ -2,7 +2,7 @@
 """
 @author:  wuyiming
 @contact: yimingwu@hotmail.com
-@function: Implementation of Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID
+@function: CAP
 """
 import os
 import logging
@@ -34,7 +34,6 @@ except ImportError:
 class CAPTrainer(DefaultTrainer):
     def __init__(self, cfg):
         super(CAPTrainer, self).__init__(cfg)
-        self.weight_matrix = None
 
     def init_memory(self):
         logger = logging.getLogger('fastreid.' + __name__)
@@ -137,17 +136,17 @@ class CAPTrainer(DefaultTrainer):
         # Compute loss
         if self.cfg.MODEL.MEAN_NET:
             if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, weight=self.weight_matrix)
+                loss_dict = self.model.module.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data)
             else:
-                loss_dict = self.model.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, weight=self.weight_matrix)
+                loss_dict = self.model.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data)
         else:
             if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
+                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
             else:
-                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
+                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
 
         losses = sum(loss_dict.values())
-
+        
         self.optimizer.zero_grad()
         if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
             with amp.scale_loss(losses, self.optimizer) as scaled_loss:

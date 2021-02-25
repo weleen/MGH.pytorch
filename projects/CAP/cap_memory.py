@@ -82,7 +82,9 @@ class CAPMemory(nn.Module):
         self.concate_intra_class = torch.cat(self.concate_intra_class)
 
     def forward(self, inputs, indexes, **kwargs):
-        inputs = F.normalize(inputs, p=2, dim=1)
+        if self.cfg.CAP.NORM_FEAT:
+            inputs = F.normalize(inputs, p=2, dim=1)
+
         indexes = indexes.cuda()
         cams = self.cams[indexes]
 
@@ -96,7 +98,7 @@ class CAPMemory(nn.Module):
             # intra-camera loss
             mapped_targets = [self.memory_class_mapper[cc][int(k)] for k in percam_targets]
             mapped_targets = torch.tensor(mapped_targets).cuda()
-            # TODO: Fix bug when use DDP
+
             percam_inputs = ExemplarMemory.apply(percam_feat, mapped_targets, self.percam_memory[cc], torch.Tensor([self.momentum]).to(percam_feat.device))
             percam_inputs /= self.t  # similarity score before softmax
             loss_intra += F.cross_entropy(percam_inputs, mapped_targets)
