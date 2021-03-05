@@ -194,13 +194,15 @@ def main(args):
         model = CAPTrainer.build_parallel_model(cfg, model)  # parallel
         
         if cfg.CAP.ST_TEST:
-            cluster = Cluster(cfg, model)
-            all_labels, all_centers, all_features, all_camids = cluster.update_labels()
-            items = cluster._data_loader_cluster.dataset.img_items
-            imgs_paths = [items[i][0] for i, lb in enumerate(all_labels[0]) if lb != -1]
-            pseudo_labels = [lb for lb in all_labels[0] if lb != -1]
-            distribution = get_st_distribution(imgs_paths, cfg.DATASETS.NAMES[0],  pseudo_labels=pseudo_labels)
-            np.save(os.path.join(cfg.OUTPUT_DIR, 'distribution.npy'), distribution)
+            save_path = os.path.join(cfg.OUTPUT_DIR, 'distribution.npy')
+            if not os.path.exists(save_path):
+                cluster = Cluster(cfg, model)
+                all_labels, all_centers, all_features, all_camids = cluster.update_labels()
+                items = cluster._data_loader_cluster.dataset.img_items
+                imgs_paths = [items[i][0] for i, lb in enumerate(all_labels[0]) if lb != -1]
+                pseudo_labels = [lb for lb in all_labels[0] if lb != -1]
+                distribution = get_st_distribution(imgs_paths, cfg.DATASETS.NAMES[0],  pseudo_labels=pseudo_labels)
+                np.save(save_path, distribution)
 
         res = CAPTrainer.test(cfg, model)
         return res
