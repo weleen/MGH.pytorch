@@ -18,6 +18,7 @@ from .rank import evaluate_rank
 from .roc import evaluate_roc
 from fastreid.utils import comm
 from fastreid.utils.metrics import compute_distance_matrix
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +60,12 @@ class ReidEvaluator(DatasetEvaluator):
         self.pids.extend(inputs["targets"])
         self.camids.extend(inputs["camids"])
         self.features.append(outputs.data.cpu())
-        if self.cfg.DATASET.NAMES[0] == "Market1501":
+        if self.cfg.DATASETS.NAMES[0] == "Market1501":
             self.frameids.extend([int(path.split('/')[-1].split('_')[-2]) for path in inputs["img_paths"]])
-        elif self.cfg.DATASET.NAMES[0] == "DukeMTMC":
+        elif self.cfg.DATASETS.NAMES[0] == "DukeMTMC":
             self.frameids.extend([int(path.split('/')[-1][9:16]) for path in inputs["img_paths"]])
+        elif self.cfg.DATASETS.NAMES[0] == "MSMT17":
+            self.frameids.extend([int(path.split('/')[-1].split('_')[4]) for path in inputs["img_paths"]])
 
     def evaluate(self):
         if comm.get_world_size() > 1:
