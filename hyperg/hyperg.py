@@ -26,6 +26,9 @@ class HyperG:
         self._DV = None
         self._INVDE = None
         self._DV2 = None
+        self._AD = None
+        self._DA = None
+        self._A = None
         self._THETA = None
         self._L = None
 
@@ -59,6 +62,7 @@ class HyperG:
         if self._INVDE is None:
             self.edge_degrees()
             inv_de = np.power(self._DE.data.reshape(-1), -1.)
+            inv_de[inv_de == float('inf')] = 0
             self._INVDE = sparse.diags(inv_de, shape=(self._n_edges, self._n_edges))
         return self._INVDE
 
@@ -66,18 +70,35 @@ class HyperG:
         if self._DV2 is None:
             self.node_degrees()
             dv2 = np.power(self._DV.data.reshape(-1), -0.5)
+            dv2[dv2 == float('inf')] = 0
             self._DV2 = sparse.diags(dv2, shape=(self._n_nodes, self._n_nodes))
         return self._DV2
 
     def theta_matrix(self):
         if self._THETA is None:
             self.inv_square_node_degrees()
-            self.inv_edge_degrees()
-
-            W = sparse.diags(self.w)
-            self._THETA = self._DV2.dot(self._H).dot(W).dot(self._INVDE).dot(self._H.T).dot(self._DV2)
-
+            self.A_matrix()
+            self._THETA = self._DV2.dot(self._A).dot(self._DV2)
         return self._THETA
+
+    def A_matrix(self):
+        if self._A is None:
+            self.inv_edge_degrees()
+            W = sparse.diags(self.w)
+            self._A = self._H.dot(W).dot(self._INVDE).dot(self._H.T)
+        return self._A
+
+    def AD_matrix(self):
+        if self._AD is None:
+            self.A_matrix()
+            self._AD = self._A.dot(self._DV.power(-1))
+        return self._AD
+
+    def DA_matrix(self):
+        if self._DA is None:
+            self.A_matrix()
+            self._DA = self._DV.power(-1).dot(self._A)
+        return self._DA
 
     def laplacian(self):
         if self._L is None:
@@ -96,6 +117,9 @@ class HyperG:
         self._DV2 = None
         self._THETA = None
         self._L = None
+        self._AD = None
+        self._DA = None
+        self._A = None
 
     def update_incident_matrix(self, H):
         assert sparse.issparse(H)
@@ -110,3 +134,6 @@ class HyperG:
         self._DV2 = None
         self._THETA = None
         self._L = None
+        self._AD = None
+        self._DA = None
+        self._A = None

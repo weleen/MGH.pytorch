@@ -10,13 +10,12 @@ MODEL:
     NUM_CLASSES: 0
 
   LOSSES:
-    NAME: ("CrossEntropy", "HardViewContrastiveLoss", "CameraAwareLoss")
+    NAME: ("CameraAwareLoss",) #("CrossEntropyLoss", "HardViewContrastiveLoss", "CameraAwareLoss")
     CE:
       EPSILON: 0.
       TAU: 0.5
 
-  MEAN_NET: True
-  MEAN_NET_ALPHA: 0.999
+  # MEAN_NET: True
 
 DATALOADER:
   SAMPLER_NAME: "ProxyBalancedSampler"
@@ -27,12 +26,14 @@ PSEUDO:
   USE_OUTLIERS: False
   WITH_CLASSIFIER: True
   DBSCAN:
-    BASE: 'rho'
-    RHO: 2.2e-3
-    EPS: [0.7,]
+    # BASE: 'rho'
+    # RHO: 2.2e-3
+    # EPS: [0.7,]
+    EPS: [0.5,]
+    K1: 30
 
-INPUT:
-  DO_BLUR: True
+# INPUT:
+#   DO_BLUR: True
 
 SOLVER:
   OPT: "Adam"
@@ -47,7 +48,7 @@ SOLVER:
 
   LOG_ITERS: 200
 
-  CHECKPOINT_PERIOD: 5
+  CHECKPOINT_PERIOD: 1
   ITERS_PER_EPOCH: 400
 
 TEST:

@@ -250,7 +250,7 @@ _C.DATALOADER.NUM_WORKERS = 8
 # -----------------------------------------------------------------------------
 _C.PSEUDO = CN()
 _C.PSEUDO.ENABLED = False
-_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp', 'hypergraph', 'dbscan_st', 'dbscan_cam'
+_C.PSEUDO.NAME = 'dbscan'  # 'kmeans', 'cdp', 'hg', 'dbscan_st', 'dbscan_cam', 'dbscan_hg_lp'
 _C.PSEUDO.UNSUP = (0,)  # unsupervised index for training datasets, support MMT.
 _C.PSEUDO.CLUSTER_EPOCH = 2
 _C.PSEUDO.CLUSTER_AUG = False # mutual transform when extracting features for clustering
@@ -287,11 +287,21 @@ _C.PSEUDO.CDP.PROPAGATION.STEP = 0.05
 _C.PSEUDO.CDP.PROPAGATION.MAX_ITER = 100
 
 _C.PSEUDO.HG = CN()
-_C.PSEUDO.HG.KNN = [50,100,]
+_C.PSEUDO.HG.KNN = [10,30,50,70,90,]
 _C.PSEUDO.HG.WITH_CLUSTER = True  # build hypergraph with clustering
-_C.PSEUDO.HG.WITH_ST = False  # build hypergraph with spatial temporal constraint
-_C.PSEUDO.HG.WITH_PREVIOUS = False  # combine the dist_mat in the last generation
+_C.PSEUDO.HG.WITH_CAMERA_CLUSTER = True
 _C.PSEUDO.HG.START_EPOCH = 5  # when to use hypergraph clustering
+_C.PSEUDO.HG.LP = CN()
+_C.PSEUDO.HG.LP.GRAPH = 'hg'
+_C.PSEUDO.HG.LP.STEPS = 50
+_C.PSEUDO.HG.LP.ALPHA1 = 0.99
+_C.PSEUDO.HG.LP.ALPHA2 = 0.9
+_C.PSEUDO.HG.LP.SCALE = 20.0
+_C.PSEUDO.HG.LP.ADJ1 = 'DAD'
+_C.PSEUDO.HG.LP.ADJ2 = 'DA'
+_C.PSEUDO.HG.LP.CONF_TOPK = 4
+_C.PSEUDO.HG.LP.HIGH_CONF_LABEL = True
+_C.PSEUDO.HG.LP.JACCARD_LAMBDA = 0.5
 
 _C.PSEUDO.ST = CN()
 _C.PSEUDO.ST.START_EPOCH = 20

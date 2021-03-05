@@ -16,7 +16,7 @@ class CAPLabelGeneratorHook(LabelGeneratorHook):
             self._step_timer.reset()
 
             # generate pseudo labels and centers
-            all_labels, all_centers, all_features, all_camids = self.update_labels()
+            all_labels, all_centers, all_features, all_camids, all_dist_mat = self.update_labels()
             # update train loader
             self.update_train_loader(all_labels)
 
@@ -38,7 +38,7 @@ class CAPLabelGeneratorHook(LabelGeneratorHook):
                                                             pseudo_labels=[pid_labels],
                                                             is_train=True,
                                                             relabel=False)
-                self.trainer.un_data_loader_iter = iter(self.trainer.un_data_loader)                                                 
+                self.trainer.un_data_loader_iter = iter(self.trainer.un_data_loader)
 
             # reset optimizer
             if self._cfg.PSEUDO.RESET_OPT:
@@ -46,7 +46,7 @@ class CAPLabelGeneratorHook(LabelGeneratorHook):
                 self.trainer.optimizer.state = collections.defaultdict(dict)
 
             # update memory labels
-            self.trainer.memory._update_centers_and_labels(all_features, all_labels, all_camids)
+            self.trainer.memory._update_centers_and_labels(all_features, all_labels, all_camids, all_dist_mat)
             self.trainer.memory._update_epoch(self.trainer.epoch)
 
             # update classifier centers

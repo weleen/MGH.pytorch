@@ -57,6 +57,7 @@ class HybridMemory(nn.Module):
         self.register_buffer("features", torch.zeros(num_memory, num_features))
         self.register_buffer("labels", torch.zeros(num_memory).long())
         self.centers = None
+        self.weight_matrix = None
 
     def _update_epoch(self, epoch):
         self.cur_epoch = epoch
@@ -72,6 +73,21 @@ class HybridMemory(nn.Module):
         self.features.data.copy_(features.float().to(self.features.device))
 
     @torch.no_grad()
+    def _update_weight_matrix(self, dist_mat, labels):
+        num_classes = len(torch.unique(labels))
+        if -1 in labels:
+            num_classes -= 1
+        weight_matrix = torch.zeros((len(labels), num_classes))
+        nums = torch.zeros((1, num_classes))
+        index_select = torch.where(labels >= 0)[0]
+        inputs_select = dist_mat[index_select].t()
+        labels_select = labels[index_select]
+        weight_matrix.index_add_(1, labels_select, inputs_select)
+        nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
+        weight_matrix = 1 - weight_matrix / nums
+        self.weight_matrix = weight_matrix
+
+    @torch.no_grad()
     def _update_label(self, labels):
         self.labels.data.copy_(labels.long().to(self.labels.device))
 
@@ -82,7 +98,7 @@ class HybridMemory(nn.Module):
         pseudo_label = F.softmax(pseudo_label * tau, dim=1)
         return pseudo_label
 
-    def forward(self, inputs, indexes, weight=None, eps=1e-6, **kwargs):
+    def forward(self, inputs, indexes, eps=1e-6, **kwargs):
         inputs = F.normalize(inputs, p=2, dim=1)
         indexes = indexes.cuda()
         # inputs: B*2048, features: L*2048
@@ -116,8 +132,8 @@ class HybridMemory(nn.Module):
         sim /= (mask * nums + (1 - mask)).clone().expand_as(sim)
         mask = mask.expand_as(sim)
         masked_sim = masked_softmax(sim, mask)
-        if self.weighted and weight is not None:
-            weight = weight[indexes].cuda() / self.temp
+        if self.weighted and self.weight_matrix is not None:
+            weight = self.weight_matrix[indexes].cuda().clone() / self.temp
             if self.weight_mask_topk > 0:
                 mask_index = weight.argsort(dim=1, descending=True)[:, :self.weight_mask_topk]
                 weight_mask = torch.zeros_like(weight)

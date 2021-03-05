@@ -390,6 +390,9 @@ class ProxyBalancedSampler(Sampler):
 
             for kid in indices:
                 select_indexes = self.pid_index[kid]
+                if len(select_indexes) == 1:
+                    ret.extend(select_indexes)
+                    continue
                 if len(select_indexes) >= self.num_instances:
                     indexes = np.random.choice(select_indexes, size=self.num_instances, replace=False)
                 else:
@@ -435,6 +438,9 @@ class ProxySampler(Sampler):
 
             for kid in indices:
                 select_indexes = self.pid_cam_index[self.pids_cams[kid]]
+                if len(select_indexes) == 1:
+                    ret.extend(select_indexes)
+                    continue
                 if len(select_indexes) >= self.num_instances:
                     indexes = np.random.choice(select_indexes, size=self.num_instances, replace=False)
                 else:

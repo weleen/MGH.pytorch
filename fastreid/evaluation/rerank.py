@@ -77,7 +77,8 @@ def re_ranking_dist(
     original_dist,
     k1=20,
     k2=6,
-    lambda_value=0.3
+    lambda_value=0.3,
+    dtype=np.float32
 ):  # https://github.com/ljn114514/JVTC/blob/master/utils/rerank.py
     all_num = original_dist.shape[0]
 
@@ -151,8 +152,8 @@ def re_ranking_dist(
     jaccard_dist[pos_bool] = 0.0
 
     if lambda_value == 0:
-        return jaccard_dist
+        return jaccard_dist.astype(dtype)
     else:
         final_dist = jaccard_dist * (
             1 - lambda_value) + original_dist * lambda_value
-        return final_dist
+        return final_dist.astype(dtype)

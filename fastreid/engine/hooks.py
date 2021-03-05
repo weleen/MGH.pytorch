@@ -25,7 +25,7 @@ from fvcore.common.file_io import PathManager
 from fvcore.nn.precise_bn import update_bn_stats, get_bn_modules
 from fvcore.common.timer import Timer
 from fastreid.data import build_reid_train_loader
-from fastreid.utils.clustering import label_generator_dbscan, label_generator_dbscan_with_st, label_generator_hypergraph, label_generator_kmeans, label_generator_cdp, label_generator_hypergraph_dbscan, label_generator_dbscan_with_cams
+from fastreid.utils.clustering import label_generator_dbscan, label_generator_dbscan_with_st, label_generator_kmeans, label_generator_cdp, label_generator_hypergraph_dbscan, label_generator_dbscan_with_cams, label_generator_hypergraph_dbscan_lp
 from fastreid.utils.metrics import cluster_metrics
 from fastreid.utils.torch_utils import extract_features
 from .train_loop import HookBase
@@ -601,9 +601,10 @@ class LabelGeneratorHook(HookBase):
         'dbscan': label_generator_dbscan,
         'kmeans': label_generator_kmeans,
         'cdp': label_generator_cdp,
-        'hypergraph': label_generator_hypergraph_dbscan,
+        'hg': label_generator_hypergraph_dbscan,
         'dbscan_st': label_generator_dbscan_with_st,
-        'dbscan_cam': label_generator_dbscan_with_cams
+        'dbscan_cam': label_generator_dbscan_with_cams,
+        'dbscan_hg_lp': label_generator_hypergraph_dbscan_lp
     }
 
     def __init__(self, cfg, model):
@@ -641,7 +642,7 @@ class LabelGeneratorHook(HookBase):
             self.get_memory_features()
 
             # generate pseudo labels and centers
-            all_labels, all_centers, all_features, all_camids = self.update_labels()
+            all_labels, all_centers, all_features, all_camids, all_dist_mat = self.update_labels()
 
             # update train loader
             self.update_train_loader(all_labels)
@@ -656,6 +657,7 @@ class LabelGeneratorHook(HookBase):
                 self.update_memory_labels(all_labels)
                 assert len(all_centers) == 1, 'only support single unsupervised dataset'
                 self.trainer.memory._update_center(all_centers[0])
+                self.trainer.memory._update_weight_matrix(all_dist_mat[0], all_labels[0])
             else:
                 # update classifier centers, methods such as SBL
                 self.update_classifier_centers(all_centers)
@@ -725,6 +727,7 @@ class LabelGeneratorHook(HookBase):
         all_labels = []
         all_feats = []
         all_cams = []
+        all_dist_mat = []
         all_dataset_names = [self._cfg.DATASETS.NAMES[ind] for ind in self._cfg.PSEUDO.UNSUP]
         for idx, dataset in enumerate(self._common_dataset.datasets):
 
@@ -740,12 +743,13 @@ class LabelGeneratorHook(HookBase):
             start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
             feats = all_features[start_id: end_id]
             cams = all_camids[start_id: end_id]
+            gt_labels = true_labels[start_id: end_id]
             if comm.is_main_process():
                 # clustering only on first GPU
                 save_path = '{}/clustering/{}/clustering_epoch{}.pt'.format(self._cfg.OUTPUT_DIR, all_dataset_names[idx], self.trainer.epoch)
                 start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
                 if self._cfg.PSEUDO.TRUE_LABEL:  # set all labels to ground truth
-                    labels = true_labels[start_id: end_id]
+                    labels = gt_labels
                     num_classes = len(set(labels))
                     centers = collections.defaultdict(list)
                     for i, label in enumerate(labels):
@@ -793,25 +797,13 @@ class LabelGeneratorHook(HookBase):
                 if self._cfg.PSEUDO.MEMORY.WEIGHTED:
                     dist_mat = comm.broadcast_tensor(dist_mat, 0)
 
-            # calculate weight_matrix if use weight_matrix in loss calculation
-            if self._cfg.PSEUDO.MEMORY.WEIGHTED:
-                assert len(self._cfg.DATASETS.NAMES) == 1, 'Only single single dataset is supported for calculating weight_matrix'
-                weight_matrix = torch.zeros((len(labels), num_classes))
-                nums = torch.zeros((1, num_classes))
-                index_select = torch.where(labels >= 0)[0]
-                inputs_select = dist_mat[index_select]
-                labels_select = labels[index_select]
-                weight_matrix.index_add_(1, labels_select, inputs_select)
-                nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
-                weight_matrix = 1 - weight_matrix / nums
-                self.trainer.weight_matrix = weight_matrix
-
             if comm.is_main_process():
-                self.label_summary(labels, true_labels[start_id:end_id], cams, indep_thres=indep_thres, camera_metric=self._cfg.PSEUDO.CAMERA_CLUSTER_METRIC)
+                self.label_summary(labels, gt_labels, cams, indep_thres=indep_thres, camera_metric=self._cfg.PSEUDO.CAMERA_CLUSTER_METRIC, dist_mat=dist_mat)
             all_labels.append(labels.tolist())
             all_centers.append(centers)
             all_feats.append(feats)
             all_cams.append(cams)
+            all_dist_mat.append(dist_mat)
 
             try:
                 self.indep_thres[idx] = indep_thres
@@ -822,7 +814,7 @@ class LabelGeneratorHook(HookBase):
             except:
                 self.num_classes.append(num_classes)
 
-        return all_labels, all_centers, all_feats, all_cams
+        return all_labels, all_centers, all_feats, all_cams, all_dist_mat
 
     def update_train_loader(self, all_labels):
         # Here is tricky, we take the datasets from self._data_loader_sup, this datasets is created same as supervised learning.
@@ -874,10 +866,16 @@ class LabelGeneratorHook(HookBase):
                     self.model.initialize_centers(centers, center_labels)
                 start_cls_id += self.trainer.data_loader.dataset.datasets[idx].num_train_pids
 
-    def label_summary(self, pseudo_labels, gt_labels, gt_cameras=np.zeros(100,), cluster_metric=True, indep_thres=None, camera_metric=False):
+    def label_summary(self, pseudo_labels, gt_labels, gt_cameras, dist_mat=None, cluster_metric=True, indep_thres=None, camera_metric=False):
         if cluster_metric:
             nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_dict, recall_dict, fscore_dict = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy(), gt_cameras.long().numpy(), camera_metric)
             self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%.")
+            # ranking metrics for training dataset
+            from fastreid.evaluation.rank import evaluate_rank
+            cmc, all_AP, all_INP = evaluate_rank(dist_mat, gt_labels.numpy(), gt_labels.numpy(), gt_cameras.numpy(), gt_cameras.numpy())
+            mAP = np.mean(all_AP)
+            mINP = np.mean(all_INP)
+            self._logger.info(f"ranking metric for training dataset: rank1:{cmc[0]*100:.2f}%, rank5:{cmc[4]*100:.2f}%, rank10:{cmc[9]*100:.2f}%, mAP: {mAP*100:.2f}%, mINP: {mINP*100:.2f}%.")
             self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)

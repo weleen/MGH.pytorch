@@ -84,7 +84,7 @@ class Cluster:
             comm.synchronize()
 
             if comm.is_main_process():
-                self.label_summary(labels, true_labels[start_id:end_id], indep_thres=indep_thres)
+                self.label_summary(labels, true_labels[start_id:end_id], cams, indep_thres=indep_thres, camera_metric=self._cfg.PSEUDO.CAMERA_CLUSTER_METRIC)
             all_labels.append(labels.tolist())
             all_centers.append(centers)
             all_feats.append(feats)
@@ -101,10 +101,10 @@ class Cluster:
         
         return all_labels, all_centers, all_feats, all_cams
 
-    def label_summary(self, pseudo_labels, gt_labels, cluster_metric=True, indep_thres=None):
+    def label_summary(self, pseudo_labels, gt_labels, gt_cameras=np.zeros(100,), cluster_metric=True, indep_thres=None, camera_metric=False):
         if cluster_metric:
-            nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_singular, recall_singular, fscore_singular = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy())
-            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%, precision_singular: {precision_singular*100:.2f}%, recall_singular: {recall_singular*100:.2f}%, fscore_singular: {fscore_singular*100:.2f}%.")
+            nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, _, _, _ = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy(), gt_cameras.long().numpy(), camera_metric)
+            self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%.")
 
         # statistics of clusters and un-clustered instances
         index2label = collections.defaultdict(int)

@@ -47,14 +47,16 @@ class CAPMemory(nn.Module):
         self.cur_epoch = epoch
 
     @torch.no_grad()
-    def _update_centers_and_labels(self, all_features: list, all_labels: list, all_camids: list):
+    def _update_centers_and_labels(self, all_features: list, all_labels: list, all_camids: list, all_dist_mat: list):
         assert len(all_features) == len(all_labels) == 1, "Support only one dataset."
         self.cams = torch.cat(all_camids).cuda()
         self.unique_cams = torch.unique(self.cams)
         self.labels = torch.tensor(all_labels[0]).cuda()
-        all_features = all_features[0]
+        features = all_features[0]
+        dist_mat = all_dist_mat[0]
 
         self.percam_memory = []
+        self.percam_weight = []
         self.memory_class_mapper = []
         self.concate_intra_class = []
         for cc in self.unique_cams:
@@ -66,7 +68,7 @@ class CAPMemory(nn.Module):
             self.memory_class_mapper.append(cls_mapper)  # from pseudo label to index under each camera
 
             percam_label = self.labels[percam_ind]
-            percam_feature = all_features[percam_ind]
+            percam_feature = features[percam_ind]
             cnt = 0
             percam_class_num = len(torch.unique(percam_label[percam_label >= 0]))
             percam_id_feature = torch.zeros((percam_class_num, percam_feature.size(1)))
@@ -78,7 +80,20 @@ class CAPMemory(nn.Module):
                     cnt += 1
             percam_id_feature = F.normalize(percam_id_feature, p=2, dim=1)
             self.percam_memory.append(percam_id_feature.cuda().detach())
+            if self.cfg.PSEUDO.MEMORY.WEIGHTED:
+                percam_weight = torch.zeros((len(features), percam_class_num))
+                percam_nums = torch.zeros((1, percam_class_num))
+                percam_pos_ind = torch.where(percam_label >= 0)[0]
+                percam_mapped_label = torch.tensor([cls_mapper[int(i)] for i in percam_label[percam_pos_ind]])
+                percam_dist_mat = dist_mat[percam_ind[percam_pos_ind]].t()
+                percam_weight.index_add_(1, percam_mapped_label, percam_dist_mat)
+                percam_nums.index_add_(1, percam_mapped_label, torch.ones(1, len(percam_pos_ind)))
+                percam_weight = 1 - percam_weight / percam_nums
+                self.percam_weight.append(percam_weight)
+
         self.percam_tempV = torch.cat([feat.detach().clone() for feat in self.percam_memory])
+        if self.cfg.PSEUDO.MEMORY.WEIGHTED:
+            self.percam_tempW = torch.cat([feat.detach().clone() for feat in self.percam_weight], dim=1)
         self.concate_intra_class = torch.cat(self.concate_intra_class)
 
     def forward(self, inputs, indexes, **kwargs):
@@ -101,7 +116,10 @@ class CAPMemory(nn.Module):
 
             percam_inputs = ExemplarMemory.apply(percam_feat, mapped_targets, self.percam_memory[cc], torch.Tensor([self.momentum]).to(percam_feat.device))
             percam_inputs /= self.t  # similarity score before softmax
-            loss_intra += F.cross_entropy(percam_inputs, mapped_targets)
+            if self.cfg.PSEUDO.MEMORY.WEIGHTED and self.cfg.CAP.WEIGHTED_INTRA:
+                loss_intra += -(F.softmax(self.percam_weight[cc][indexes[inds]].cuda().clone() / self.t, dim=1) * F.log_softmax(percam_inputs, dim=1)).mean(0).sum()
+            else:
+                loss_intra += F.cross_entropy(percam_inputs, mapped_targets)
 
             # inter-camera loss
             if self.cur_epoch >= self.intercam_epoch:
@@ -111,13 +129,21 @@ class CAPMemory(nn.Module):
                 target_inputs /= self.t
 
                 for k in range(len(percam_feat)):
-                    ori_asso_ind = torch.nonzero(self.concate_intra_class == percam_targets[k]).squeeze(-1)
+                    ori_asso_ind = torch.where(self.concate_intra_class == percam_targets[k])[0]
                     temp_sims[k, ori_asso_ind] = -10000.0  # mask out positive
-                    sel_ind = torch.sort(temp_sims[k])[1][-self.hard_neg_k:]
+                    if self.cfg.CAP.ENABLE_HARD_NEG:
+                        sel_ind = torch.sort(temp_sims[k])[1][-self.hard_neg_k:]
+                    else:
+                        sel_ind = torch.sort(temp_sims[k])[1]
+                        sel_ind = sel_ind[-(len(sel_ind) - len(ori_asso_ind)):]
                     concated_input = torch.cat((target_inputs[k, ori_asso_ind], target_inputs[k, sel_ind]), dim=0)
-                    concated_target = torch.zeros((len(concated_input)), dtype=concated_input.dtype).cuda()
-                    concated_target[0:len(ori_asso_ind)] = 1.0 / len(ori_asso_ind)
-                    associate_loss += -1 * (F.log_softmax(concated_input.unsqueeze(0), dim=1) * concated_target.unsqueeze(0)).sum()
+                    if self.cfg.PSEUDO.MEMORY.WEIGHTED and self.cfg.CAP.WEIGHTED_INTER:
+                        concated_target = self.percam_tempW[indexes[inds]][k][torch.cat([ori_asso_ind, sel_ind])].cuda() / self.t
+                        associate_loss += -1 * (F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
+                    else:
+                        concated_target = torch.zeros((len(concated_input)), dtype=concated_input.dtype).cuda()
+                        concated_target[0:len(ori_asso_ind)] = 1.0 / len(ori_asso_ind)
+                        associate_loss += -1 * (F.log_softmax(concated_input, dim=0) * concated_target).sum()
                 loss_inter += associate_loss / len(percam_feat)
         if self.cur_epoch >= self.intercam_epoch:
             return {

@@ -1,7 +1,6 @@
 # coding=utf-8
 import numpy as np
 import scipy.sparse as sparse
-
 from hyperg.hyperg import HyperG
 
 
@@ -32,9 +31,7 @@ def gen_knn_hg(dist_mat, n_neighbors, is_prob=True):
         avg_dist = np.mean(dist_mat)
         m_neighbors_val = m_neighbors_val.reshape(-1)
         values = np.exp(-np.power(m_neighbors_val, 2.) / np.power(avg_dist, 2.))
-
     H = sparse.coo_matrix((values, (node_idx, edge_idx)), shape=(n_nodes, n_edges))
-    # w = np.ones(n_edges)
     w = np.array(H.sum(axis=0))
 
     return HyperG(H, w=w)
@@ -52,7 +49,7 @@ def gen_clustering_hg(dist_mat, labels, is_prob=True):
     """
     cluster = labels.copy()
     num_clusters = len(set(cluster)) - (1 if -1 in cluster else 0)
-    print('num_cluster: {}'.format(num_clusters))
+    # print('num_cluster: {}'.format(num_clusters))
     outliers = 0
     for i, label in enumerate(cluster):
         if label == -1:
@@ -79,7 +76,6 @@ def gen_clustering_hg(dist_mat, labels, is_prob=True):
     else:
         values = np.ones(node_idx.shape[0])
     H = sparse.coo_matrix((values, (node_idx, edge_idx)), shape=(n_nodes, n_edges))
-    # w = np.ones(n_edges)
     w = np.array(H.sum(axis=0))
 
     return HyperG(H, w=w)

@@ -29,6 +29,7 @@ PSEUDO:
     # RHO: 2.2e-3
     # EPS: [0.7,]
     EPS: [0.5,]
+    K1: 30
 
 # INPUT:
 #   DO_BLUR: True

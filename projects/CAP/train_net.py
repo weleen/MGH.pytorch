@@ -13,6 +13,7 @@ sys.path.append('.')
 import time
 from fvcore.common.checkpoint import Checkpointer
 
+import torch
 from fastreid.config import cfg
 from fastreid.engine import default_argument_parser, default_setup, launch, hooks
 from fastreid.engine.defaults import DefaultTrainer
@@ -20,6 +21,7 @@ from fastreid.utils import comm
 from fastreid.engine import hooks
 
 from cap_memory import CAPMemory
+from unified_memory import UnifiedMemory
 from cap_labelgenerator import CAPLabelGeneratorHook
 from config import add_cap_config
 from instance_loss import instance_loss
@@ -38,13 +40,12 @@ except ImportError:
 class CAPTrainer(DefaultTrainer):
     def __init__(self, cfg):
         super(CAPTrainer, self).__init__(cfg)
-        self.weight_matrix = None
 
     def init_memory(self):
         logger = logging.getLogger('fastreid.' + __name__)
         logger.info("Initialize CAP memory")
 
-        self.memory = CAPMemory(self.cfg)
+        self.memory = UnifiedMemory(self.cfg)
 
     def build_hooks(self):
         """
@@ -139,16 +140,17 @@ class CAPTrainer(DefaultTrainer):
             outs = self.model(data)
 
         # Compute loss
-        if self.cfg.MODEL.MEAN_NET:
-            if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, weight=self.weight_matrix)
+        with torch.autograd.set_detect_anomaly(True):
+            if self.cfg.MODEL.MEAN_NET:
+                if hasattr(self.model, 'module'):
+                    loss_dict = self.model.module.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data)
+                else:
+                    loss_dict = self.model.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data)
             else:
-                loss_dict = self.model.losses(outs, outs_mean=outs_mean, memory=self.memory, inputs=data, weight=self.weight_matrix)
-        else:
-            if hasattr(self.model, 'module'):
-                loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
-            else:
-                loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
+                if hasattr(self.model, 'module'):
+                    loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
+                else:
+                    loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
         
         if self.cfg.CAP.INSTANCE_LOSS:
             un_data = next(self.un_data_loader_iter)

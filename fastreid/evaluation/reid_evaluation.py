@@ -3,6 +3,7 @@
 @author:  liaoxingyu
 @contact: sherlockliao01@gmail.com
 """
+import os
 import copy
 import logging
 from collections import OrderedDict
@@ -59,9 +60,9 @@ class ReidEvaluator(DatasetEvaluator):
         self.pids.extend(inputs["targets"])
         self.camids.extend(inputs["camids"])
         self.features.append(outputs.data.cpu())
-        if self.cfg.DATASET.NAMES[0] == "Market1501":
+        if self.cfg.DATASETS.NAMES[0] == "Market1501":
             self.frameids.extend([int(path.split('/')[-1].split('_')[-2]) for path in inputs["img_paths"]])
-        elif self.cfg.DATASET.NAMES[0] == "DukeMTMC":
+        elif self.cfg.DATASETS.NAMES[0] == "DukeMTMC":
             self.frameids.extend([int(path.split('/')[-1][9:16]) for path in inputs["img_paths"]])
 
     def evaluate(self):
