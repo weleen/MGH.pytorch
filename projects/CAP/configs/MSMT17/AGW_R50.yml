@@ -4,4 +4,11 @@ DATASETS:
   NAMES: ("MSMT17",)
   TESTS: ("MSMT17",)
 
+PSEUDO:
+  HG:
+    ST_START_EPOCH: 20
+
+TEST:
+  DO_VAL: True
+
 OUTPUT_DIR: "logs/CAP/msmt17/AGW_R50"

@@ -264,6 +264,7 @@ _C.PSEUDO.WITH_CLASSIFIER = True # False for SpCL
 _C.PSEUDO.SAVE_CLUSTERING_RES = False
 _C.PSEUDO.CAMERA_CLUSTER_METRIC = False
 _C.PSEUDO.TRUE_LABEL = False # for upperbound
+_C.PSEUDO.RANK_METRIC = False # get rank metric for pseudo labels
 
 _C.PSEUDO.DBSCAN = CN()
 _C.PSEUDO.DBSCAN.BASE = 'eps' # perform clustering based on which metric, 'eps' or 'rho'
@@ -291,6 +292,7 @@ _C.PSEUDO.HG.KNN = [10,30,50,70,90,]
 _C.PSEUDO.HG.WITH_CLUSTER = True  # build hypergraph with clustering
 _C.PSEUDO.HG.WITH_CAMERA_CLUSTER = True
 _C.PSEUDO.HG.START_EPOCH = 5  # when to use hypergraph clustering
+_C.PSEUDO.HG.ST_START_EPOCH = 5  # when to use spatial temporal pattern to help clustering correction
 _C.PSEUDO.HG.LP = CN()
 _C.PSEUDO.HG.LP.GRAPH = 'hg'
 _C.PSEUDO.HG.LP.STEPS = 50

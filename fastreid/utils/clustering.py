@@ -432,11 +432,12 @@ def label_generator_hypergraph_dbscan_lp(cfg, features, cams, **kwargs):
         return labels, centers, num_classes, None, torch.tensor(dist)
     logger.info('Use appearance and spatial temporal information for hypergraph correction.')
     assert 'imgs_path' in kwargs, "imgs_path must be in kwargs, while only {}".format(kwargs.keys())
-    app_dist_mat = compute_distance_matrix(features, features, metric='cosine').cpu().numpy()
-    st_time = time.time()
-    dist = get_st_matrix(kwargs['imgs_path'], pseudo_labels=labels.tolist(), score=(1 - app_dist_mat))
-    dist = re_ranking_dist(dist, lambda_value=cfg.PSEUDO.HG.LP.JACCARD_LAMBDA)
-    logger.info(f'get spatial temporal distance matrix costs {time.time() - st_time}s')
+    if 'epoch' in kwargs and kwargs['epoch'] >= cfg.PSEUDO.HG.ST_START_EPOCH:
+        app_dist_mat = compute_distance_matrix(features, features, metric='cosine').cpu().numpy()
+        st_time = time.time()
+        dist = get_st_matrix(kwargs['imgs_path'], pseudo_labels=labels.tolist(), score=(1 - app_dist_mat))
+        dist = re_ranking_dist(dist, lambda_value=cfg.PSEUDO.HG.LP.JACCARD_LAMBDA)
+        logger.info(f'get spatial temporal distance matrix costs {time.time() - st_time}s')
     # generate graph
     dist = torch.tensor(dist)
     if cfg.PSEUDO.HG.LP.GRAPH == 'simple':

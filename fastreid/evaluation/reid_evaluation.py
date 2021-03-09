@@ -19,7 +19,6 @@ from .rank import evaluate_rank
 from .roc import evaluate_roc
 from fastreid.utils import comm
 from fastreid.utils.metrics import compute_distance_matrix
-import os
 
 logger = logging.getLogger(__name__)
 

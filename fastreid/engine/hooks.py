@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from fastreid.evaluation.rank import evaluate_rank
 from fastreid.evaluation.testing import flatten_results_dict
 from fastreid.solver import optim
 from fastreid.utils import comm
@@ -871,11 +872,11 @@ class LabelGeneratorHook(HookBase):
             nmi_score, ari_score, purity_score, cluster_acc, precision, recall, fscore, precision_dict, recall_dict, fscore_dict = cluster_metrics(pseudo_labels.long().numpy(), gt_labels.long().numpy(), gt_cameras.long().numpy(), camera_metric)
             self._logger.info(f"nmi_score: {nmi_score*100:.2f}%, ari_score: {ari_score*100:.2f}%, purity_score: {purity_score*100:.2f}%, cluster_acc: {cluster_acc*100:.2f}%, precision: {precision*100:.2f}%, recall: {recall*100:.2f}%, fscore: {fscore*100:.2f}%.")
             # ranking metrics for training dataset
-            from fastreid.evaluation.rank import evaluate_rank
-            cmc, all_AP, all_INP = evaluate_rank(dist_mat, gt_labels.numpy(), gt_labels.numpy(), gt_cameras.numpy(), gt_cameras.numpy())
-            mAP = np.mean(all_AP)
-            mINP = np.mean(all_INP)
-            self._logger.info(f"ranking metric for training dataset: rank1:{cmc[0]*100:.2f}%, rank5:{cmc[4]*100:.2f}%, rank10:{cmc[9]*100:.2f}%, mAP: {mAP*100:.2f}%, mINP: {mINP*100:.2f}%.")
+            if self._cfg.PSEUDO.RANK_METRIC:
+                cmc, all_AP, all_INP = evaluate_rank(dist_mat, gt_labels.numpy(), gt_labels.numpy(), gt_cameras.numpy(), gt_cameras.numpy())
+                mAP = np.mean(all_AP)
+                mINP = np.mean(all_INP)
+                self._logger.info(f"ranking metric for training dataset: rank1:{cmc[0]*100:.2f}%, rank5:{cmc[4]*100:.2f}%, rank10:{cmc[9]*100:.2f}%, mAP: {mAP*100:.2f}%, mINP: {mINP*100:.2f}%.")
             self.trainer.storage.put_scalar('nmi_score', nmi_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('ari_score', ari_score, smoothing_hint=False)
             self.trainer.storage.put_scalar('purity_score', purity_score, smoothing_hint=False)

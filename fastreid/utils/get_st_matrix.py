@@ -63,16 +63,20 @@ def get_id(img_path):
     for path in img_path:
         filename = path.split('/')[-1]
         label = filename[0:4]
-        camera = filename.split('c')[1]
-        if "Market" in path:
-            frame = filename.split('_')[2][1:]
-        elif "DukeMTMC" in path:
-            frame = filename[9:16]
+        if "MSMT17" in path:
+            camera, period, frame = filename.split('_')[2:5]
+            camera_id.append(int(camera))
+        else:
+            camera = filename.split('c')[1]
+            if "Market" in path:
+                frame = filename.split('_')[2][1:]
+            elif "DukeMTMC" in path:
+                frame = filename[9:16]
+            camera_id.append(int(camera[0]))
         if label[0:2]=='-1':
             labels.append(-1)
         else:
             labels.append(int(label))
-        camera_id.append(int(camera[0]))
         frames.append(int(frame))
     return camera_id, labels, frames
 

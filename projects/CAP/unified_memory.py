@@ -1,6 +1,8 @@
+import numpy as np
 import torch
 from torch import nn, autograd
 import torch.nn.functional as F
+from torch.autograd import Variable
 
 from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size
 
@@ -85,6 +87,8 @@ class UnifiedMemory(nn.Module):
         self.hard_neg_k = self.cfg.CAP.HARD_NEG_K # hard negative sampling in global loss
         self.momentum = self.cfg.CAP.MOMENTUM # momentum update rate
         self.cur_epoch = 0
+        self.aploss = APLoss(nq=self.cfg.CAP.LOSS_INSTANCE.NUM_BINS, min=-1, max=1).cuda()
+        self.fastaploss = FastAPLoss(num_bins=self.cfg.CAP.LOSS_INSTANCE.NUM_BINS).cuda()
 
     def _update_epoch(self, epoch):
         self.cur_epoch = epoch
@@ -178,14 +182,26 @@ class UnifiedMemory(nn.Module):
 
         # instance loss
         if self.cur_epoch >= self.cfg.CAP.LOSS_INSTANCE.START_EPOCH:
-            targets = self.instance_labels[indexes.cpu()].cuda()
-            sim_target = InstanceMemory.apply(instance_inputs, targets, self.instance_memory, torch.Tensor([self.momentum]).to(instance_inputs.device))
-            sim_target /= self.cfg.CAP.LOSS_INSTANCE.TEMP
-            gt_perm = torch.argsort(self.instance_weight.detach()[indexes], descending=True, dim=1)
-            for i in range(len(instance_inputs)):
-                perm_prob = _get_perm_prob(sim_target[i], gt_perm[i][1:self.cfg.CAP.LOSS_INSTANCE.LIST_LENGTH+1].cpu().tolist())
-                loss_instance += -torch.log(perm_prob)
-            loss_instance /= len(instance_inputs)
+            sim_target = InstanceMemory.apply(instance_inputs, indexes, self.instance_memory, torch.Tensor([self.momentum]).to(instance_inputs.device))
+            # sim_target /= self.cfg.CAP.LOSS_INSTANCE.TEMP
+            # gt_perm = torch.argsort(self.instance_weight.detach()[indexes], descending=True, dim=1)
+            if self.cfg.CAP.LOSS_INSTANCE.NAME == 'aploss':
+                for k in range(len(sim_target)):
+                    sim_k = sim_target[k]
+                    label_k = self.instance_weight.detach()[indexes][k]
+                    _, index_k = label_k.sort(descending=True)
+                    index_k = index_k[:self.cfg.CAP.LOSS_INSTANCE.LIST_LENGTH]
+                    value_k = sim_k[index_k].unsqueeze(0)
+                    gt_k = label_k[index_k].unsqueeze(0)
+                    loss_instance += self.aploss(value_k, gt_k) / len(sim_target)
+                    # loss_instance += self.fastaploss(value_k, label_k)
+                    # loss_instance += self.fastaploss(value_k, self.instance_labels[index_k])
+            elif self.cfg.CAP.LOSS_INSTANCE.NAME == 'fastaploss':
+                # loss_instance = self.fastaploss(instance_inputs, self.instance_labels[indexes])
+                loss_instance = self.fastaploss(sim_target, self.instance_weight.detach()[indexes])
+                # loss_instance = self.aploss(sim_target, self.instance_weight.detach()[indexes])
+            else:
+                raise ValueError
 
         for cc in torch.unique(cams):
             inds = torch.where(cams == cc)[0]
@@ -220,7 +236,7 @@ class UnifiedMemory(nn.Module):
                         sel_ind = sel_ind[-(len(sel_ind) - len(ori_asso_ind)):]
                     concated_input = torch.cat((target_inputs[k, ori_asso_ind], target_inputs[k, sel_ind]), dim=0)
                     if self.cfg.CAP.LOSS_IDENTITY.WEIGHTED:
-                        concated_target = self.percam_tempW[indexes[inds]][k][torch.cat([ori_asso_ind, sel_ind])].cuda() / self.t
+                        concated_target = self.percam_tempW[indexes[inds]][k][torch.cat([ori_asso_ind, sel_ind.cpu()])] / self.t
                         associate_loss += -1 * (F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
                     else:
                         concated_target = torch.zeros((len(concated_input)), dtype=concated_input.dtype).cuda()
@@ -256,3 +272,227 @@ def _get_perm_prob(scores, perm, eps=1e-6):
 
 def _get_all_perm_prob(scores, indices):
     return [_get_perm_prob(scores, r) for r in sorted(permutations(indices))]
+
+
+class APLoss(nn.Module):
+    """ Differentiable AP loss, through quantization. From the paper:
+        Learning with Average Precision: Training Image Retrieval with a Listwise Loss
+        Jerome Revaud, Jon Almazan, Rafael Sampaio de Rezende, Cesar de Souza
+        https://arxiv.org/abs/1906.07589
+        Input: (N, M)   values in [min, max]
+        label: (N, M)   values in {0, 1}
+        Returns: 1 - mAP (mean AP for each n in {1..N})
+                 Note: typically, this is what you wanna minimize
+    """
+    def __init__(self, nq=25, min=0, max=1):
+        nn.Module.__init__(self)
+        assert isinstance(nq, int) and 2 <= nq <= 100
+        self.nq = nq
+        self.min = min
+        self.max = max
+        gap = max - min
+        assert gap > 0
+        # Initialize quantizer as non-trainable convolution
+        self.quantizer = q = nn.Conv1d(1, 2*nq, kernel_size=1, bias=True)
+        q.weight = nn.Parameter(q.weight.detach(), requires_grad=False)
+        q.bias = nn.Parameter(q.bias.detach(), requires_grad=False)
+        a = (nq-1) / gap
+        # First half equal to lines passing to (min+x,1) and (min+x+1/a,0) with x = {nq-1..0}*gap/(nq-1)
+        q.weight[:nq] = -a
+        q.bias[:nq] = torch.from_numpy(a*min + np.arange(nq, 0, -1))  # b = 1 + a*(min+x)
+        # First half equal to lines passing to (min+x,1) and (min+x-1/a,0) with x = {nq-1..0}*gap/(nq-1)
+        q.weight[nq:] = a
+        q.bias[nq:] = torch.from_numpy(np.arange(2-nq, 2, 1) - a*min)  # b = 1 - a*(min+x)
+        # First and last one as a horizontal straight line
+        q.weight[0] = q.weight[-1] = 0
+        q.bias[0] = q.bias[-1] = 1
+        
+
+    def forward(self, x, label, qw=None, ret='1-mAP'):
+        assert x.shape == label.shape  # N x M
+        N, M = x.shape
+        # Quantize all predictions
+        q = self.quantizer(x.unsqueeze(1))
+        q = torch.min(q[:, :self.nq], q[:, self.nq:]).clamp(min=0)  # N x Q x M
+
+        nbs = q.sum(dim=-1)  # number of samples  N x Q = c
+        rec = (q * label.view(N, 1, M).float()).sum(dim=-1)  # number of correct samples = c+ N x Q
+        prec = rec.cumsum(dim=-1) / (1e-16 + nbs.cumsum(dim=-1))  # precision
+        rec /= rec.sum(dim=-1).unsqueeze(1)  # norm in [0,1]
+
+        ap = (prec * rec).sum(dim=-1)  # per-image AP
+
+        if ret == '1-mAP':
+            if qw is not None:
+                ap *= qw  # query weights
+            return 1 - ap.mean()
+        elif ret == 'AP':
+            assert qw is None
+            return ap
+        else:
+            raise ValueError("Bad return type for APLoss(): %s" % str(ret))
+
+
+def softBinning(D, mid, Delta):
+    y = 1 - torch.abs(D-mid)/Delta
+    return torch.max(torch.Tensor([0]).cuda(), y)
+
+def dSoftBinning(D, mid, Delta):
+    side1 = (D > (mid - Delta)).type(torch.float)
+    side2 = (D <= mid).type(torch.float)
+    ind1 = (side1 * side2) #.type(torch.uint8)
+
+    side1 = (D > mid).type(torch.float)
+    side2 = (D <= (mid + Delta)).type(torch.float)
+    ind2 = (side1 * side2) #.type(torch.uint8)
+
+    return (ind1 - ind2)/Delta
+    
+
+class FastAPLoss(torch.nn.Module):
+    """
+    FastAP - loss layer definition
+    This class implements the FastAP loss from the following paper:
+    "Deep Metric Learning to Rank", 
+    F. Cakir, K. He, X. Xia, B. Kulis, S. Sclaroff. CVPR 2019
+    """
+    def __init__(self, num_bins=10):
+        super(FastAPLoss, self).__init__()
+        self.num_bins = num_bins
+
+    def forward(self, batch, labels):
+        return FastAP.apply(batch, labels, self.num_bins)
+
+
+class FastAP(torch.autograd.Function):
+    """
+    FastAP - autograd function definition
+    This class implements the FastAP loss from the following paper:
+    "Deep Metric Learning to Rank", 
+    F. Cakir, K. He, X. Xia, B. Kulis, S. Sclaroff. CVPR 2019
+    NOTE:
+        Given a input batch, FastAP does not sample triplets from it as it's not 
+        a triplet-based method. Therefore, FastAP does not take a Sampler as input. 
+        Rather, we specify how the input batch is selected.
+    """
+
+    @staticmethod
+    def forward(ctx, input, target, num_bins):
+        """
+        Args:
+            input:     torch.Tensor(N x M), similarity matrix
+            target:    torch.Tensor(N x M), relevance matrix
+            num_bins:  int, number of bins in distance histogram
+        """
+        N = target.size()[0]
+        neg_target = 1 - target
+        assert input.size()[0] == N, "Batch size donesn't match!"
+        
+        # 1. get affinity matrix
+        I_pos = target
+        I_neg = neg_target
+        N_pos = torch.sum(target, 1)
+        
+        # 2. compute distances from embeddings
+        # squared Euclidean distance with range [0,4]
+        dist2 = 2 - 2 * input.clamp(-1, 1)
+
+        # 3. estimate discrete histograms
+        Delta = torch.tensor(4. / num_bins).cuda()
+        Z     = torch.linspace(0., 4., steps=num_bins+1).cuda()
+        L     = Z.size()[0]
+        h_pos = torch.zeros((N, L)).cuda()
+        h_neg = torch.zeros((N, L)).cuda()
+        for l in range(L):
+            pulse    = softBinning(dist2, Z[l], Delta)
+            h_pos[:,l] = torch.sum(pulse * I_pos, 1)
+            h_neg[:,l] = torch.sum(pulse * I_neg, 1)
+
+        H_pos = torch.cumsum(h_pos, 1)
+        h     = h_pos + h_neg
+        H     = torch.cumsum(h, 1)
+        
+        # 4. compate FastAP
+        FastAP = h_pos * H_pos / H
+        FastAP[torch.isnan(FastAP) | torch.isinf(FastAP)] = 0
+        FastAP = torch.sum(FastAP,1)/N_pos
+        FastAP = FastAP[ ~torch.isnan(FastAP) ]
+        loss   = 1 - torch.mean(FastAP)
+        # if torch.rand(1) > 0.99:
+        print("loss value (1-mean(FastAP)): ", loss.item())
+
+        # 6. save for backward
+        ctx.save_for_backward(input, target)
+        ctx.Z     = Z
+        ctx.Delta = Delta
+        ctx.dist2 = dist2
+        ctx.I_pos = I_pos
+        ctx.I_neg = I_neg
+        ctx.h_pos = h_pos
+        ctx.h_neg = h_neg
+        ctx.H_pos = H_pos
+        ctx.N_pos = N_pos
+        ctx.h     = h
+        ctx.H     = H
+        ctx.L     = torch.tensor(L)
+        
+        return loss
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        input, target = ctx.saved_tensors
+
+        Z     = Variable(ctx.Z     , requires_grad = False)
+        Delta = Variable(ctx.Delta , requires_grad = False)
+        dist2 = Variable(ctx.dist2 , requires_grad = False)
+        I_pos = Variable(ctx.I_pos , requires_grad = False)
+        I_neg = Variable(ctx.I_neg , requires_grad = False)
+        h     = Variable(ctx.h     , requires_grad = False)
+        H     = Variable(ctx.H     , requires_grad = False)
+        h_pos = Variable(ctx.h_pos , requires_grad = False)
+        h_neg = Variable(ctx.h_neg , requires_grad = False)
+        H_pos = Variable(ctx.H_pos , requires_grad = False)
+        N_pos = Variable(ctx.N_pos , requires_grad = False)
+        print('backward test')
+        L     = Z.size()[0]
+        H2    = torch.pow(H,2)
+        H_neg = H - H_pos
+
+        # 1. d(FastAP)/d(h+)
+        LTM1 = torch.tril(torch.ones(L,L), -1)  # lower traingular matrix
+        tmp1 = h_pos * H_neg / H2
+        tmp1[torch.isnan(tmp1)] = 0
+
+        d_AP_h_pos = (H_pos * H + h_pos * H_neg) / H2 
+        d_AP_h_pos = d_AP_h_pos + torch.mm(tmp1, LTM1.cuda())
+        d_AP_h_pos = d_AP_h_pos / N_pos.repeat(L,1).t()
+        d_AP_h_pos[torch.isnan(d_AP_h_pos) | torch.isinf(d_AP_h_pos)] = 0
+
+
+        # 2. d(FastAP)/d(h-)
+        LTM0 = torch.tril(torch.ones(L,L), 0)  # lower triangular matrix
+        tmp2 = -h_pos * H_pos / H2
+        tmp2[torch.isnan(tmp2)] = 0
+
+        d_AP_h_neg = torch.mm(tmp2, LTM0.cuda())
+        d_AP_h_neg = d_AP_h_neg / N_pos.repeat(L,1).t()
+        d_AP_h_neg[torch.isnan(d_AP_h_neg) | torch.isinf(d_AP_h_neg)] = 0
+
+
+        # 3. d(FastAP)/d(embedding)
+        d_AP_x = 0
+        for l in range(L):
+            dpulse = dSoftBinning(dist2, Z[l], Delta)
+            dpulse[torch.isnan(dpulse) | torch.isinf(dpulse)] = 0
+            ddp = dpulse * I_pos
+            ddn = dpulse * I_neg
+            alpha_p = torch.diag(d_AP_h_pos[:,l]) # N*N
+            alpha_n = torch.diag(d_AP_h_neg[:,l])
+            Ap = torch.mm(ddp, alpha_p) + torch.mm(alpha_p, ddp)
+            An = torch.mm(ddn, alpha_n) + torch.mm(alpha_n, ddn)
+            
+            # accumulate gradient 
+            d_AP_x = d_AP_x - torch.mm(input.t(), (Ap+An))
+            
+        grad_input = -d_AP_x
+        return grad_input.t(), None, None
