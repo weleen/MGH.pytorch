@@ -23,13 +23,13 @@ PSEUDO:
   ENABLED: True
   CLUSTER_EPOCH:  1
   USE_OUTLIERS: False
-  WITH_CLASSIFIER: True
+  WITH_CLASSIFIER: False
   DBSCAN:
     # BASE: 'rho'
     # RHO: 2.2e-3
     # EPS: [0.7,]
     EPS: [0.5,]
-    K1: 30
+    K1: 20
 
 # INPUT:
 #   DO_BLUR: True

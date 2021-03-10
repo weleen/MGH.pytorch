@@ -4,9 +4,4 @@ DATASETS:
   NAMES: ("Market1501",)
   TESTS: ("Market1501",)
 
-PSEUDO:
-  WITH_CLASSIFIER: False
-  DBSCAN:
-    K1: 20
-
 OUTPUT_DIR: "logs/CAP/market1501/BoT_R50"
