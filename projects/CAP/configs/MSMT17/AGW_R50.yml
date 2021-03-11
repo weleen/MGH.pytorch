@@ -6,7 +6,7 @@ DATASETS:
 
 PSEUDO:
   HG:
-    ST_START_EPOCH: 20
+    ST_START_EPOCH: 0
 
 TEST:
   DO_VAL: True
