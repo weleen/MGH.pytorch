@@ -8,7 +8,7 @@ PSEUDO:
   HG:
     ST_START_EPOCH: 20
 
-TEST:
-  DO_VAL: True
+# TEST:
+#   DO_VAL: True
 
 OUTPUT_DIR: "logs/CAP/msmt17/BoT_R50"
