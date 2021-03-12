@@ -43,4 +43,4 @@ def add_cap_config(cfg):
     _C.CAP.LOSS_INSTANCE.THRESH = 0.1
     _C.CAP.LOSS_INSTANCE.NAME = 'aploss'  # 'smoothaploss'
     _C.CAP.LOSS_INSTANCE.SMOOTHAP_TARGET = False
-    _C.CAP.LOSS_INSTANCE.MOMENTUM = 0.9
+    _C.CAP.LOSS_INSTANCE.MOMENTUM = 1.0
