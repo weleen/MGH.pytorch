@@ -442,7 +442,7 @@ def label_generator_hypergraph_dbscan_lp(cfg, features, cams, **kwargs):
     dist = torch.tensor(dist)
     if cfg.PSEUDO.HG.LP.GRAPH == 'simple':
         adj = 1 - dist
-        assert torch.allclose(adj, adj.t())
+        adj = (adj + adj.t()) / 2
         degree = adj.sum(dim=1).to(torch.float)
         D = degree.pow(-0.5)
         DAD = D.view(-1, 1)*adj*D.view(1, -1)
