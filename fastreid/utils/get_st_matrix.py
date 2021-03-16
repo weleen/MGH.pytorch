@@ -28,6 +28,51 @@ def joint_similarity(q_cam, q_frame, g_cam, g_frame, distribution, score=None):
         dist = 1 - 1 / (1 + np.exp(-gamma * score)) * 1 / (1 + 2 * np.exp(-gamma * score_st)) # https://github.com/ljn114514/JVTC/blob/master/utils/st_distribution.py#L5
         return dist
 
+def single_process(q_frame, g_frame, q_cam, g_cam, i, distribution):
+    # print(i, 'running')
+    interval = 100
+    score_st_i = np.zeros(len(g_cam))
+    for j in range(len(g_cam)):
+        if q_frame > g_frame[j]:
+            diff = q_frame - g_frame[j]
+            hist_ = int(diff / interval)
+            pr = distribution[q_cam - 1][g_cam[j] - 1][hist_]
+        else:
+            diff = g_frame[j] - q_frame
+            hist_ = int(diff / interval)
+            pr = distribution[g_cam[j] - 1][q_cam - 1][hist_]
+        score_st_i[j] = pr
+    return score_st_i
+
+def joint_similarity_parallel(q_cam, q_frame, g_cam, g_frame, distribution, score=None):
+    gamma = 5
+
+    import multiprocessing
+    print('multiple processes start')
+    print(multiprocessing.cpu_count())
+    # pool = multiprocessing.Pool(maxtasksperchild=10)
+    pool = multiprocessing.Pool()
+    manager = multiprocessing.Manager()
+    res_list = []
+    for i in range(len(q_cam)):
+        res = pool.apply_async(func=single_process, args=(q_frame[i], g_frame, q_cam[i], g_cam, i, distribution))
+        res_list.append(res)
+            
+    pool.close()
+    pool.join()
+    print('multiple processes finished')
+
+    res_list = [res.get() for res in res_list]
+    score_st = np.asarray(res_list)
+
+    if score is None:
+        dist = 1 - 1 / (1 + 2 * np.exp(-gamma * score_st))
+        return dist
+    else:
+        assert score.shape == score_st.shape
+        dist = 1 - 1 / (1 + np.exp(-gamma * score)) * 1 / (1 + 2 * np.exp(-gamma * score_st)) # https://github.com/ljn114514/JVTC/blob/master/utils/st_distribution.py#L5
+        return dist
+
 def gaussian_func(x, u, o=50):
     temp1 = 1.0 / (o * math.sqrt(2 * math.pi))
     temp2 = -(np.power(x - u, 2)) / (2 * np.power(o, 2))
@@ -130,12 +175,12 @@ def spatial_temporal_distribution(camera_id, labels, frames):  # code from https
 
 def get_st_matrix(imgs_path, pseudo_labels=None, score=None):
     train_cam, train_label, train_frames = get_id(imgs_path)
-    assert isinstance(pseudo_labels, list)
     if pseudo_labels is not None:
         labels = pseudo_labels
     else:
         labels = train_label
-    inlier_ind = np.where(np.array(pseudo_labels, dtype=np.int64) != -1)[0]
+    
+    inlier_ind = np.where(np.array(labels, dtype=np.int64) != -1)[0]
     # select inlier
     t_cam, t_label, t_frames = [], [], []
     for ind in inlier_ind:
@@ -152,10 +197,29 @@ def get_st_matrix(imgs_path, pseudo_labels=None, score=None):
             i += 1
         reordered_label.append(dic[label])
 
-    # distribution = spatial_temporal_distribution(t_cam, reordered_label, t_frames)
+    import time
+    a = time.time()
+    # file_path = 'distribution.npy'
+    # if not os.path.exists(file_path):
+    #     # distribution = spatial_temporal_distribution(t_cam, reordered_label, t_frames)
     distribution = get_st_distribution(t_cam, reordered_label, t_frames)
-    matrix = joint_similarity(train_cam, train_frames, train_cam, train_frames, distribution, score) # if score is not None, calculate distance matrix based on joint similarity
-
+    #     np.save(file_path, distribution)
+    # else:
+    #     distribution = np.load(file_path)
+    b = time.time()
+    print('spatial temporal matrix computation get_st_distribution cost: {}'.format(b - a))
+    print('Use multiprocessing')
+    matrix = joint_similarity_parallel(train_cam, train_frames, train_cam, train_frames, distribution, score)
+    c = time.time()
+    print(f'cost {c - b}s')
+    # np.save('matrix2.npy', matrix2)
+    # print('Use single process')
+    # matrix1 = joint_similarity(train_cam, train_frames, train_cam, train_frames, distribution, score) # if score is not None, calculate distance matrix based on joint similarity
+    # np.save('matrix1.npy', matrix1)
+    # print(f'cost {time.time() - c}s')
+    # assert np.allclose(matrix1, matrix)
+    # raise ValueError
+    # np.save('spatial_temporal_matrix_market.npy', matrix)
     return matrix
 
 def get_st_distribution(camera_id, labels, frames):  # code from https://github.com/ljn114514/JVTC/blob/master/utils/st_distribution.py#L72:5
@@ -234,9 +298,7 @@ def get_st_distribution(camera_id, labels, frames):  # code from https://github.
 
 
 if __name__ == "__main__":
-    data_dir = "datasets/market1501/bounding_box_train"
-    # data_dir = "datasets/Market-1501-v15.09.15/bounding_box_train"
-    imgs_path = glob.glob(os.path.join(data_dir, '*.jpg'))
+    data_dir = "/data/wuyiming/reid/msmt/MSMT17_V1/train/"
+    imgs_path = glob.glob(os.path.join(data_dir, '*', '*.jpg'))
     matrix = get_st_matrix(imgs_path, pseudo_labels=None)
-    import pdb;pdb.set_trace()
-    print(123)
+
