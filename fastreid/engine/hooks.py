@@ -773,7 +773,7 @@ class LabelGeneratorHook(HookBase):
                             imgs_path=img_paths,
                             indexes=indexes
                         )
-                if not os.path.exists(save_path) and self._cfg.PSEUDO.SAVE_CLUSTERING_RES:
+                if not os.path.exists(save_path) and self._cfg.PSEUDO.SAVE_CLUSTERING_RES and (self.trainer.epoch == 0):
                     os.makedirs(os.path.dirname(save_path), exist_ok=True)
                     res = {'labels': labels, 'num_classes': num_classes, 'centers': centers, 'indep_thres': indep_thres, 'dist_mat': dist_mat}
                     torch.save(res, save_path)
