@@ -1,7 +1,0 @@
-_BASE_: "../Base-concurrentreid_bot.yml"
-
-DATASETS:
-  NAMES: ("MSMT17",)
-  TESTS: ("MSMT17",)
-
-OUTPUT_DIR: "logs/ConcurrentReID/msmt17/BoT_R50"

@@ -1,7 +1,0 @@
-_BASE_: "../Base-concurrentreid_bot.yml"
-
-DATASETS:
-  NAMES: ("DukeMTMC",)
-  TESTS: ("DukeMTMC",)
-
-OUTPUT_DIR: "logs/ConcurrentReID/dukemtmc/Bot_R50"

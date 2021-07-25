@@ -1,7 +1,0 @@
-_BASE_: "../Base-cap-BoT_R50.yml"
-
-DATASETS:
-  NAMES: ("MSMT17",)
-  TESTS: ("MSMT17",)
-
-OUTPUT_DIR: "logs/CAP/msmt17/BoT_R50"

@@ -1,7 +1,0 @@
-_BASE_: "../Base-spcl.yml"
-
-DATASETS:
-  NAMES: ("DukeMTMC",)
-  TESTS: ("DukeMTMC",)
-
-OUTPUT_DIR: "logs/SpCL/dukemtmc/AGW_R50"

@@ -1,1 +1,0 @@
-from .compact_trainer import CompactTrainer

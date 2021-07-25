@@ -1,0 +1,4 @@
+# testing
+CUDA_VISIBLE_DEVICES=0 python projects/MGH/train_net.py --eval-only --num-gpus 1 --config-file projects/MGH/configs/Market1501/BoT_R50.yml OUTPUT_DIR logs/MGH/market1501_test MODEL.WEIGHTS logs/CAP/BoT_R50_new/market1501_hg_knn_camera_1.0identity5_weighted_1.0camera0_10.0instance_smoothaploss5/model_0018399.pth CAP.ST_TEST True
+CUDA_VISIBLE_DEVICES=1 python projects/MGH/train_net.py --eval-only --num-gpus 1 --config-file projects/MGH/configs/DukeMTMC/BoT_R50.yml OUTPUT_DIR logs/MGH/dukemtmc_test MODEL.WEIGHTS logs/CAP/BoT_R50/dukemtmc_hg_1.0identity5_weighted_1.0camera0_10.0instance_smoothaploss5/model_0019599.pth CAP.ST_TEST True
+CUDA_VISIBLE_DEVICES=2 python projects/MGH/train_net.py --eval-only --num-gpus 1 --config-file projects/MGH/configs/MSMT17/BoT_R50.yml OUTPUT_DIR logs/MGH/msmt17_test MODEL.WEIGHTS logs/CAP/BoT_R50_k1_30_w_cls/msmt17_hg_1.0identity5_weighted_1.0camera0_10.0instance_smoothaploss5/model_0019999.pth CAP.ST_TEST True

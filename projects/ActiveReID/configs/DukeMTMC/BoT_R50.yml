@@ -1,7 +1,0 @@
-_BASE_: "../Base-spcl-BoT_R50.yml"
-
-DATASETS:
-  NAMES: ("DukeMTMC",)
-  TESTS: ("DukeMTMC",)
-
-OUTPUT_DIR: "logs/SpCL/dukemtmc/BoT_R50"

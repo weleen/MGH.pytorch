@@ -1,7 +1,0 @@
-_BASE_: "../Base-compact.yml"
-
-DATASETS:
-  NAMES: ("DukeMTMC",)
-  TESTS: ("DukeMTMC",)
-
-OUTPUT_DIR: "logs/CompactReID/dukemtmc/AGW_R50"
