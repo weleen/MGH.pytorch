@@ -8,6 +8,7 @@ log/
 log
 logs/
 logs
+models/
 datasets/*
 **/*.c
 **/*.linux-x86_64*
