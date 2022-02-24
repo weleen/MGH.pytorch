@@ -4,4 +4,4 @@ DATASETS:
   NAMES: ("DukeMTMC",)
   TESTS: ("DukeMTMC",)
 
-OUTPUT_DIR: "logs/CAP/dukemtmc/BoT_R50"
+OUTPUT_DIR: "logs/MGH/dukemtmc/BoT_R50"

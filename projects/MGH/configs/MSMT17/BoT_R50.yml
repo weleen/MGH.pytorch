@@ -15,4 +15,4 @@ TEST:
   EVAL_PERIOD: 10
 #   DO_VAL: True
 
-OUTPUT_DIR: "logs/CAP/msmt17/BoT_R50"
+OUTPUT_DIR: "logs/MGH/msmt17/BoT_R50"

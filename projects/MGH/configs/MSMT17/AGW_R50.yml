@@ -11,4 +11,4 @@ PSEUDO:
 TEST:
   DO_VAL: True
 
-OUTPUT_DIR: "logs/CAP/msmt17/AGW_R50"
+OUTPUT_DIR: "logs/MGH/msmt17/AGW_R50"

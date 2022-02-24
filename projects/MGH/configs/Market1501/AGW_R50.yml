@@ -4,4 +4,4 @@ DATASETS:
   NAMES: ("Market1501",)
   TESTS: ("Market1501",)
 
-OUTPUT_DIR: "logs/CAP/market1501/AGW_R50"
+OUTPUT_DIR: "logs/MGH/market1501/AGW_R50"
