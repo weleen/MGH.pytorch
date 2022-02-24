@@ -4,8 +4,8 @@
 @contact: yimingwu@hotmail.com
 @function: Implementation of Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID
 """
-import os
 import logging
+import os
 import sys
 
 sys.path.append('.')
@@ -15,12 +15,11 @@ from fvcore.common.checkpoint import Checkpointer
 
 import torch
 from fastreid.config import cfg
-from fastreid.engine import default_argument_parser, default_setup, launch, hooks
+from fastreid.engine import default_argument_parser, default_setup, launch
 from fastreid.engine.defaults import DefaultTrainer
 from fastreid.utils import comm
 from fastreid.engine import hooks
 
-from cap_memory import CAPMemory
 from unified_memory import UnifiedMemory
 from cap_labelgenerator import CAPLabelGeneratorHook
 from config import add_cap_config
@@ -36,6 +35,7 @@ try:
 except ImportError:
     raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example if you want to"
                       "train with DDP")
+
 
 class CAPTrainer(DefaultTrainer):
     def __init__(self, cfg):
@@ -95,7 +95,6 @@ class CAPTrainer(DefaultTrainer):
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             ))
 
-
         if cfg.MODEL.OPEN_LAYERS != [''] and cfg.SOLVER.FREEZE_ITERS > 0:
             open_layers = ",".join(cfg.MODEL.OPEN_LAYERS)
             logger.info(f'Open "{open_layers}" training for {cfg.SOLVER.FREEZE_ITERS:d} iters')
@@ -110,7 +109,9 @@ class CAPTrainer(DefaultTrainer):
         # This is not always the best: if checkpointing has a different frequency,
         # some checkpoints may have more precise statistics than others.
         if comm.is_main_process():
-            ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD * self.iters_per_epoch, self.max_iter))
+            ret.append(
+                hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD * self.iters_per_epoch,
+                                           self.max_iter))
 
         def test_and_save_results(mode='test'):
             self._last_eval_results = self.test(self.cfg, self.model, mode=mode)
@@ -118,7 +119,8 @@ class CAPTrainer(DefaultTrainer):
 
         # Do evaluation after checkpointer, because then if it fails,
         # we can use the saved checkpoint to debug.
-        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results, do_val=self.cfg.TEST.DO_VAL, metric_names=self.cfg.TEST.METRIC_NAMES))
+        ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results, do_val=self.cfg.TEST.DO_VAL,
+                                  metric_names=self.cfg.TEST.METRIC_NAMES))
 
         if comm.is_main_process():
             # run writers in the end, so that evaluation metrics are written
@@ -151,7 +153,7 @@ class CAPTrainer(DefaultTrainer):
                     loss_dict = self.model.module.losses(outs, memory=self.memory, inputs=data)
                 else:
                     loss_dict = self.model.losses(outs, memory=self.memory, inputs=data)
-        
+
         if self.cfg.CAP.INSTANCE_LOSS:
             un_data = next(self.un_data_loader_iter)
             un_data = self.batch_process(un_data, is_dsbn=self.cfg.MODEL.DSBN)
@@ -170,6 +172,7 @@ class CAPTrainer(DefaultTrainer):
         self._write_metrics(loss_dict, data_time)
 
         self.optimizer.step()
+
 
 def setup(args):
     """
@@ -192,7 +195,7 @@ def main(args):
         model = CAPTrainer.build_model(cfg)
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
         model = CAPTrainer.build_parallel_model(cfg, model)  # parallel
-        
+
         if cfg.CAP.ST_TEST:
             save_path = os.path.join(cfg.OUTPUT_DIR, 'distribution.npy')
             if not os.path.exists(save_path):
@@ -201,7 +204,7 @@ def main(args):
                 items = cluster._data_loader_cluster.dataset.img_items
                 imgs_paths = [items[i][0] for i, lb in enumerate(all_labels[0]) if lb != -1]
                 pseudo_labels = [lb for lb in all_labels[0] if lb != -1]
-                distribution = get_st_distribution(imgs_paths, cfg.DATASETS.NAMES[0],  pseudo_labels=pseudo_labels)
+                distribution = get_st_distribution(imgs_paths, cfg.DATASETS.NAMES[0], pseudo_labels=pseudo_labels)
                 np.save(save_path, distribution)
 
         res = CAPTrainer.test(cfg, model)

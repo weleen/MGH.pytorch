@@ -1,7 +1,10 @@
 from __future__ import absolute_import
-from torchvision.transforms import *
+
+import math
+import random
+
 from PIL import Image
-import random, math
+
 
 class RectScale(object):
     def __init__(self, height, width, interpolation=Image.BILINEAR):
@@ -36,7 +39,7 @@ class RandomSizedRectCrop(object):
                 y1 = random.randint(0, img.size[1] - h)
 
                 img = img.crop((x1, y1, x1 + w, y1 + h))
-                assert(img.size == (w, h))
+                assert (img.size == (w, h))
 
                 return img.resize((self.width, self.height), self.interpolation)
 

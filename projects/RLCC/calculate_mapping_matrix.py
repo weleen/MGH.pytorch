@@ -1,22 +1,24 @@
-import os
-import numpy as np
-import time
-import itertools
-import multiprocessing as mp
-from multiprocessing import Pool
-from multiprocessing import sharedctypes
-import torch
 import argparse
+import itertools
+import os
+import time
+from multiprocessing import Pool
+
+import numpy as np
+import torch
+
 
 def iou(i, m2):
     for j in range(m2):
         shared_array[i][j] = np.minimum(I1[i], I2[j]).sum() / np.maximum(I1[i], I2[j]).sum()
+
 
 def iou_bin(m1, j, I_1, I_2):
     for i in range(m1):
         inter = int(I_1[i], 2) & int(I_2[j], 2)
         union = int(I_1[i], 2) | int(I_2[j], 2)
         shared_arr[i][j] = 1.0 * inter / union
+
 
 def gt(m1, m2, last_labels, labels):
     print('gt')
@@ -32,6 +34,7 @@ def gt(m1, m2, last_labels, labels):
     C /= C.sum(-1, keepdims=True)
     return C
 
+
 def method_1(m1, m2, last_labels, labels):
     a = time.time()
     print('method_1')
@@ -43,6 +46,7 @@ def method_1(m1, m2, last_labels, labels):
     b = time.time()
     print('Task done in {}s.'.format(b - a))
     # Task done in 575.8600080013275s (about 10min)
+
 
 def method_2(m1, m2, num_memory, last_labels, labels):
     print('method_2')
@@ -57,7 +61,7 @@ def method_2(m1, m2, num_memory, last_labels, labels):
     def func2(num):
         count = 0
         while num:
-            count +=1 
+            count += 1
             num = num & (num - 1)
         return count
 
@@ -72,6 +76,7 @@ def method_2(m1, m2, num_memory, last_labels, labels):
     C /= C.sum(-1, keepdims=True)
     return C
 
+
 def method_3(m1, m2, num_memory, last_labels, labels):
     print('method_3')
     st = time.time()
@@ -85,7 +90,7 @@ def method_3(m1, m2, num_memory, last_labels, labels):
     def func2(num):
         count = 0
         while num:
-            count +=1 
+            count += 1
             num = num & (num - 1)
         return count
 
@@ -96,6 +101,7 @@ def method_3(m1, m2, num_memory, last_labels, labels):
     p.join()
     et = time.time()
     print('Task done in {}s.'.format(et - st))
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser('Calculate mapping matrix between two generation.')
@@ -147,4 +153,3 @@ if __name__ == '__main__':
 
     C = torch.from_numpy(C_2)
     torch.save(C, os.path.join(os.path.dirname(file_name), 'C.pt'))
-

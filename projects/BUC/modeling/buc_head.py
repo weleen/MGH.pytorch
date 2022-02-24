@@ -5,12 +5,11 @@
 """
 
 from torch import nn
-from torch.nn import init
 from torch.nn import functional as F
+from torch.nn import init
 
-from fastreid.layers import *
-from fastreid.utils.torch_utils import weights_init_kaiming, weights_init_classifier
 from fastreid.modeling.heads.build import REID_HEADS_REGISTRY
+from fastreid.utils.torch_utils import weights_init_classifier
 
 
 @REID_HEADS_REGISTRY.register()
@@ -33,9 +32,12 @@ class BUCHead(nn.Module):
 
         # identity classification layer
         cls_type = cfg.MODEL.HEADS.CLS_LAYER
-        if cls_type == 'linear':    self.classifier = nn.Linear(bottle_dim, num_classes, bias=False)
-        elif cls_type == 'arcface': self.classifier = Arcface(cfg, bottle_dim, num_classes)
-        elif cls_type == 'circle':  self.classifier = Circle(cfg, bottle_dim, num_classes)
+        if cls_type == 'linear':
+            self.classifier = nn.Linear(bottle_dim, num_classes, bias=False)
+        elif cls_type == 'arcface':
+            self.classifier = Arcface(cfg, bottle_dim, num_classes)
+        elif cls_type == 'circle':
+            self.classifier = Circle(cfg, bottle_dim, num_classes)
         else:
             raise KeyError(f"{cls_type} is invalid, please choose from "
                            f"'linear', 'arcface' and 'circle'.")
@@ -56,11 +58,15 @@ class BUCHead(nn.Module):
         # Evaluation
         if not self.training: return eval_feat
         # Training
-        try:              pred_class_logits = self.classifier(bn_feat)
-        except TypeError: pred_class_logits = self.classifier(bn_feat, targets)
+        try:
+            pred_class_logits = self.classifier(bn_feat)
+        except TypeError:
+            pred_class_logits = self.classifier(bn_feat, targets)
 
-        if self.neck_feat == "before":  feat = global_feat
-        elif self.neck_feat == "after": feat = bn_feat
+        if self.neck_feat == "before":
+            feat = global_feat
+        elif self.neck_feat == "after":
+            feat = bn_feat
         else:
             raise KeyError("MODEL.HEADS.NECK_FEAT value is invalid, must choose from ('after' & 'before')")
         return pred_class_logits, feat, targets

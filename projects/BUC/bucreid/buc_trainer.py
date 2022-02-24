@@ -4,27 +4,24 @@
 """
 import logging
 import time
-
 from typing import List
 
-import torch
-import torch.nn.functional as F
 import numpy as np
-from torch.nn.parallel import DistributedDataParallel, DataParallel
-from fvcore.common.config import CfgNode
+import torch
 from fvcore.common.checkpoint import Checkpointer
+from fvcore.common.config import CfgNode
+from torch.nn.parallel import DistributedDataParallel, DataParallel
 
-from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 from fastreid.data import samplers
+from fastreid.data.build import DATASET_REGISTRY, fast_batch_collator
 from fastreid.data.transforms import build_transforms
 from fastreid.engine.defaults import DefaultTrainer
-from fastreid.utils.logger import setup_logger, log_every_n_seconds
 from fastreid.utils import comm
-
+from fastreid.utils.logger import setup_logger
 from . import hooks
+from . import transforms as T
 from .common import CommDataset
 from .exloss import ExLoss
-from . import transforms as T
 
 __all__ = ["BUCTrainer"]
 
@@ -46,7 +43,7 @@ class BUCTrainer(DefaultTrainer):
         # For training, wrap with DP. But don't need this for inference.
         if comm.get_world_size() > 1:
             model = DistributedDataParallel(
-                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False,find_unused_parameters=True
+                model, device_ids=[comm.get_local_rank()], broadcast_buffers=False, find_unused_parameters=True
             )
         else:
             model = DataParallel(model)
@@ -123,7 +120,7 @@ class BUCTrainer(DefaultTrainer):
             hooks.IterationTimer(),
             hooks.LRScheduler(self.optimizer, self.scheduler),
         ]
-        
+
         # BUC Hook
         ret.append(
             hooks.BUCHook(cfg, self.train_set)
@@ -195,7 +192,8 @@ class BUCTrainer(DefaultTrainer):
         """
         outputs = self.model(data)
 
-        loss_dict = {'loss_excls': self.criterion(outputs[1], cids)[0]} # ouputs->Tuple, len=3, 0->logits, 1->feats, 2->targets
+        loss_dict = {
+            'loss_excls': self.criterion(outputs[1], cids)[0]}  # ouputs->Tuple, len=3, 0->logits, 1->feats, 2->targets
         losses = sum(loss for loss in loss_dict.values())
         self._detect_anomaly(losses, loss_dict)
 

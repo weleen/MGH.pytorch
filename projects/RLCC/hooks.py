@@ -1,15 +1,15 @@
-import os
-import datetime
 import collections
-import torch
+import datetime
+import os
 
-from fastreid.utils import comm
 from fastreid.engine.hooks import *
+from fastreid.utils import comm
 
 
 class RLCCLabelGeneratorHook(LabelGeneratorHook):
     """ Hook for RLCC.
     """
+
     def before_epoch(self):
         if self.trainer.epoch % self._cfg.PSEUDO.CLUSTER_EPOCH == 0 \
                 or self.trainer.epoch == self.trainer.start_epoch:
@@ -63,7 +63,7 @@ class RLCCLabelGeneratorHook(LabelGeneratorHook):
             labels = self.trainer.memory.labels
         self.trainer.memory._update_last_label(labels)
         saved_dict.update({'last_labels': labels})
-        
+
         if centers is None:
             assert hasattr(self.trainer, 'memory'), "Only support memory-based approaches now."
             if self.trainer.epoch == 0:

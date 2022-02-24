@@ -1,8 +1,6 @@
 import torch
-from torch import nn, autograd
 import torch.nn.functional as F
-
-from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size
+from torch import nn, autograd
 
 
 class ExemplarMemory(autograd.Function):
@@ -37,9 +35,9 @@ class CAPMemory(nn.Module):
     def __init__(self, cfg):
         super(CAPMemory, self).__init__()
         self.cfg = cfg
-        self.t = self.cfg.CAP.TEMP # temperature
-        self.hard_neg_k = self.cfg.CAP.HARD_NEG_K # hard negative sampling in global loss
-        self.momentum = self.cfg.CAP.MOMENTUM # momentum update rate
+        self.t = self.cfg.CAP.TEMP  # temperature
+        self.hard_neg_k = self.cfg.CAP.HARD_NEG_K  # hard negative sampling in global loss
+        self.momentum = self.cfg.CAP.MOMENTUM  # momentum update rate
         self.intercam_epoch = self.cfg.CAP.INTERCAM_EPOCH
         self.cur_epoch = 0
 
@@ -114,10 +112,12 @@ class CAPMemory(nn.Module):
             mapped_targets = [self.memory_class_mapper[cc][int(k)] for k in percam_targets]
             mapped_targets = torch.tensor(mapped_targets).cuda()
 
-            percam_inputs = ExemplarMemory.apply(percam_feat, mapped_targets, self.percam_memory[cc], torch.Tensor([self.momentum]).to(percam_feat.device))
+            percam_inputs = ExemplarMemory.apply(percam_feat, mapped_targets, self.percam_memory[cc],
+                                                 torch.Tensor([self.momentum]).to(percam_feat.device))
             percam_inputs /= self.t  # similarity score before softmax
             if self.cfg.PSEUDO.MEMORY.WEIGHTED and self.cfg.CAP.WEIGHTED_INTRA:
-                loss_intra += -(F.softmax(self.percam_weight[cc][indexes[inds]].cuda().clone() / self.t, dim=1) * F.log_softmax(percam_inputs, dim=1)).mean(0).sum()
+                loss_intra += -(F.softmax(self.percam_weight[cc][indexes[inds]].cuda().clone() / self.t,
+                                          dim=1) * F.log_softmax(percam_inputs, dim=1)).mean(0).sum()
             else:
                 loss_intra += F.cross_entropy(percam_inputs, mapped_targets)
 
@@ -138,8 +138,10 @@ class CAPMemory(nn.Module):
                         sel_ind = sel_ind[-(len(sel_ind) - len(ori_asso_ind)):]
                     concated_input = torch.cat((target_inputs[k, ori_asso_ind], target_inputs[k, sel_ind]), dim=0)
                     if self.cfg.PSEUDO.MEMORY.WEIGHTED and self.cfg.CAP.WEIGHTED_INTER:
-                        concated_target = self.percam_tempW[indexes[inds]][k][torch.cat([ori_asso_ind, sel_ind])].cuda() / self.t
-                        associate_loss += -1 * (F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
+                        concated_target = self.percam_tempW[indexes[inds]][k][
+                                              torch.cat([ori_asso_ind, sel_ind])].cuda() / self.t
+                        associate_loss += -1 * (
+                                    F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
                     else:
                         concated_target = torch.zeros((len(concated_input)), dtype=concated_input.dtype).cuda()
                         concated_target[0:len(ori_asso_ind)] = 1.0 / len(ori_asso_ind)
@@ -147,8 +149,8 @@ class CAPMemory(nn.Module):
                 loss_inter += associate_loss / len(percam_feat)
         if self.cur_epoch >= self.intercam_epoch:
             return {
-                    "loss_intra": loss_intra, 
-                    "loss_inter": self.cfg.CAP.LOSS_WEIGHT * loss_inter
-                }
+                "loss_intra": loss_intra,
+                "loss_inter": self.cfg.CAP.LOSS_WEIGHT * loss_inter
+            }
         else:
             return {"loss_intra": loss_intra}

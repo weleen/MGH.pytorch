@@ -1,8 +1,7 @@
 import numpy as np
 import torch
-from torch import nn, autograd
 import torch.nn.functional as F
-from torch.autograd import Variable
+from torch import nn, autograd
 
 from fastreid.utils.comm import all_gather_tensor, all_gather, get_world_size
 
@@ -83,9 +82,9 @@ class UnifiedMemory(nn.Module):
     def __init__(self, cfg):
         super(UnifiedMemory, self).__init__()
         self.cfg = cfg
-        self.t = self.cfg.CAP.TEMP # temperature
-        self.hard_neg_k = self.cfg.CAP.HARD_NEG_K # hard negative sampling in global loss
-        self.momentum = self.cfg.CAP.MOMENTUM # momentum update rate
+        self.t = self.cfg.CAP.TEMP  # temperature
+        self.hard_neg_k = self.cfg.CAP.HARD_NEG_K  # hard negative sampling in global loss
+        self.momentum = self.cfg.CAP.MOMENTUM  # momentum update rate
         self.cur_epoch = 0
         self.aploss = APLoss(nq=self.cfg.CAP.LOSS_INSTANCE.NUM_BINS, min=-1, max=1).cuda()
         self.smoothaploss = SmoothAP(self.cfg).cuda()
@@ -160,7 +159,7 @@ class UnifiedMemory(nn.Module):
         nums.index_add_(1, labels_select, torch.ones(1, len(index_select)))
 
         self.identity_weight.index_add_(1, labels_select, inputs_select)
-        self.identity_weight  = (1 - self.identity_weight / nums).cuda()
+        self.identity_weight = (1 - self.identity_weight / nums).cuda()
         self.identity_memory /= nums.t()
         self.identity_memory = F.normalize(self.identity_memory, p=2, dim=1).cuda()
 
@@ -182,7 +181,9 @@ class UnifiedMemory(nn.Module):
 
         # instance loss
         if self.cur_epoch >= self.cfg.CAP.LOSS_INSTANCE.START_EPOCH:
-            sim_target = InstanceMemory.apply(instance_inputs, indexes, self.instance_memory, torch.Tensor([self.cfg.CAP.LOSS_INSTANCE.MOMENTUM]).to(instance_inputs.device))
+            sim_target = InstanceMemory.apply(instance_inputs, indexes, self.instance_memory,
+                                              torch.Tensor([self.cfg.CAP.LOSS_INSTANCE.MOMENTUM]).to(
+                                                  instance_inputs.device))
             value_k_list, gt_k_list = [], []
             for k in range(len(sim_target)):
                 sim_k = sim_target[k]
@@ -211,10 +212,12 @@ class UnifiedMemory(nn.Module):
             mapped_targets = [self.camera_memory_class_mapper[cc][int(k)] for k in percam_targets]
             mapped_targets = torch.tensor(mapped_targets).cuda()
 
-            percam_inputs = CameraMemory.apply(percam_feat, mapped_targets, self.camera_memory[cc], torch.Tensor([self.momentum]).to(percam_feat.device))
+            percam_inputs = CameraMemory.apply(percam_feat, mapped_targets, self.camera_memory[cc],
+                                               torch.Tensor([self.momentum]).to(percam_feat.device))
             percam_inputs /= self.t  # similarity score before softmax
             if self.cfg.CAP.LOSS_CAMERA.WEIGHTED:
-                loss_camera += -(F.softmax(self.camera_weight[cc][indexes[inds]].cuda().clone() / self.t, dim=1) * F.log_softmax(percam_inputs, dim=1)).mean(0).sum()
+                loss_camera += -(F.softmax(self.camera_weight[cc][indexes[inds]].cuda().clone() / self.t,
+                                           dim=1) * F.log_softmax(percam_inputs, dim=1)).mean(0).sum()
             else:
                 loss_camera += F.cross_entropy(percam_inputs, mapped_targets)
 
@@ -235,8 +238,10 @@ class UnifiedMemory(nn.Module):
                         sel_ind = sel_ind[-(len(sel_ind) - len(ori_asso_ind)):]
                     concated_input = torch.cat((target_inputs[k, ori_asso_ind], target_inputs[k, sel_ind]), dim=0)
                     if self.cfg.CAP.LOSS_IDENTITY.WEIGHTED:
-                        concated_target = self.percam_tempW[indexes[inds]][k][torch.cat([ori_asso_ind, sel_ind.cpu()])] / self.t
-                        associate_loss += -1 * (F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
+                        concated_target = self.percam_tempW[indexes[inds]][k][
+                                              torch.cat([ori_asso_ind, sel_ind.cpu()])] / self.t
+                        associate_loss += -1 * (
+                                    F.log_softmax(concated_input, dim=0) * F.softmax(concated_target, dim=0)).sum()
                     else:
                         concated_target = torch.zeros((len(concated_input)), dtype=concated_input.dtype).cuda()
                         concated_target[0:len(ori_asso_ind)] = 1.0 / len(ori_asso_ind)
@@ -269,6 +274,7 @@ class APLoss(nn.Module):
         Returns: 1 - mAP (mean AP for each n in {1..N})
                  Note: typically, this is what you wanna minimize
     """
+
     def __init__(self, nq=25, min=0, max=1):
         nn.Module.__init__(self)
         assert isinstance(nq, int) and 2 <= nq <= 100
@@ -278,16 +284,16 @@ class APLoss(nn.Module):
         gap = max - min
         assert gap > 0
         # Initialize quantizer as non-trainable convolution
-        self.quantizer = q = nn.Conv1d(1, 2*nq, kernel_size=1, bias=True)
+        self.quantizer = q = nn.Conv1d(1, 2 * nq, kernel_size=1, bias=True)
         q.weight = nn.Parameter(q.weight.detach(), requires_grad=False)
         q.bias = nn.Parameter(q.bias.detach(), requires_grad=False)
-        a = (nq-1) / gap
+        a = (nq - 1) / gap
         # First half equal to lines passing to (min+x,1) and (min+x+1/a,0) with x = {nq-1..0}*gap/(nq-1)
         q.weight[:nq] = -a
-        q.bias[:nq] = torch.from_numpy(a*min + np.arange(nq, 0, -1))  # b = 1 + a*(min+x)
+        q.bias[:nq] = torch.from_numpy(a * min + np.arange(nq, 0, -1))  # b = 1 + a*(min+x)
         # First half equal to lines passing to (min+x,1) and (min+x-1/a,0) with x = {nq-1..0}*gap/(nq-1)
         q.weight[nq:] = a
-        q.bias[nq:] = torch.from_numpy(np.arange(2-nq, 2, 1) - a*min)  # b = 1 - a*(min+x)
+        q.bias[nq:] = torch.from_numpy(np.arange(2 - nq, 2, 1) - a * min)  # b = 1 - a*(min+x)
         # First and last one as a horizontal straight line
         q.weight[0] = q.weight[-1] = 0
         q.bias[0] = q.bias[-1] = 1
@@ -340,7 +346,7 @@ class SmoothAP(nn.Module):
         # Compute all the rankings
         sim_all_rk = torch.sum(sim_sg, dim=-1) + 1  # (N, M)
 
-        pos_mask = (targets > self.thresh).float() #* targets
+        pos_mask = (targets > self.thresh).float()  # * targets
         pos_mask_repeat = pos_mask.unsqueeze(1).repeat(1, M, 1)
 
         # Compute positive rankings
@@ -361,6 +367,7 @@ class SmoothAP(nn.Module):
             else:
                 ap += pos_divide / torch.sum(pos_mask[ind]) / N
         return 1 - ap
+
 
 def sigmoid(tensor, temp=1.0):
     """ temperature controlled sigmoid

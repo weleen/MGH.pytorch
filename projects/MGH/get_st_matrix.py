@@ -1,6 +1,4 @@
-import glob
 import math
-import os
 
 import numpy as np
 
@@ -24,33 +22,36 @@ def joint_similarity(q_cam, q_frame, g_cam, g_frame, distribution):
     sim_mat = 1 / (1 + 2 * np.exp(-gamma * score_st))
     return sim_mat
 
+
 def gaussian_func(x, u, o=50):
     temp1 = 1.0 / (o * math.sqrt(2 * math.pi))
     temp2 = -(np.power(x - u, 2)) / (2 * np.power(o, 2))
     return temp1 * np.exp(temp2)
 
+
 def gauss_smooth(arr, o):
     hist_num = len(arr)
-    vect= np.zeros((hist_num,1))
+    vect = np.zeros((hist_num, 1))
     for i in range(hist_num):
-        vect[i,0]=i
+        vect[i, 0] = i
 
-    approximate_delta = 3*o     #  when x-u>approximate_delta, e.g., 6*o, the gaussian value is approximately equal to 0.
-    gaussian_vect= gaussian_func(vect,0,o)
-    matrix = np.zeros((hist_num,hist_num))
+    approximate_delta = 3 * o  # when x-u>approximate_delta, e.g., 6*o, the gaussian value is approximately equal to 0.
+    gaussian_vect = gaussian_func(vect, 0, o)
+    matrix = np.zeros((hist_num, hist_num))
     for i in range(hist_num):
-        k=0
-        for j in range(i,hist_num):
-            if k>approximate_delta:
+        k = 0
+        for j in range(i, hist_num):
+            if k > approximate_delta:
                 continue
-            matrix[i][j]=gaussian_vect[j-i] 
-            k=k+1  
-    matrix = matrix+matrix.transpose()
+            matrix[i][j] = gaussian_vect[j - i]
+            k = k + 1
+    matrix = matrix + matrix.transpose()
     for i in range(hist_num):
-        matrix[i][i]=matrix[i][i]/2
-            
-    xxx = np.dot(matrix,arr)
+        matrix[i][i] = matrix[i][i] / 2
+
+    xxx = np.dot(matrix, arr)
     return xxx
+
 
 def get_id(img_path, dataset_name):
     camera_id = []
@@ -69,31 +70,33 @@ def get_id(img_path, dataset_name):
             elif dataset_name == "DukeMTMC":
                 frame = filename[9:16]
             camera_id.append(int(camera[0]))
-        if label[0:2]=='-1':
+        if label[0:2] == '-1':
             labels.append(-1)
         else:
             labels.append(int(label))
         frames.append(int(frame))
     return camera_id, labels, frames
 
+
 def spatial_temporal_distribution(camera_id, labels, frames):
     class_num = len(set(labels))
     cam_num = len(set(camera_id))
     max_hist = 3000
-    spatial_temporal_sum = np.zeros((class_num, cam_num))                       
+    spatial_temporal_sum = np.zeros((class_num, cam_num))
     spatial_temporal_count = np.zeros((class_num, cam_num))
     eps = 0.0000001
     interval = 100.0
-    
+
     for i in range(len(camera_id)):
-        label_k = labels[i]                 #### not in order, done
-        cam_k = camera_id[i] - 1              ##### ### ### ### ### ### ### ### ### ### ### ### # from 1, not 0
+        label_k = labels[i]  #### not in order, done
+        cam_k = camera_id[i] - 1  ##### ### ### ### ### ### ### ### ### ### ### ### # from 1, not 0
         frame_k = frames[i]
         spatial_temporal_sum[label_k][cam_k] += frame_k
         spatial_temporal_count[label_k][cam_k] += 1
 
-    spatial_temporal_avg = spatial_temporal_sum / (spatial_temporal_count + eps)          # spatial_temporal_avg: 751 ids, 6 cameras, center point
-    
+    spatial_temporal_avg = spatial_temporal_sum / (
+                spatial_temporal_count + eps)  # spatial_temporal_avg: 751 ids, 6 cameras, center point
+
     distribution = np.zeros((cam_num, cam_num, max_hist))
     for i in range(class_num):
         for j in range(cam_num - 1):
@@ -105,7 +108,7 @@ def spatial_temporal_distribution(camera_id, labels, frames):
                 if st_ij > st_ik:
                     diff = st_ij - st_ik
                     hist_ = int(diff / interval)
-                    distribution[j][k][hist_] += 1     # [big][small]
+                    distribution[j][k][hist_] += 1  # [big][small]
                 else:
                     diff = st_ik - st_ij
                     hist_ = int(diff / interval)
@@ -113,16 +116,17 @@ def spatial_temporal_distribution(camera_id, labels, frames):
     smooth = 50
     for i in range(cam_num):
         for j in range(cam_num):
-            #print("gauss "+str(i)+"->"+str(j))
-            distribution[i][j][:] = gauss_smooth(distribution[i][j][:],smooth)
+            # print("gauss "+str(i)+"->"+str(j))
+            distribution[i][j][:] = gauss_smooth(distribution[i][j][:], smooth)
 
     sum_ = np.sum(distribution, axis=2)
 
     for i in range(cam_num):
         for j in range(cam_num):
             distribution[i][j] /= (sum_[i][j] + eps)
-    
+
     return distribution  # [to][from], to xxx camera, from xxx camera
+
 
 def get_st_distribution(imgs_path, dataset_name, pseudo_labels=None):
     # data_dir = "datasets/market1501/bounding_box_train"
@@ -146,6 +150,7 @@ def get_st_distribution(imgs_path, dataset_name, pseudo_labels=None):
     distribution = spatial_temporal_distribution(train_cam, reordered_label, train_frames)
 
     return distribution
+
 
 if __name__ == "__main__":
     pass

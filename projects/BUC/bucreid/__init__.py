@@ -1,3 +1,3 @@
-from .buc_trainer import BUCTrainer
-from .buc_head import  BUCHead
 from . import hooks
+from .buc_head import BUCHead
+from .buc_trainer import BUCTrainer

@@ -12,7 +12,7 @@ import time
 from fvcore.common.checkpoint import Checkpointer
 
 from fastreid.config import cfg
-from fastreid.engine import default_argument_parser, default_setup, launch, hooks
+from fastreid.engine import default_argument_parser, default_setup, launch
 from fastreid.engine.defaults import DefaultTrainer
 
 try:
@@ -24,6 +24,7 @@ except ImportError:
                       "train with DDP")
 
 from config import add_smtreid_config
+
 
 class SMTTrainer(DefaultTrainer):
     def __init__(self, cfg):
@@ -45,7 +46,7 @@ class SMTTrainer(DefaultTrainer):
             loss_dict = self.model.losses(outs, outs_mean=outs_mean)
 
         losses = sum(loss_dict.values())
-        
+
         self.optimizer.zero_grad()
         if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
             with amp.scale_loss(losses, self.optimizer) as scaled_loss:
@@ -56,6 +57,7 @@ class SMTTrainer(DefaultTrainer):
         self._write_metrics(loss_dict, data_time)
 
         self.optimizer.step()
+
 
 def setup(args):
     """
@@ -78,7 +80,7 @@ def main(args):
         model = SMTTrainer.build_model(cfg)
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
         model = SMTTrainer.build_parallel_model(cfg, model)  # parallel
-        
+
         res = SMTTrainer.test(cfg, model)
         return res
 

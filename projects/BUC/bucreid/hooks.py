@@ -1,12 +1,9 @@
-import logging
 import numpy as np
-
 import torch
 
-from fastreid.engine.train_loop import HookBase
-from fastreid.engine.hooks import *
-from fastreid.data.samplers import InferenceSampler
 from fastreid.data.build import fast_batch_collator
+from fastreid.data.samplers import InferenceSampler
+from fastreid.engine.train_loop import HookBase
 from fastreid.evaluation.evaluator import inference_context
 from .exloss import ExLoss
 
@@ -19,12 +16,13 @@ class BUCHook(HookBase):
         self.step_iter = (2 * self.loops + 20) * self.iters_per_epoch
         self.train_set = train_set
         num_train_ids = len(np.unique(np.array(self.train_set.cids)))
-        self.nums_to_merge = int(num_train_ids * 0.05) # merge percent
-        
+        self.nums_to_merge = int(num_train_ids * 0.05)  # merge percent
+
     def after_step(self):
         # clustering
         if self.trainer.iter > 0 and self.trainer.iter % self.step_iter == 0:
-            new_cids = self.get_new_train_data(self.train_set.cids, self.nums_to_merge, size_penalty=0.003) # size_penalty
+            new_cids = self.get_new_train_data(self.train_set.cids, self.nums_to_merge,
+                                               size_penalty=0.003)  # size_penalty
             self.train_set.cids = new_cids
             self.trainer.data_loader = self.trainer.build_buc_train_loader(self.train_set)
             self.trainer._data_loader_iter = iter(self.trainer.data_loader)
@@ -32,7 +30,7 @@ class BUCHook(HookBase):
             self.step_iter = (2 * self.loops + 20) * self.iters_per_epoch
             num_train_ids = len(np.unique(np.array(new_cids)))
             self.trainer.criterion = ExLoss(num_train_ids, num_features=2048, t=10).cuda()
-            
+
     def get_new_train_data(self, labels, nums_to_merge, size_penalty):
         u_feas, label_to_images = self.generate_average_feature(labels)
         dists = self.calculate_distance(u_feas)
@@ -40,12 +38,12 @@ class BUCHook(HookBase):
         labels = self.generate_new_train_data(idx1, idx2, labels, nums_to_merge)
         return labels
 
-    def select_merge_data(self, u_feas, label, label_to_images,  ratio_n,  dists):
+    def select_merge_data(self, u_feas, label, label_to_images, ratio_n, dists):
         dists.add_(torch.tril(100000 * torch.ones(len(u_feas), len(u_feas)).cuda()))
 
         cnt = torch.FloatTensor([len(label_to_images[label[idx]]) for idx in range(len(u_feas))]).cuda()
         dists += ratio_n * (cnt.view(1, len(cnt)) + cnt.view(len(cnt), 1))
-        
+
         for idx in range(len(u_feas)):
             for j in range(idx + 1, len(u_feas)):
                 if label[idx] == label[j]:
@@ -57,7 +55,7 @@ class BUCHook(HookBase):
         idx2 = ind[1]
         return idx1, idx2
 
-    def calculate_distance(self,u_feas):
+    def calculate_distance(self, u_feas):
         # calculate distance between features
         x = u_feas
         y = x
@@ -77,7 +75,7 @@ class BUCHook(HookBase):
                 label = [label1 if x == label2 else x for x in label]
             else:
                 label = [label2 if x == label1 else x for x in label]
-            num_merged =  num_before_merge - len(np.sort(np.unique(np.array(label))))
+            num_merged = num_before_merge - len(np.sort(np.unique(np.array(label))))
             if num_merged == num_to_merge:
                 break
 
@@ -93,18 +91,18 @@ class BUCHook(HookBase):
         print("num of label before merge: ", num_before_merge, " after_merge: ", num_after_merge, " sub: ",
               num_before_merge - num_after_merge)
         return label
-    
+
     def generate_average_feature(self, labels):
-        #extract feature/classifier
+        # extract feature/classifier
         u_feas = self.get_feature()
 
-        #images of the same cluster
+        # images of the same cluster
         label_to_images = {}
         for idx, l in enumerate(labels):
             label_to_images[l] = label_to_images.get(l, []) + [idx]
 
         return u_feas, label_to_images
-    
+
     def get_feature(self):
         num_workers = self.trainer.cfg.DATALOADER.NUM_WORKERS
         batch_size = self.trainer.cfg.TEST.IMS_PER_BATCH
@@ -122,7 +120,7 @@ class BUCHook(HookBase):
         with inference_context(model), torch.no_grad():
             for idx, inputs in enumerate(dataloader):
                 outputs = model(inputs)
-                #TODO:
+                # TODO:
                 features.append(outputs)
             features = torch.cat(features)
 

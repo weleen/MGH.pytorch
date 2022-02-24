@@ -4,8 +4,8 @@
 @contact: yimingwu@hotmail.com
 @function: Implementation of Self-paced Contrastive Learning with Hybrid Memory for Domain Adaptive Object Re-ID
 """
-import os
 import logging
+import os
 import sys
 
 sys.path.append('.')
@@ -14,16 +14,13 @@ import time
 import itertools
 import collections
 import torch
-import torch.nn.functional as F
-from torch import nn
 from fvcore.common.checkpoint import Checkpointer
 
 from fastreid.config import cfg
-from fastreid.engine import default_argument_parser, default_setup, launch, hooks
+from fastreid.engine import default_argument_parser, default_setup, launch
 from fastreid.engine.defaults import DefaultTrainer
 from fastreid.data import build_reid_train_loader
 from fastreid.utils.torch_utils import extract_features
-from fastreid.utils import comm
 from fastreid.modeling.losses.hybrid_memory import HybridMemory
 
 try:
@@ -33,6 +30,7 @@ try:
 except ImportError:
     raise ImportError("Please install apex from https://www.github.com/nvidia/apex to run this example if you want to"
                       "train with DDP")
+
 
 class SPCLTrainer(DefaultTrainer):
     def __init__(self, cfg):
@@ -63,12 +61,14 @@ class SPCLTrainer(DefaultTrainer):
                                    weight_mask_topk=cfg.PSEUDO.MEMORY.WEIGHT_MASK_TOPK,
                                    soft_label=cfg.PSEUDO.MEMORY.SOFT_LABEL,
                                    soft_label_start_epoch=cfg.PSEUDO.MEMORY.SOFT_LABEL_START_EPOCH).to(cfg.MODEL.DEVICE)
-        features, _, _, _, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT, save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features', '_'.join(self.cfg.DATASETS.NAMES)))
+        features, _, _, _, _ = extract_features(self.model, data_loader, norm_feat=self.cfg.PSEUDO.NORM_FEAT,
+                                                save_path=os.path.join(self.cfg.OUTPUT_DIR, 'extract_features',
+                                                                       '_'.join(self.cfg.DATASETS.NAMES)))
         datasets_size = data_loader.dataset.datasets_size
         datasets_size_range = list(itertools.accumulate([0] + datasets_size))
         memory_features = []
         for idx, set in enumerate(common_dataset.datasets):
-            start_id, end_id = datasets_size_range[idx], datasets_size_range[idx+1]
+            start_id, end_id = datasets_size_range[idx], datasets_size_range[idx + 1]
             assert end_id - start_id == len(set)
             if idx in self.cfg.PSEUDO.UNSUP:
                 # init memory for unlabeled dataset with instance features
@@ -103,7 +103,7 @@ class SPCLTrainer(DefaultTrainer):
             loss_dict = self.model.losses(outs, memory=self.memory, inputs=data, weight=self.weight_matrix)
 
         losses = sum(loss_dict.values())
-        
+
         self.optimizer.zero_grad()
         if isinstance(self.model, DistributedDataParallel):  # if model is apex.DistributedDataParallel
             with amp.scale_loss(losses, self.optimizer) as scaled_loss:
@@ -114,6 +114,7 @@ class SPCLTrainer(DefaultTrainer):
         self._write_metrics(loss_dict, data_time)
 
         self.optimizer.step()
+
 
 def setup(args):
     """
@@ -135,7 +136,7 @@ def main(args):
         model = SPCLTrainer.build_model(cfg)
         Checkpointer(model).load(cfg.MODEL.WEIGHTS)  # load trained model
         model = SPCLTrainer.build_parallel_model(cfg, model)  # parallel
-        
+
         res = SPCLTrainer.test(cfg, model)
         return res
 

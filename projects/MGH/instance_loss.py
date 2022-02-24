@@ -1,5 +1,7 @@
 import torch
+
 from fastreid.utils import euclidean_dist
+
 
 def instance_loss(outs):
     '''

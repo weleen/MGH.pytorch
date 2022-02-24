@@ -20,7 +20,7 @@ MODEL:
       SCALE: 0.2
     SSTRI:
       SCALE: 0.8
-    
+
   MEAN_NET: True
   MEAN_NET_ALPHA: 0.999
 
@@ -29,11 +29,11 @@ DATALOADER:
 
 PSEUDO:
   ENABLED: True
-  CLUSTER_EPOCH:  2
+  CLUSTER_EPOCH: 2
   USE_OUTLIERS: False
   WITH_CLASSIFIER: True
   DBSCAN:
-    EPS: [0.7,]
+    EPS: [ 0.7, ]
 
 SOLVER:
   OPT: "Adam"
@@ -41,7 +41,7 @@ SOLVER:
   BASE_LR: 0.00035
   IMS_PER_BATCH: 64
 
-  STEPS: [100,]
+  STEPS: [ 100, ]
   WARMUP_EPOCHS: 0
 
   LOG_ITERS: 200

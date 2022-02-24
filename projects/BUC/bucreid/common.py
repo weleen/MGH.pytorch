@@ -3,7 +3,6 @@
 @author:  tianjian
 """
 
-import torch
 from torch.utils.data import Dataset
 
 from fastreid.utils.misc import read_image
@@ -28,7 +27,7 @@ class CommDataset(Dataset):
             self.pid_dict = dict([(p, i) for i, p in enumerate(self.pids)])
         else:
             self.img_items = img_items
-        
+
         # cluster_id
         self.cids = list(range(len(img_items)))
 
@@ -43,7 +42,7 @@ class CommDataset(Dataset):
         if self.transform is not None: img = self.transform(img)
 
         if self.relabel: pid = self.pid_dict[pid]
-        
+
         return {
             'images': img,
             'targets': pid,
@@ -55,11 +54,13 @@ class CommDataset(Dataset):
     @staticmethod
     def get_pids(file_path, pid):
         """ Suitable for muilti-dataset training """
-        if 'cuhk03' in file_path: prefix = 'cuhk'
-        else:                     prefix = file_path.split('/')[1]
+        if 'cuhk03' in file_path:
+            prefix = 'cuhk'
+        else:
+            prefix = file_path.split('/')[1]
 
         return prefix + '_' + str(pid)
-    
+
     @property
     def num_classes(self):
         return len(self.pids)
